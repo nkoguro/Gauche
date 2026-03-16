@@ -3337,6 +3337,40 @@ It is an error if the number of arguments are not odd.
 @c COMMON
 @end defmac
 
+@defmac ineq/comprator cmp v0 op0 v1 @dots{}
+@c EN
+Similar to @code{ineq}, but the first argument @var{cmp} is passed
+as the first argument to each operator.  For example:
+@c JP
+@code{ineq}と似ていますが、最初の引数@var{cmp}が各オペレータの最初の引数として
+渡されます。例えば:
+@c COMMON
+
+@example
+(ineq/comparator cmp a <=? b <? c)
+@end example
+
+@c EN
+expans something as follows (in the actual expansion, arguments
+are bound to temporary variables to avoid multiple evaluation):
+@c JP
+これはだいたい次の式に展開されます (実際は、複数回評価を避けるために、
+各引数は一時変数に束縛されます):
+@c COMMON
+
+@example
+(and (<=? cmp a b) (<? cmp b c))
+@end example
+
+@c EN
+This is particularly useful to compare things with a comparator.
+@xref{Comparator predicates and accessors}, for the details.
+@c JP
+これは比較器を使って比較したい場合にとりわけ便利です。
+詳しくは@ref{Comparator predicates and accessors}を参照してください。
+@c COMMON
+@end defmac
+
 @defun max x1 x2 @dots{}
 @defunx min x1 x2 @dots{}
 [R7RS base]

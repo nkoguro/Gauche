@@ -6,6 +6,7 @@
 	  Now that we leave #<autoload> in the value of GLOC insterted
 	  in autoloader module by the previous commit, we can exclude
 	  them from considering binding check.
+	* src/libmarcro.scm (ineq/comparator): Documented officially.
 
 2026-03-14  Shiro Kawai  <shiro@acm.org>
 
