@@ -1277,7 +1277,11 @@ ScmObj Scm_ResolveAutoload(ScmAutoload *adata,
                           adata->import_from, adata->path);
             }
             ScmGloc *f = Scm_FindBinding(SCM_MODULE(m), adata->name, 0);
-            SCM_ASSERT(f != NULL);
+            if (f == NULL) {
+                Scm_Error("Autoloaded symbol %S is not defined in or exported "
+                          "from the module %S",
+                          adata->name, adata->import_from);
+            }
             adata->value = Scm_GlocGetValue(f);
             if (SCM_AUTOLOADP(adata->value)) {
                 /* Cascading autoload: the binding in the target module is
