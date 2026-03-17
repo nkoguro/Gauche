@@ -149,6 +149,9 @@
 (test* "cascading autoload set!" 'boo
        (begin (auto-loader3-set! 'boo) (auto-loader3-ref)))
 
+(test* "double cascading autoload" 'gud
+       (auto-loader4))
+
 ;; relative load path -------------------------------
 
 (test-section "relative load path")

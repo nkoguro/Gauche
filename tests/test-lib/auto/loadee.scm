@@ -3,7 +3,7 @@
 ;; https://github.com/shirok/Gauche/issues/1237
 
 (define-module auto.loadee
-  (export auto-loadee1 auto-loadee2 auto-loadee3))
+  (export auto-loadee1 auto-loadee2 auto-loadee3 auto-loadee4))
 (select-module auto.loadee)
 
 (use gauche.cond-expand-rt)
@@ -16,3 +16,4 @@
 (define auto-loadee2 'ho)
 
 (autoload auto.loadee2 auto-loadee3)
+(autoload auto.loadee3 auto-loadee4)

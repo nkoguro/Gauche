@@ -4,7 +4,8 @@
 
 (define-module auto.loader
   (export auto-loader auto-loader2-ref auto-loader2-set!
-          auto-loader3-ref auto-loader3-set!))
+          auto-loader3-ref auto-loader3-set!
+          auto-loader4))
 (select-module auto.loader)
 
 (autoload auto.loadee auto-loadee1 auto-loadee2 auto-loadee3 auto-loadee4)
@@ -16,3 +17,5 @@
 
 (define (auto-loader3-ref) auto-loadee3)
 (define (auto-loader3-set! v) (set! auto-loadee3 v))
+
+(define (auto-loader4) (auto-loadee4))
