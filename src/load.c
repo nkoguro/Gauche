@@ -1279,6 +1279,14 @@ ScmObj Scm_ResolveAutoload(ScmAutoload *adata,
             ScmGloc *f = Scm_FindBinding(SCM_MODULE(m), adata->name, 0);
             SCM_ASSERT(f != NULL);
             adata->value = Scm_GlocGetValue(f);
+            if (SCM_AUTOLOADP(adata->value)) {
+                /* Cascading autoload: the binding in the target module is
+                   itself an autoload.  Resolve it recursively. */
+                ScmGloc *nested_gloc = NULL;
+                adata->value = Scm_ResolveAutoload(SCM_AUTOLOAD(adata->value),
+                                                   0, &nested_gloc);
+                if (nested_gloc) f = nested_gloc;
+            }
             adata->orig_gloc = f;
             if (SCM_UNBOUNDP(adata->value) || SCM_AUTOLOADP(adata->value)) {
                 Scm_Error("Autoloaded symbol %S is not defined in the module %S",
@@ -1291,6 +1299,11 @@ ScmObj Scm_ResolveAutoload(ScmAutoload *adata,
             ScmGloc *g = Scm_FindBinding(adata->module, adata->name, 0);
             SCM_ASSERT(g != NULL);
             adata->value = Scm_GlocGetValue(g);
+            if (SCM_AUTOLOADP(adata->value)) {
+                /* Cascading autoload: resolve recursively. */
+                adata->value = Scm_ResolveAutoload(SCM_AUTOLOAD(adata->value),
+                                                   0, NULL);
+            }
             if (SCM_UNBOUNDP(adata->value) || SCM_AUTOLOADP(adata->value)) {
                 Scm_Error("Autoloaded symbol %S is not defined in the file %S",
                           adata->name, adata->path);

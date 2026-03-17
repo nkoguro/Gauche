@@ -143,6 +143,12 @@
 ;; so this test must come after "setting autoloaded symbol" test.
 (test-module 'auto.loader)
 
+;; Cascading autoload: auto-loadee3 is autoloaded from auto.loadee,
+;; which itself autoloads it from auto.loadee2.
+(test* "cascading autoload value" 'yay (auto-loader3-ref))
+(test* "cascading autoload set!" 'boo
+       (begin (auto-loader3-set! 'boo) (auto-loader3-ref)))
+
 ;; relative load path -------------------------------
 
 (test-section "relative load path")

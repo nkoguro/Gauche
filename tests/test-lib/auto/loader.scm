@@ -3,12 +3,16 @@
 ;; https://github.com/shirok/Gauche/issues/1237
 
 (define-module auto.loader
-  (export auto-loader auto-loader2-ref auto-loader2-set!))
+  (export auto-loader auto-loader2-ref auto-loader2-set!
+          auto-loader3-ref auto-loader3-set!))
 (select-module auto.loader)
 
-(autoload auto.loadee auto-loadee1 auto-loadee2)
+(autoload auto.loadee auto-loadee1 auto-loadee2 auto-loadee3 auto-loadee4)
 
 (define (auto-loader) (auto-loadee1))
 
 (define (auto-loader2-ref) auto-loadee2)
 (define (auto-loader2-set! v) (set! auto-loadee2 v))
+
+(define (auto-loader3-ref) auto-loadee3)
+(define (auto-loader3-set! v) (set! auto-loadee3 v))
