@@ -19449,45 +19449,78 @@ any number of arguments and returns a value generated with
 @c ----------------------------------------------------------------------
 @node Type checking, Uninterned symbols (SRFI), Property testing, Library modules - SRFIs
 @section @code{srfi.253} - Type checking
+@c NODE 型検査, @code{srfi.253} - 型検査
 
 @deftp {Module} srfi.253
 @mdindex srfi.253
 @c EN
 This SRFI defines forms to check the types of variables and arguments.
+@c JP
+このSRFIは、変数や引数の値の型を検査するフォームを定義します。
 @c COMMON
+@end deftp
 
-@defun check-arg type expr :optional caller
+@defmac check-arg type expr :optional caller
 [SRFI-253]
 @c MOD srfi.253
 @c EN
 Checks that @var{expr} conforms to @var{type}. The @var{type} argument
 may be a type, which will be checked with @code{assume-type}, or as a
 predicate procedure that will be invoked.
+@c JP
+@var{expr}が@var{type}に合致しているかどうかをチェックします。
+@var{type}は型か述語です。型の場合は@code{assume-type}で検査され、
+述語の場合は検査すべき値に対してそれが呼ばれます。
 @c COMMON
-@end defun
 
 @c EN
-The rest of the module consists of helper functions for common Scheme
+The optional @var{caller} argument (evaluated) can be used
+to indicate who is signalling the error.
+@c JP
+省略可能な引数@var{caller} (評価されます)は、
+エラー時に誰が検査しているかｒを示すのに使えます。
+@c COMMON
+@end defmac
+
+@c EN
+The rest of the module consists of helper macro for common Scheme
 forms that call @code{check-arg}.
+@c JP
+モジュールの残りは、典型的なパターンを
+@code{check-arg}を呼び出す式に展開するマクロです。
 @c COMMON
 
-@defun values-checked (types ...) values ...
+@defmac values-checked (type ...) val ...
 [SRFI-253]
 @c MOD srfi.253
 @c EN
-Like @code{(values ...)}, but checks the type of each of value.
+Returns multiple values listed in @var{val} @dots{},
+but each of @var{val} is checked with the corresponding @var{type}
+by @code{(check-arg type val)}.  In other words, you can add
+type checking to @code{(values val @dots{})}.
+@c JP
+@var{val} @dots{}に並べられた複数の値を返しますが、
+各値は対応する@var{type}を@code{(check-arg type val)}のように使って
+検査されます。@code{(values val @dots{})}に型検査を追加したものと
+考えることもできます。
 @c COMMON
-@end defun
+@end defmac
 
-@defun check-case value (predicate body ...) ... :optional (else else-body ...)
+@defmac check-case value (predicate body ...) ... :optional (else else-body ...)
 [SRFI-253]
 @c MOD srfi.253
 @c EN
 Evaluates the first @var{body} that satisfies the corresponding @var{predicate}.
+@c JP
 @c COMMON
-@end defun
 
-@defun lambda-checked ((arg predicate) ...) body ...
+@c EN
+Gauche also has @code{typecase} (@pxref{Conditionals}).
+@c JP
+@c COMMON
+@end defmac
+
+@defmac lambda-checked ((arg predicate) ...) body ...
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19495,9 +19528,9 @@ Like @code{lambda}, but arguments may be specified as @code{(arg
 type-predicate)}, in which case they will be type-checked using
 @code{check-case}.
 @c COMMON
-@end defun
+@end defmac
 
-@defun case-lambda-checked ((arg predicate) ...) body ...
+@defmac case-lambda-checked ((arg predicate) ...) body ...
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19505,9 +19538,9 @@ Like @code{case-lambda}, but arguments may be specified as @code{(arg
 type-predicate)}, in which case they will be type-checked using
 @code{check-case}.
 @c COMMON
-@end defun
+@end defmac
 
-@defun define-checked (name (arg predicate) ...) body ...
+@defmac define-checked (name (arg predicate) ...) body ...
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19515,18 +19548,18 @@ Like @code{define} for procedures, but arguments may be specified as
 @code{(arg type-predicate)}, in which case they will be type-checked
 using @code{check-case}.
 @c COMMON
-@end defun
+@end defmac
 
-@defun define-checked name predicate value
+@defmac define-checked name predicate value
 [SRFI-253]
 @c MOD srfi.253
 @c EN
 Like @code{define} for variables, but the assigned value will be
 checked to conform to @var{predicate}.
 @c COMMON
-@end defun
+@end defmac
 
-@defun define-record-type-checked type-name (constructor arg-name ...) predicate field ...
+@defmac define-record-type-checked type-name (constructor arg-name ...) predicate field ...
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19539,8 +19572,8 @@ checked data and check new data respectively.
 passed to constructor are satisfying the predicates provided in field
 specification.
 @c COMMON
-@end defun
-@end deftp
+@end defmac
+
 
 @c ----------------------------------------------------------------------
 @node Uninterned symbols (SRFI), Tagged procedures with type safety, Type checking, Library modules - SRFIs
