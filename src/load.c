@@ -1249,7 +1249,10 @@ ScmObj Scm_ResolveAutoload(ScmAutoload *adata,
     } while (0);
     SCM_INTERNAL_MUTEX_UNLOCK(adata->mutex);
     if (adata->loaded) {
-        /* ok, somebody did the work for me.  just use the result. */
+        /* ok, somebody did the work for me.  just use the result.
+           Note that another thread may find the original gloc (autoloaded
+           one) and stored in adata->orig_gloc. */
+        if (adata->orig_gloc && pgloc) *pgloc = adata->orig_gloc;
         return adata->value;
     }
 

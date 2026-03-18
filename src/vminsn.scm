@@ -899,12 +899,8 @@
            ;; memoize gloc
            (set! (* PC) (SCM_WORD gloc))]
           [else
-           (set! v (Scm_GlocGetValue (SCM_GLOC v)))
-           (when (SCM_AUTOLOADP v)
-             (let* ([new-gloc::ScmGloc* NULL])
-               (set! v (Scm_ResolveAutoload (SCM_AUTOLOAD v) 0 (& new-gloc)))
-               (when new-gloc
-                 (set! (* PC) (SCM_WORD new-gloc)))))])
+           ;; Autoload should be resolved at the first time GREF is cached.
+           (set! v (Scm_GlocGetValue (SCM_GLOC v)))])
     INCR-PC
     ($result v)))
 
