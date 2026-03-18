@@ -441,4 +441,25 @@
        '(((CONST-RET) number))
        (proc->insn/split (^[] (static-gf 123))))
 
+(test-section "typecase constaint folding")
+
+;; typecase branching can be eliminated if the given expr has constant
+;; binding.
+(define-syntax typecase-inline-tester
+  (syntax-rules ()
+    [(_ t)
+     (let ([tt t])
+       (typecase tt
+         [<type> 'a]
+         [<integer> 'b]
+         [else 'c]))]))
+
+(test* "typecase type-of constant folding"
+       '(((CONST-RET) a))
+       (proc->insn/split (^[] (typecase-inline-tester <integer>))))
+
+(test* "typecase type-of constant folding"
+       '(((CONST-RET) b))
+       (proc->insn/split (^[] (typecase-inline-tester 3))))
+
 (test-end)

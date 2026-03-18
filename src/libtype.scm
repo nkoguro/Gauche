@@ -311,7 +311,7 @@
           (Scm_Error "Second argument of of-type? must be a type, but got: %S"
                      type)]))
 
- (define-cproc of-type? (obj type) Scm_VMOfType)
+ (define-cproc of-type? (obj type) :constant Scm_VMOfType)
  )
 
 ;;;

@@ -1,3 +1,9 @@
+2026-03-18  Shiro Kawai  <shiro@acm.org>
+
+	* src/libtype.scm (of-type?): Mark it constant, allowing the compiler
+	  to constnat folding the expr.  This can prune typecase
+	  branches at compile time.
+
 2026-03-17  Shiro Kawai  <shiro@acm.org>
 
 	* lib/srfi/253.scm: Added.  PR from @a2379
