@@ -289,8 +289,8 @@
   (return (Scm_StringReplaceBody target (SCM_STRING_BODY source))))
 
 (define-in-module scheme (string-set! str k ch)
-  (check-arg string? str)
-  (check-arg char? ch)
+  (assume-type str <string>)
+  (assume-type ch <char>)
   (let1 cur (string-index->cursor str k)
     (%string-replace-body! str
                            (string-append (substring str 0 cur)
@@ -300,10 +300,9 @@
 (set! (setter string-ref) string-set!)
 
 (define-in-module gauche (string-byte-set! str k b)
-  (check-arg string? str)
-  (check-arg integer? k)
-  (check-arg exact? k)
-  (check-arg integer? b)
+  (assume-type str <string>)
+  (assume (exact-integer? k))
+  (assume-type b <uint8>)
   (let ([siz (string-size str)]
         [out (open-output-string :private? #t)])
     (when (or (< k 0) (<= siz k))

@@ -533,7 +533,7 @@
 (define (sys-putenv name=value . other)
   (cond
    [(null? other)
-    (check-arg string? name=value)
+    (assume-type name=value <string>)
     (receive (name value) (string-scan name=value #\= 'both)
       (unless name
         (error "sys-putenv: argument doesn't contain '=':" name=value))
