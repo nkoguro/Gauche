@@ -731,7 +731,7 @@
         (cond [(eof-object? v) (- k at)]
               [else (uvector-set! vec k v) (loop (+ k 1))])))))
 (define (generator->bytevector! vec at gen)
-  (check-arg u8vector? vec)
+  (assume-type vec <u8vector>)
   (generator->uvector! vec at gen))
 
 (define (generator->string gen :optional (n #f))

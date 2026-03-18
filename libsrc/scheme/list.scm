@@ -64,7 +64,7 @@
 
 ;;; Make a list of length LEN. Elt i is (PROC i) for 0 <= i < LEN.
 (define (list-tabulate len proc)
-  (check-arg (^n (and (integer? n) (>= n 0))) len)
+  (assume (and (integer? len) (>= len 0)))
   (do ((i (- len 1) (- i 1))
        (ans '() (cons (proc i) ans)))
       ((< i 0) ans)))
@@ -293,7 +293,7 @@
 ;;;
 
 (define (partition! pred lis)
-  (check-arg procedure? pred)
+  (assume (procedure? pred))
   (if (null-list? lis) (values lis lis)
 
       ;; This pair of loops zips down contiguous in & out runs of the
@@ -425,7 +425,7 @@
 (define (%lset2<= = lis1 lis2) (every (^x (member x lis2 =)) lis1))
 
 (define (lset<= = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (or (not (pair? lists)) ; 0-ary case
       (let lp ((s1 (car lists)) (rest (cdr lists)))
         (or (not (pair? rest))
@@ -435,7 +435,7 @@
                    (lp s2 rest)))))))
 
 (define (lset= = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (or (not (pair? lists)) ; 0-ary case
       (let lp ((s1 (car lists)) (rest (cdr lists)))
         (or (not (pair? rest))
@@ -448,13 +448,13 @@
 
 
 (define (lset-adjoin = lis . elts)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (fold (lambda (elt ans) (if (member elt ans =) ans (cons elt ans)))
         lis elts))
 
 
 (define (lset-union = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (reduce (lambda (lis ans)             ; Compute ANS + LIS.
             (cond ((null? lis) ans)     ; Don't copy any lists
                   ((null? ans) lis)     ; if we don't have to.
@@ -467,7 +467,7 @@
           '() lists))
 
 (define (lset-union! = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (reduce (lambda (lis ans)             ; Splice new elts of LIS onto the front of ANS.
             (cond ((null? lis) ans)     ; Don't copy any lists
                   ((null? ans) lis)     ; if we don't have to.
@@ -483,7 +483,7 @@
 
 
 (define (lset-intersection = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (let ((lists (delete lis1 lists eq?))) ; Throw out any LIS1 vals.
     (cond ((any null-list? lists) '())          ; Short cut
           ((null? lists)          lis1)         ; Short cut
@@ -492,7 +492,7 @@
                         lis1)))))
 
 (define (lset-intersection! = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (let ((lists (delete lis1 lists eq?))) ; Throw out any LIS1 vals.
     (cond ((any null-list? lists) '())          ; Short cut
           ((null? lists)          lis1)         ; Short cut
@@ -502,7 +502,7 @@
 
 
 (define (lset-difference = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (let ((lists (filter pair? lists)))   ; Throw out empty lists.
     (cond ((null? lists)     lis1)      ; Short cut
           ((memq lis1 lists) '())       ; Short cut
@@ -512,7 +512,7 @@
                         lis1)))))
 
 (define (lset-difference! = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (let ((lists (filter pair? lists)))   ; Throw out empty lists.
     (cond ((null? lists)     lis1)      ; Short cut
           ((memq lis1 lists) '())       ; Short cut
@@ -523,7 +523,7 @@
 
 
 (define (lset-xor = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (reduce (lambda (b a)                 ; Compute A xor B:
             ;; Note that this code relies on the constant-time
             ;; short-cuts provided by LSET-DIFF+INTERSECTION,
@@ -545,7 +545,7 @@
 
 
 (define (lset-xor! = . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (reduce (lambda (b a)                 ; Compute A xor B:
             ;; Note that this code relies on the constant-time
             ;; short-cuts provided by LSET-DIFF+INTERSECTION,
@@ -568,7 +568,7 @@
 
 
 (define (lset-diff+intersection = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (cond ((every null-list? lists) (values lis1 '()))    ; Short cut
         ((memq lis1 lists)        (values '() lis1))    ; Short cut
         (else (partition (lambda (elt)
@@ -577,7 +577,7 @@
                          lis1))))
 
 (define (lset-diff+intersection! = lis1 . lists)
-  (check-arg procedure? =)
+  (assume (procedure? =))
   (cond ((every null-list? lists) (values lis1 '()))    ; Short cut
         ((memq lis1 lists)        (values '() lis1))    ; Short cut
         (else (partition! (lambda (elt)

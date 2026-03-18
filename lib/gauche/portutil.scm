@@ -86,8 +86,8 @@
                          (loop (+ count nr))))))))))))
 
 (define (copy-port src dst :key (unit 4096) (size -1))
-  (check-arg input-port? src)
-  (check-arg output-port? dst)
+  (assume (input-port? src))
+  (assume (output-port? dst))
   (cond [(eq? unit 'byte)
          (if (and (integer? size) (not (negative? size)))
            (%do-copy/limit1 (read-byte src) (write-byte data dst) size)

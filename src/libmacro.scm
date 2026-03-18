@@ -37,7 +37,7 @@
                              syntax-error syntax-errorf
                              ^ ^_ ^a ^b ^c ^d ^e ^f ^g ^h ^i ^j ^k ^l ^m ^n
                              ^o ^p ^q ^r ^s ^t ^u ^v ^w ^x ^y ^z $ cut cute rec
-                             guard check-arg
+                             guard
                              push! push-unique! pop! inc! dec! update! rotate!
                              let1 if-let1 and-let1 let/cc begin0 rlet1
                              let-values let*-values define-values set!-values
@@ -535,19 +535,6 @@
                (lambda () ,@body)
                :rewind-before #t)))]
        [_ (error "malformed guard:" f)]))))
-
-;;; check-arg
-
-(define-syntax check-arg
-  (er-macro-transformer
-   (^[f r c]
-     (match f
-       [(_ test arg)
-        (quasirename r
-          `(let ((tmp ,arg))
-             (unless (,test tmp)
-               (errorf "bad type of argument for ~s: ~s" ',arg tmp))))]
-       [_ (error "malformed check-arg:" f)]))))
 
 ;;; bind construct
 

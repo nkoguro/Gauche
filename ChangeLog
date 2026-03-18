@@ -1,5 +1,8 @@
 2026-03-18  Shiro Kawai  <shiro@acm.org>
 
+	* lib/gauche/common-macros.scm (check-arg): Move built-in check-arg
+	  here, making it srfi-253 compatible.
+
 	* src/libtype.scm (of-type?): Mark it constant, allowing the compiler
 	  to constnat folding the expr.  This can prune typecase
 	  branches at compile time.

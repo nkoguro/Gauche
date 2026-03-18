@@ -164,7 +164,7 @@
 (define (arity-at-least? x) (is-a? x <arity-at-least>))
 
 (define (arity-at-least-value x)
-  (check-arg arity-at-least? x)
+  (assume (arity-at-least? x))
   (ref x 'value))
 
 (define (arity proc)

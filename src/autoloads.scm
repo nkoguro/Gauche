@@ -103,7 +103,7 @@
           logtest logbit? copy-bit bit-field copy-bit-field)
 
 (autoload gauche.common-macros
-          (:macro get-optional get-keyword* fluid-let while until))
+          (:macro check-arg get-optional get-keyword* fluid-let while until))
 
 (autoload gauche.regexp
           regexp-unparse rxmatch-substrings rxmatch-positions

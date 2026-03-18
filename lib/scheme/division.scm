@@ -33,35 +33,35 @@
 ;; euclidean is same as R6RS div/mod, except checks for integers.
 
 (define (euclidean/ n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (div-and-mod n d))
 
 (define (euclidean-quotient n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (div n d))
 
 (define (euclidean-remainder n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (mod n d))
 
 ;; balanced is same as R6RS div0/mod0, except checks for integers.
 
 (define (balanced/ n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (div0-and-mod0 n d))
 
 (define (balanced-quotient n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (div0 n d))
 
 (define (balanced-remainder n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (mod0 n d))
 
 ;; round and balanced only differ when n/d exactly falls on the midpoint.
@@ -79,8 +79,8 @@
       (values q r))))
 
 (define (round/ n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (when (zero? d) (error "Attempt to calculate a division by zero"))
   (if (and (exact? n) (exact? d))
     (%exact-round/ n d)
@@ -88,16 +88,16 @@
       (values q (- n (* d q))))))
 
 (define (round-quotient n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (when (zero? d) (error "Attempt to calculate a division by zero"))
   (if (and (exact? n) (exact? d))
     (values-ref (%exact-round/ n d) 0)
     (round (/ n d))))
 
 (define (round-remainder n d)
-  (check-arg integer? n)
-  (check-arg integer? d)
+  (assume (integer? n))
+  (assume (integer? d))
   (when (zero? d) (error "Attempt to calculate a division by zero"))
   (if (and (exact? n) (exact? d))
     (values-ref (%exact-round/ n d) 1)

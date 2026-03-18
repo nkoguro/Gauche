@@ -36,8 +36,40 @@
 ;; serveral less-used macros here.  They are autoloaded.
 
 (define-module gauche.common-macros
-  (export get-optional get-keyword* fluid-let while until))
+  (export check-arg get-optional get-keyword* fluid-let while until))
 (select-module gauche.common-macros)
+
+;;;-------------------------------------------------------------
+;;; type checking
+
+;; SRFI-253 compatible check-arg.
+;;
+;; Use of typecase allows optimization when pred/type is either
+;; an inlinable procedure or a type expression---in such case,
+;; type dispatch is resolved at compile time.
+;;
+;; We took check-arg from early srfis, but never documented officially.
+;; We keep it here only not to break existing code that counds on it,
+;; but officially we encourage new code to use assume-type or assume
+;; directly, or explicitly use srfi-253.
+(define-syntax check-arg
+  (syntax-rules ()
+    [(_ pred/type expr)
+     (check-arg pred/type expr 'check-arg)]
+    [(_ pred/type expr who)
+     (let ([t pred/type])
+       (typecase t
+         [<type>
+          (assume-type expr t
+            "type mismatch:" '(pred/type expr) `(,who))]
+         [<procedure>
+          (assume (t expr)
+            "type mismatch:" '(pred/type expr) `(,who))]
+         [else
+          (if (applicable? t <top>)
+            (assume (t expr)
+              "type mismatch:" '(pred/type expr) `(,who))
+            (error "Bad first argument for check-arg:" t))]))]))
 
 ;;;-------------------------------------------------------------
 ;;; bind construct

@@ -73,8 +73,7 @@
       (cond [(zero? i) (receive (k v) (iter #f from-right) (cons k v))]
             [else (iter #f from-right) (loop (- i 1) iter)])))
   (^[o i . opt]
-    (check-arg integer? i)
-    (check-arg exact? i)
+    (assume-type i <integer>)
     (let1 siz (tree-map-num-entries o)
       (cond [(or (< i 0) (<= siz i))
              (get-optional opt (error "index out of range:" i))]

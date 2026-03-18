@@ -307,14 +307,14 @@
 ;;   NB: We can consolidate peg-parse-string and peg-parse-port via
 ;;   x->generator, but should we?
 (define (peg-parse-string parser str :optional (cont #f))
-  (check-arg string? str)
+  (assume-type str <string>)
   (receive (r rest) (peg-run-parser parser (x->lseq str))
     (if cont
       (cont r rest)
       r)))
 ;; API
 (define (peg-parse-port parser port :optional (cont #f))
-  (check-arg input-port? port)
+  (assume (input-port? port))
   (receive (r rest) (peg-run-parser parser (x->lseq port))
     (if cont
       (cont r rest)
