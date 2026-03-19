@@ -316,6 +316,7 @@ static ScmObj mbed_read(ScmTLS *tls)
     do {
         int r = mbedtls_ssl_read(&t->ctx, buf+nread, sizeof(buf));
         if (r == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) return SCM_EOF;
+        if (r == 0) return SCM_EOF; /* peer dropped w/o notification */
         if (r == MBEDTLS_ERR_SSL_WANT_READ) continue;
 #if defined(MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
         if (r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) continue;
