@@ -1802,6 +1802,18 @@ Supported by the module @code{srfi.252}
 (@ref{プロパティテスト}参照)。
 
 
+srfi-253, srfi-253
+()
+
+Data Type Checking
+Supported by the module @code{srfi.253}
+(@pxref{Data type checking}).
+
+データ型検査
+@code{srfi.253}でサポートされます
+(@ref{データ型検査}参照)。
+
+
 srfi-258, srfi-258
 ()
 
