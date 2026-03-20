@@ -19521,7 +19521,7 @@ forms that call @code{check-arg}.
 @code{check-arg}を呼び出す式に展開するマクロです。
 @c COMMON
 
-@defmac values-checked (type ...) val ...
+@defmac values-checked (type-pred @dots{}) val @dots{}
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19537,7 +19537,7 @@ type checking to @code{(values val @dots{})}.
 @c COMMON
 @end defmac
 
-@defmac check-case expr (type-pred body ...) ... :optional (else else-body ...)
+@defmac check-case expr (type-pred body @dots{}) @dots{} :optional (else else-body @dots{})
 [SRFI-253]
 @c MOD srfi.253
 @c EN
@@ -19571,57 +19571,83 @@ See also @code{typecase} (@pxref{Conditionals}).
 @c COMMON
 @end defmac
 
-@defmac lambda-checked ((arg predicate) ...) body ...
+@defmac lambda-checked formals+ body @dots{}
+@defmacx case-lambda-checked (formals+ body @dots{}) @dots{}
 [SRFI-253]
 @c MOD srfi.253
 @c EN
-Like @code{lambda}, but arguments may be specified as @code{(arg
-type-predicate)}, in which case they will be type-checked using
-@code{check-case}.
+Like @code{lambda} and @code{case-lambda}, but you can
+put @code{(@var{arg} @var{type-pred})} in place of an argument
+in the formals, excep the ``rest'' argument.
+Such argument is checked with
+@code{(check-arg @var{arg} @var{type-pred} 'lambda-checked)}.
+@c JP
+@code{lambda}、@code{case-lambda}と似ていますが、
+@var{formals}の各引数 (最後の残余引数以外)
+に@code{(@var{arg} @var{type-pred})}を置くことができます。その引数は
+@code{(check-arg @var{arg} @var{type-pred} 'lambda-checked)}で
+検査されます。
 @c COMMON
+
+@example
+(lambda-checked (obj (i integer?) (j integer?) . opts)
+  ...)
+
+@equiv{}
+(lambda (obj i j . opts)
+  (check-arg i integer? 'lambda-checked)
+  (check-arg j integer? 'lambda-checked)
+  ...)
+@end example
 @end defmac
 
-@defmac case-lambda-checked ((arg predicate) ...) body ...
+@defmac define-checked (name . formals+) body @dots{}
+@defmacx define-checked name type-pred value
 [SRFI-253]
 @c MOD srfi.253
 @c EN
-Like @code{case-lambda}, but arguments may be specified as @code{(arg
-type-predicate)}, in which case they will be type-checked using
-@code{check-case}.
+The first form is a shorthand of
+@code{(define name (lambda-checked formals+ body @dots{}},
+except that @code{'@var{name}} is passed to the @var{caller} argument
+of @code{check-arg}.
+
+The second form is a shorthand of
+@code{(define name (values-checked (type-pred) value)}.
+@c JP
+最初の形式は
+@code{(define name (lambda-checked formals+ body @dots{}}
+の短縮形です。ただし、@code{'@var{name}}が@code{check-arg}
+の@var{caller}引数に渡されます。
+
+二番目の形式は
+@code{(define name (values-checked (type-pred) value)}の短縮形です。
 @c COMMON
 @end defmac
 
-@defmac define-checked (name (arg predicate) ...) body ...
-[SRFI-253]
-@c MOD srfi.253
-@c EN
-Like @code{define} for procedures, but arguments may be specified as
-@code{(arg type-predicate)}, in which case they will be type-checked
-using @code{check-case}.
-@c COMMON
-@end defmac
-
-@defmac define-checked name predicate value
-[SRFI-253]
-@c MOD srfi.253
-@c EN
-Like @code{define} for variables, but the assigned value will be
-checked to conform to @var{predicate}.
-@c COMMON
-@end defmac
-
-@defmac define-record-type-checked type-name (constructor arg-name ...) predicate field ...
+@defmac define-record-type-checked type-name (constructor arg @dots{}) predicate field @dots{}
 [SRFI-253]
 @c MOD srfi.253
 @c EN
 Defines a record type with checked constructor and field
-accessors/modifiers. Fields are either of the form @code{(field-name
-predicate accessor-name)} or @code{(field-name predicate accessor-name
-modifier-name)}. These ensure that accessor and modifier return
+accessors/modifiers, like @code{define-record-type}.
+
+Each fields is either of the form @code{(field-name type-red accessor-name)} or
+@code{(field-name type-pred accessor-name modifier-name)}, where
+@var{type-pred} is used with @code{values-checked} and @code{check-arg}
+to ensure that accessor and modifier return
 checked data and check new data respectively.
 @code{define-record-type-checked} also guarantees that initial values
 passed to constructor are satisfying the predicates provided in field
 specification.
+@c JP
+@code{define-record-type}と同様に、レコード型とその
+コンストラクタ、フィールドアクセサ、フィールドモディファイアを定義します。
+
+各フィールドは@code{(field-name type-red accessor-name)}もしくは
+@code{(field-name type-pred accessor-name modifier-name)}の形式で、
+@var{type-pred}が@code{values-checked}や@code{check-arg}によって
+アクセサが返す値とモディファイアが受けとる値を検査するのに使われます。
+また、コンストラクタに渡された値がフィールドに対する正しい型かどうかも検査されます。
 @c COMMON
 @end defmac
 
