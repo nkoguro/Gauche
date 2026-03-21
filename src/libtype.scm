@@ -972,6 +972,8 @@
  (initcode
   (define-native-type <fixnum>  SCM_CLASS_INTEGER ScmSmallInt
     SCM_INTP SCM_MAKE_INT SCM_INT_VALUE)
+  (define-native-type <ufixnum>  SCM_CLASS_INTEGER ScmSmallInt
+    SCM_UINTP SCM_MAKE_INT SCM_INT_VALUE)
   (define-native-type <short>   SCM_CLASS_INTEGER short
     SCM_INTEGER_FITS_SHORT_P SCM_MAKE_INT SCM_INT_VALUE)
   (define-native-type <ushort>  SCM_CLASS_INTEGER u_short

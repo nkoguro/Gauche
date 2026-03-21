@@ -131,9 +131,9 @@ THIS IS LEAD-IN LONGER THAN HANGING.
   (let ([indent (or indent *default-indent*)]
         [hanging (or hanging indent *default-hanging*)]
         [width (or width *default-width*)])
-    (assume (and (exact-integer? start-column) (>= start-column 0)))
-    (assume (and (exact-integer? indent) (>= indent 0)))
-    (assume (and (exact-integer? hanging) (>= hanging 0)))
+    (assume-type start-column <ufixnum>)
+    (assume-type indent <ufixnum>)
+    (assume-type hanging <ufixnum>)
     (assume (and (exact-integer? width) (> width indent)))
     (assume-type lead-in (<?> <string>))
 

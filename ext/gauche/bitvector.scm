@@ -140,8 +140,8 @@
      (let* ([len (size-of bvec)]
             [start (if (undefined? start) 0 start)]
             [end (if (undefined? end) len end)])
-       (assume (exact-integer? start))
-       (assume (exact-integer? end))
+       (assume-type start <integer>)
+       (assume-type end <integer>)
        (assume (<= start end len))
        . body)]))
 
@@ -191,7 +191,8 @@
       [() len]
       [(bv s e . rest)
        (assume-type bv <bitvector>)
-       (assume (and (exact-integer? s) (exact-integer? e)))
+       (assume-type s <integer>)
+       (assume-type e <integer>)
        (assume (<= s e))
        (check rest (+ len (- e s)))]
       [_ (error "number of arguments must be multiples of 3, but got" args)]))
@@ -402,16 +403,16 @@
   (= (bitvector-suffix-length bv1 bv2) (bitvector-length bv1)))
 
 (define (bitvector-pad bit bv length)
-  (assume (and (exact-integer? length) (>= length 0))
-          "Exact nonnegative integer expected for length, but got:" length)
+  (assume-type length <ufixnum>
+    "Exact nonnegative integer expected for length, but got:" length)
   (if (>= (bitvector-length bv) length)
     (bitvector-copy bv (- (bitvector-length bv) length))
     (rlet1 r (make-bitvector length bit)
       (bitvector-copy! r (- length (bitvector-length bv)) bv))))
 
 (define (bitvector-pad-right bit bv length)
-  (assume (and (exact-integer? length) (>= length 0))
-          "Exact nonnegative integer expected for length, but got:" length)
+  (assume-type length <ufixnum>
+    "Exact nonnegative integer expected for length, but got:" length)
   (if (>= (bitvector-length bv) length)
     (bitvector-copy bv 0 length)
     (rlet1 r (make-bitvector length bit)
@@ -457,7 +458,7 @@
 
 (define (bitvector-reverse-copy! target tstart src :optional sstart send)
   (with-range (src sstart send)
-    (assume (exact-integer? tstart))
+    (assume-type tstart <integer>)
     (let loop ([i (- send 1)] [j tstart])
       (when (<= sstart i)
         (bitvector-set! target j (bitvector-ref/int src i))
@@ -565,7 +566,7 @@
 ;; We could directly copy ScmBits* from a bignum but we don't have
 ;; an API to construct bitvector from ScmBits* yet.
 (define (integer->bitvector n :optional (len (integer-length n)))
-  (assume (and (exact-integer? n) (>= n 0)))
+  (assume-type n <ufixnum>)
   (rlet1 bv (make-bitvector len)
     (let loop ([k 0])
       (when (< k len)

@@ -125,7 +125,7 @@
 ;;;
 
 (define (string-tabulate proc len)
-  (assume (and (integer? len) (>= len 0)))
+  (assume-type len <ufixnum>)
   (let ((sink (open-output-string)))
     (do ((i 0 (+ i 1)))
         ((>= i len) (get-output-string sink))
@@ -142,7 +142,7 @@
 
 (define (string-copy! target tstart s . args)
   (assume-type target <string>)
-  (assume (and (integer? tstart) (>= tstart 0)))
+  (assume-type tstart <ufixnum>)
   (let* ((str (apply opt-substring s args))
          (slen (string-length str))
          (tlen (string-length target)))
@@ -752,7 +752,7 @@
 
 (define (xsubstring s from :optional to start end)
   (assume-type s <string>)
-  (assume (and (integer? from) (exact? from)))
+  (assume-type from <integer>)
   (let* ([str (opt-substring s start end)]
          [len (string-length str)]
          [dest (open-output-string)])
@@ -783,7 +783,7 @@
 
 (define (string-xcopy! target tstart s sfrom . args)
   (assume-type target <string>)
-  (assume (and (integer? tstart) (exact? tstart)))
+  (assume-type tstart <integer>)
   (let1 result (apply xsubstring s sfrom args)
     (string-copy! target tstart result)))
 

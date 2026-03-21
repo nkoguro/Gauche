@@ -64,7 +64,7 @@
 
 ;;; Make a list of length LEN. Elt i is (PROC i) for 0 <= i < LEN.
 (define (list-tabulate len proc)
-  (assume (and (integer? len) (>= len 0)))
+  (assume-type len <ufixnum>)
   (do ((i (- len 1) (- i 1))
        (ans '() (cons (proc i) ans)))
       ((< i 0) ans)))
