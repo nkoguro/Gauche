@@ -14,24 +14,24 @@
 (test-module 'gauche.ctype)
 
 ;; Type equivalences
-(let* ([int* (make-c-pointer-type <c-int>)]
-       [int8* (make-c-pointer-type <c-int8>)]
-       [int8a (make-c-array-type <c-int8> '(2 2))]
-       [int8a2 (make-c-array-type <c-int8> '(2 2))]
-       [int8a4 (make-c-array-type <c-int8> '(4))]
-       [u8a2 (make-c-array-type <c-uint8> '(2 2))]
-       [fn1 (make-c-function-type <c-int> `(,<c-int8> ,<c-uint16>))]
-       [fn2 (make-c-function-type <c-int> `(,<c-int8> ,<c-uint16>))]
-       [fn-var (make-c-function-type <c-int> `(,<c-int8> ,<c-uint16> ...))]
-       [s1 (make-c-struct-type 's1 `((a ,<c-int8>) (b ,<c-uint16>)))]
-       [s1b (make-c-struct-type 's1 `((a ,<c-int8>) (b ,<c-uint16>)))]
-       [s2 (make-c-struct-type 's2 `((a ,<c-int8>) (b ,<c-uint16>)))]
-       [u1 (make-c-union-type 'u1 `((a ,<c-int8>) (b ,<c-uint16>)))]
-       [u1b (make-c-union-type 'u1 `((a ,<c-int8>) (b ,<c-uint16>)))]
-       [u2 (make-c-union-type 'u2 `((a ,<c-int8>) (b ,<c-uint16>)))])
+(let* ([int* (make-c-pointer-type <int>)]
+       [int8* (make-c-pointer-type <int8>)]
+       [int8a (make-c-array-type <int8> '(2 2))]
+       [int8a2 (make-c-array-type <int8> '(2 2))]
+       [int8a4 (make-c-array-type <int8> '(4))]
+       [u8a2 (make-c-array-type <uint8> '(2 2))]
+       [fn1 (make-c-function-type <int> `(,<int8> ,<uint16>))]
+       [fn2 (make-c-function-type <int> `(,<int8> ,<uint16>))]
+       [fn-var (make-c-function-type <int> `(,<int8> ,<uint16> ...))]
+       [s1 (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint16>)))]
+       [s1b (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint16>)))]
+       [s2 (make-c-struct-type 's2 `((a ,<int8>) (b ,<uint16>)))]
+       [u1 (make-c-union-type 'u1 `((a ,<int8>) (b ,<uint16>)))]
+       [u1b (make-c-union-type 'u1 `((a ,<int8>) (b ,<uint16>)))]
+       [u2 (make-c-union-type 'u2 `((a ,<int8>) (b ,<uint16>)))])
   ;; equivalent cases
   (test* "native type equal? pointer" #t
-         (equal? (make-c-pointer-type <c-int>) (make-c-pointer-type <c-int>)))
+         (equal? (make-c-pointer-type <int>) (make-c-pointer-type <int>)))
   (test* "native type equal? array" #t
          (equal? int8a int8a2))
   (test* "native type equal? function" #t
@@ -77,14 +77,14 @@
        ))
 
 (let ([data (u8vector-copy *fobject-storage*)]
-      [int8* (make-c-pointer-type <c-int8>)]
-      [uint8* (make-c-pointer-type <c-uint8>)]
-      [int16* (make-c-pointer-type <c-int16>)]
-      [uint16* (make-c-pointer-type <c-uint16>)]
-      [int32* (make-c-pointer-type <c-int32>)]
-      [uint32* (make-c-pointer-type <c-uint32>)]
-      [int64* (make-c-pointer-type <c-int64>)]
-      [uint64* (make-c-pointer-type <c-uint64>)]
+      [int8* (make-c-pointer-type <int8>)]
+      [uint8* (make-c-pointer-type <uint8>)]
+      [int16* (make-c-pointer-type <int16>)]
+      [uint16* (make-c-pointer-type <uint16>)]
+      [int32* (make-c-pointer-type <int32>)]
+      [uint32* (make-c-pointer-type <uint32>)]
+      [int64* (make-c-pointer-type <int64>)]
+      [uint64* (make-c-pointer-type <uint64>)]
       [char* (make-c-pointer-type <c-char>)])
   (define (bc pos type) (uvector->native-handle data type pos))
 
@@ -181,14 +181,14 @@
   )
 
 (let ([data (u8vector-copy *fobject-storage*)]
-      [int8a (make-c-array-type <c-int8> '(* 4 2))]
-      [uint8a (make-c-array-type <c-uint8> '(2 4 2))]
-      [int16a (make-c-array-type <c-int16> '(* 4 2))]
-      [uint16a (make-c-array-type <c-uint16> '(2 4 2))]
-      [int32a (make-c-array-type <c-int32> '(* 3 2))]
-      [uint32a (make-c-array-type <c-uint32> '(2 3 2))]
-      [int64a (make-c-array-type <c-int64> '(* 2))]
-      [uint64a (make-c-array-type <c-uint64> '(2 2))])
+      [int8a (make-c-array-type <int8> '(* 4 2))]
+      [uint8a (make-c-array-type <uint8> '(2 4 2))]
+      [int16a (make-c-array-type <int16> '(* 4 2))]
+      [uint16a (make-c-array-type <uint16> '(2 4 2))]
+      [int32a (make-c-array-type <int32> '(* 3 2))]
+      [uint32a (make-c-array-type <uint32> '(2 3 2))]
+      [int64a (make-c-array-type <int64> '(* 2))]
+      [uint64a (make-c-array-type <uint64> '(2 2))])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define (tsa type expect)
     (test* #"~|type| size&alignment" expect
@@ -369,10 +369,10 @@
                 #x00 #x00 #xf0 #xbf #x00 #x00 #x00 #x00  ; -1.0
                 #x00 #x00 #x04 #x40 #x00 #x00 #x00 #x00  ;  2.5
                 )])]
-      [float* (make-c-pointer-type <c-float>)]
-      [double* (make-c-pointer-type <c-double>)]
-      [floata (make-c-array-type <c-float> '(3))]
-      [doublea (make-c-array-type <c-double> '(3))])
+      [float* (make-c-pointer-type <float>)]
+      [double* (make-c-pointer-type <double>)]
+      [floata (make-c-array-type <float> '(3))]
+      [doublea (make-c-array-type <double> '(3))])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define (tsa type expect)
     (test* #"~|type| size&alignment" expect
@@ -419,14 +419,14 @@
 
 (let ([data (u8vector-copy *fobject-storage*)]
       [s1 (make-c-struct-type 's1
-                                   `((a ,<c-int8>)
-                                     (b ,<c-uint32>)
-                                     (c ,<c-uint16>)
-                                     (d ,<c-uint8>)))]
+                                   `((a ,<int8>)
+                                     (b ,<uint32>)
+                                     (c ,<uint16>)
+                                     (d ,<uint8>)))]
       [s2 (make-c-struct-type 's2
-                                   `((a ,<c-uint8>)
-                                     (b ,<c-uint64>)
-                                     (c ,<c-int16>)))]
+                                   `((a ,<uint8>)
+                                     (b ,<uint64>)
+                                     (c ,<int16>)))]
       [s0 (make-c-struct-type 's0 '())])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define (tsa type expect)
@@ -483,10 +483,10 @@
                  (native-ref (bc 0 s2) 'c)))))
 
 (let* ([data (u8vector-copy *fobject-storage*)]
-       [u16x2 (make-c-array-type <c-uint16> '(2))]
+       [u16x2 (make-c-array-type <uint16> '(2))]
        [s3 (make-c-struct-type 's3
                                     `((arr ,u16x2)
-                                      (b ,<c-uint8>)))])
+                                      (b ,<uint8>)))])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define native-type-offset*
     (with-module gauche.ctype native-type-offset))
@@ -518,13 +518,13 @@
 ;; c-union tests
 (let ([data (u8vector-copy *fobject-storage*)]
       [u1 (make-c-union-type 'u1
-                                  `((a ,<c-int8>)
-                                    (b ,<c-uint32>)
-                                    (c ,<c-uint16>)))]
+                                  `((a ,<int8>)
+                                    (b ,<uint32>)
+                                    (c ,<uint16>)))]
       [u2 (make-c-union-type 'u2
-                                  `((x ,<c-uint8>)
-                                    (y ,<c-uint64>)
-                                    (z ,<c-int16>)))]
+                                  `((x ,<uint8>)
+                                    (y ,<uint64>)
+                                    (z ,<int16>)))]
       [u0 (make-c-union-type 'u0 '())])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define (tsa type expect)
@@ -606,42 +606,42 @@
 
 ;; Primitive types via C-style names
 
-(test* "native-type int" <c-int> (native-type 'int))
-(test* "native-type uint" <c-uint> (native-type 'u_int))
-(test* "native-type short" <c-short> (native-type 'short))
-(test* "native-type u_short" <c-ushort> (native-type 'u_short))
-(test* "native-type long" <c-long> (native-type 'long))
-(test* "native-type u_long" <c-ulong> (native-type 'u_long))
-(test* "native-type float" <c-float> (native-type 'float))
-(test* "native-type double" <c-double> (native-type 'double))
+(test* "native-type int" <int> (native-type 'int))
+(test* "native-type uint" <uint> (native-type 'u_int))
+(test* "native-type short" <short> (native-type 'short))
+(test* "native-type u_short" <ushort> (native-type 'u_short))
+(test* "native-type long" <long> (native-type 'long))
+(test* "native-type u_long" <ulong> (native-type 'u_long))
+(test* "native-type float" <float> (native-type 'float))
+(test* "native-type double" <double> (native-type 'double))
 (test* "native-type void" <void> (native-type 'void))
 (test* "native-type char" <c-char> (native-type 'char))
-(test* "native-type int8_t" <c-int8> (native-type 'int8_t))
-(test* "native-type uint8_t" <c-uint8> (native-type 'uint8_t))
-(test* "native-type int16_t" <c-int16> (native-type 'int16_t))
-(test* "native-type uint16_t" <c-uint16> (native-type 'uint16_t))
-(test* "native-type int32_t" <c-int32> (native-type 'int32_t))
-(test* "native-type uint32_t" <c-uint32> (native-type 'uint32_t))
-(test* "native-type int64_t" <c-int64> (native-type 'int64_t))
-(test* "native-type uint64_t" <c-uint64> (native-type 'uint64_t))
-(test* "native-type size_t" <c-size_t> (native-type 'size_t))
-(test* "native-type ssize_t" <c-ssize_t> (native-type 'ssize_t))
-(test* "native-type ptrdiff_t" <c-ptrdiff_t> (native-type 'ptrdiff_t))
+(test* "native-type int8_t" <int8> (native-type 'int8_t))
+(test* "native-type uint8_t" <uint8> (native-type 'uint8_t))
+(test* "native-type int16_t" <int16> (native-type 'int16_t))
+(test* "native-type uint16_t" <uint16> (native-type 'uint16_t))
+(test* "native-type int32_t" <int32> (native-type 'int32_t))
+(test* "native-type uint32_t" <uint32> (native-type 'uint32_t))
+(test* "native-type int64_t" <int64> (native-type 'int64_t))
+(test* "native-type uint64_t" <uint64> (native-type 'uint64_t))
+(test* "native-type size_t" <size_t> (native-type 'size_t))
+(test* "native-type ssize_t" <ssize_t> (native-type 'ssize_t))
+(test* "native-type ptrdiff_t" <ptrdiff_t> (native-type 'ptrdiff_t))
 
 ;; Pass-through of existing native type instances
-(test* "native-type pass-through" <c-int> (native-type <c-int>))
+(test* "native-type pass-through" <int> (native-type <int>))
 (test* "native-type pass-through pointer" #t
-       (let1 p (make-c-pointer-type <c-int>)
+       (let1 p (make-c-pointer-type <int>)
          (equal? p (native-type p))))
 
-(test* "native-type (const int)" <c-int>
+(test* "native-type (const int)" <int>
        (native-type '(const int)))
 
 ;; Pointer types
 (test* "native-type int*" #t
-       (equal? (native-type 'int*) (make-c-pointer-type <c-int>)))
+       (equal? (native-type 'int*) (make-c-pointer-type <int>)))
 (test* "native-type double*" #t
-       (equal? (native-type 'double*) (make-c-pointer-type <c-double>)))
+       (equal? (native-type 'double*) (make-c-pointer-type <double>)))
 (test* "native-type char*" #t
        (equal? (native-type 'char*) (make-c-pointer-type <c-char>)))
 (test* "native-type void*" #t
@@ -651,7 +651,7 @@
 ;; Double pointer
 (test* "native-type int**" #t
        (equal? (native-type 'int**)
-               (make-c-pointer-type (make-c-pointer-type <c-int>))))
+               (make-c-pointer-type (make-c-pointer-type <int>))))
 
 ;; Triple pointer
 (test* "native-type char***" #t
@@ -671,16 +671,16 @@
        (equal? (native-type '(char const*)) (make-c-pointer-type <c-char>)))
 (test* "native-type int **" #t
        (equal? (native-type '(int **))
-               (make-c-pointer-type (make-c-pointer-type <c-int>))))
+               (make-c-pointer-type (make-c-pointer-type <int>))))
 (test* "native-type int* *" #t
        (equal? (native-type '(int* *))
-               (make-c-pointer-type (make-c-pointer-type <c-int>))))
+               (make-c-pointer-type (make-c-pointer-type <int>))))
 
 ;; Pointer type is a <c-pointer>
 (test* "native-type int* is <c-pointer>" #t
        (is-a? (native-type 'int*) <c-pointer>))
 (test* "native-type int* pointee-type" #t
-       (eq? (~ (native-type 'int*) 'pointee-type) <c-int>))
+       (eq? (~ (native-type 'int*) 'pointee-type) <int>))
 
 ;; Special treatment of c-string
 (test* "native-type c-string" #t
@@ -691,7 +691,7 @@
 ;; Array types
 (test* "native-type (.array int (3))" #t
        (equal? (native-type '(.array int (3)))
-               (make-c-array-type <c-int> '(3))))
+               (make-c-array-type <int> '(3))))
 
 (test* "native-type (.array char (8))" #t
        (equal? (native-type '(.array char (8)))
@@ -700,16 +700,16 @@
 ;; Multi-dimensional array
 (test* "native-type (.array int (2 3))" #t
        (equal? (native-type '(.array int (2 3)))
-               (make-c-array-type <c-int> '(2 3))))
+               (make-c-array-type <int> '(2 3))))
 
 (test* "native-type (.array uint8_t (4 4 4))" #t
        (equal? (native-type '(.array uint8_t (4 4 4)))
-               (make-c-array-type <c-uint8> '(4 4 4))))
+               (make-c-array-type <uint8> '(4 4 4))))
 
 ;; Array type properties
 (let1 a (native-type '(.array int (5)))
   (test* "native-type array element-type" #t
-         (eq? (~ a'element-type) <c-int>))
+         (eq? (~ a'element-type) <int>))
   (test* "native-type array dimensions" '(5)
          (~ a'dimensions))
   (test* "native-type array is <c-array>" #t
@@ -718,16 +718,16 @@
 ;; Array with unsized first dimension
 (test* "native-type (.array int (* 3))" #t
        (equal? (native-type '(.array int (* 3)))
-               (make-c-array-type <c-int> '(* 3))))
+               (make-c-array-type <int> '(* 3))))
 
 ;; Struct/union
 
 (test* "native-type (.struct bar (x::int y::float))" #t
        (equal? (native-type '(.struct bar (x::int y::float)))
-               (make-c-struct-type 'bar `((x ,<c-int>) (y ,<c-float>)))))
+               (make-c-struct-type 'bar `((x ,<int>) (y ,<float>)))))
 (test* "native-type (.struct foo (a:: int b ::double))" #t
        (equal? (native-type '(.struct foo (a:: int b ::double)))
-               (make-c-struct-type 'foo `((a ,<c-int>) (b ,<c-double>)))))
+               (make-c-struct-type 'foo `((a ,<int>) (b ,<double>)))))
 
 ;; Struct type properties
 (let1 s (native-type '(.struct pt (x::int y::int)))
@@ -742,7 +742,7 @@
                                            b::(.array char (8)))))
                (make-c-struct-type
                 'foo
-                `((a ,<c-int>)
+                `((a ,<int>)
                   (b ,(make-c-array-type <c-char> '(8)))))))
 
 ;; Struct with pointer field
@@ -751,7 +751,7 @@
          (and (is-a? s <c-struct>)
               (eq? (~ s'tag) 'node)
               (equal? (cadr (assq 'next (~ s'fields)))
-                      (make-c-pointer-type <c-int>)))))
+                      (make-c-pointer-type <int>)))))
 
 ;; Struct equivalence: two identical signatures produce equal types
 (test* "native-type struct equivalence" #t
@@ -766,10 +766,10 @@
 ;; Unions
 (test* "native-type (.union u2 (x::int y::double))" #t
        (equal? (native-type '(.union u2 (x::int y::double)))
-               (make-c-union-type 'u2 `((x ,<c-int>) (y ,<c-double>)))))
+               (make-c-union-type 'u2 `((x ,<int>) (y ,<double>)))))
 (test* "native-type (.union u1 (a :: int  b :: float))" #t
        (equal? (native-type '(.union u1 (a :: int b :: float)))
-               (make-c-union-type 'u1 `((a ,<c-int>) (b ,<c-float>)))))
+               (make-c-union-type 'u1 `((a ,<int>) (b ,<float>)))))
 
 ;; Union type properties
 (let1 u (native-type '(.union val (i::int f::float)))
@@ -789,39 +789,39 @@
 
 (test* "native-type (.function (int int) double)" #t
        (equal? (native-type '(.function (int int) double))
-               (make-c-function-type <c-double> `(,<c-int> ,<c-int>))))
+               (make-c-function-type <double> `(,<int> ,<int>))))
 
 (test* "native-type (.function (int char*) void)" #t
        (equal? (native-type '(.function (int char*) void))
                (make-c-function-type
                 <void>
-                `(,<c-int> ,(make-c-pointer-type <c-char>)))))
+                `(,<int> ,(make-c-pointer-type <c-char>)))))
 
 ;; Varargs function
 (test* "native-type (.function (int ...) int)" #t
        (equal? (native-type '(.function (int ...) int))
-               (make-c-function-type <c-int> `(,<c-int> ...))))
+               (make-c-function-type <int> `(,<int> ...))))
 
 ;; Function type properties
 (let1 f (native-type '(.function (int double) float))
   (test* "native-type function is <c-function>" #t
          (is-a? f <c-function>))
   (test* "native-type function return-type" #t
-         (eq? (~ f'return-type) <c-float>))
+         (eq? (~ f'return-type) <float>))
   (test* "native-type function arg-types" #t
-         (equal? (~ f'arg-types) `(,<c-int> ,<c-double>))))
+         (equal? (~ f'arg-types) `(,<int> ,<double>))))
 
 ;; No-arg function
 (test* "native-type (.function () int)" #t
        (equal? (native-type '(.function () int))
-               (make-c-function-type <c-int> '())))
+               (make-c-function-type <int> '())))
 
 ;; Nested compound types
 
 ;; Array of pointers (via nested native-type call in element type)
 (test* "native-type (.array int* (4))" #t
        (equal? (native-type '(.array int* (4)))
-               (make-c-array-type (make-c-pointer-type <c-int>) '(4))))
+               (make-c-array-type (make-c-pointer-type <int>) '(4))))
 
 ;; Struct containing struct (via nested (.struct ...) in field type)
 (test* "native-type nested struct" #t
@@ -851,7 +851,7 @@
                                       c::uint16_t
                                       d::uint8_t)))]
        [s1-manual (make-c-struct-type 's1
-                    `((a ,<c-int8>) (b ,<c-uint32>) (c ,<c-uint16>) (d ,<c-uint8>)))])
+                    `((a ,<int8>) (b ,<uint32>) (c ,<uint16>) (d ,<uint8>)))])
   (define (bc pos type) (uvector->native-handle data type pos))
 
   (test* "native-type struct equals manual struct" #t
@@ -874,7 +874,7 @@
 ;; native-type pointer used with native-ref
 (let* ([data (u8vector-copy *fobject-storage*)]
        [int32* (native-type 'int32_t*)]
-       [int32*-manual (make-c-pointer-type <c-int32>)])
+       [int32*-manual (make-c-pointer-type <int32>)])
   (define (bc pos type) (uvector->native-handle data type pos))
 
   (test* "native-type pointer equals manual" #t
@@ -886,7 +886,7 @@
 ;; native-type array used with native-ref
 (let* ([data (u8vector-copy *fobject-storage*)]
        [u8a (native-type '(.array uint8_t (4 4)))]
-       [u8a-manual (make-c-array-type <c-uint8> '(4 4))])
+       [u8a-manual (make-c-array-type <uint8> '(4 4))])
   (define (bc pos type) (uvector->native-handle data type pos))
 
   (test* "native-type array equals manual" #t
@@ -914,32 +914,32 @@
 (test-section "native-type->signature")
 
 ;; Primitive types
-(test* "signature int" 'int (native-type->signature <c-int>))
-(test* "signature uint" 'u_int (native-type->signature <c-uint>))
-(test* "signature short" 'short (native-type->signature <c-short>))
-(test* "signature u_short" 'u_short (native-type->signature <c-ushort>))
-(test* "signature long" 'long (native-type->signature <c-long>))
-(test* "signature u_long" 'u_long (native-type->signature <c-ulong>))
-(test* "signature float" 'float (native-type->signature <c-float>))
-(test* "signature double" 'double (native-type->signature <c-double>))
+(test* "signature int" 'int (native-type->signature <int>))
+(test* "signature uint" 'u_int (native-type->signature <uint>))
+(test* "signature short" 'short (native-type->signature <short>))
+(test* "signature u_short" 'u_short (native-type->signature <ushort>))
+(test* "signature long" 'long (native-type->signature <long>))
+(test* "signature u_long" 'u_long (native-type->signature <ulong>))
+(test* "signature float" 'float (native-type->signature <float>))
+(test* "signature double" 'double (native-type->signature <double>))
 (test* "signature void" 'void (native-type->signature <void>))
 (test* "signature char" 'char (native-type->signature <c-char>))
-(test* "signature int8_t" 'int8_t (native-type->signature <c-int8>))
-(test* "signature uint8_t" 'uint8_t (native-type->signature <c-uint8>))
-(test* "signature int16_t" 'int16_t (native-type->signature <c-int16>))
-(test* "signature uint16_t" 'uint16_t (native-type->signature <c-uint16>))
-(test* "signature int32_t" 'int32_t (native-type->signature <c-int32>))
-(test* "signature uint32_t" 'uint32_t (native-type->signature <c-uint32>))
-(test* "signature int64_t" 'int64_t (native-type->signature <c-int64>))
-(test* "signature uint64_t" 'uint64_t (native-type->signature <c-uint64>))
-(test* "signature size_t" 'size_t (native-type->signature <c-size_t>))
-(test* "signature ssize_t" 'ssize_t (native-type->signature <c-ssize_t>))
-(test* "signature ptrdiff_t" 'ptrdiff_t (native-type->signature <c-ptrdiff_t>))
+(test* "signature int8_t" 'int8_t (native-type->signature <int8>))
+(test* "signature uint8_t" 'uint8_t (native-type->signature <uint8>))
+(test* "signature int16_t" 'int16_t (native-type->signature <int16>))
+(test* "signature uint16_t" 'uint16_t (native-type->signature <uint16>))
+(test* "signature int32_t" 'int32_t (native-type->signature <int32>))
+(test* "signature uint32_t" 'uint32_t (native-type->signature <uint32>))
+(test* "signature int64_t" 'int64_t (native-type->signature <int64>))
+(test* "signature uint64_t" 'uint64_t (native-type->signature <uint64>))
+(test* "signature size_t" 'size_t (native-type->signature <size_t>))
+(test* "signature ssize_t" 'ssize_t (native-type->signature <ssize_t>))
+(test* "signature ptrdiff_t" 'ptrdiff_t (native-type->signature <ptrdiff_t>))
 (test* "signature c-string" 'c-string (native-type->signature <c-string>))
 
 ;; Pointer types
 (test* "signature int*" 'int*
-       (native-type->signature (make-c-pointer-type <c-int>)))
+       (native-type->signature (make-c-pointer-type <int>)))
 (test* "signature char**" 'char**
        (native-type->signature (make-c-pointer-type
                                (make-c-pointer-type <c-char>))))
@@ -950,57 +950,57 @@
 (test* "signature double***" 'double***
        (native-type->signature (make-c-pointer-type
                                 (make-c-pointer-type
-                                 (make-c-pointer-type <c-double>)))))
+                                 (make-c-pointer-type <double>)))))
 
 ;; Array types
 (test* "signature array int (3)" '(.array int (3))
-       (native-type->signature (make-c-array-type <c-int> '(3))))
+       (native-type->signature (make-c-array-type <int> '(3))))
 (test* "signature array 2d" '(.array uint8_t (4 4))
-       (native-type->signature (make-c-array-type <c-uint8> '(4 4))))
+       (native-type->signature (make-c-array-type <uint8> '(4 4))))
 (test* "signature array unsized" '(.array int (* 3))
-       (native-type->signature (make-c-array-type <c-int> '(* 3))))
+       (native-type->signature (make-c-array-type <int> '(* 3))))
 (test* "signature array of pointers" '(.array int* (4))
        (native-type->signature (make-c-array-type
-                               (make-c-pointer-type <c-int>) '(4))))
+                               (make-c-pointer-type <int>) '(4))))
 
 ;; Struct types
 (test* "signature struct" '(.struct foo (a::int b::double))
        (native-type->signature
-        (make-c-struct-type 'foo `((a ,<c-int>) (b ,<c-double>)))))
+        (make-c-struct-type 'foo `((a ,<int>) (b ,<double>)))))
 (test* "signature struct (anonymous)" '(.struct (a::int b::double))
        (native-type->signature
-        (make-c-struct-type #f `((a ,<c-int>) (b ,<c-double>)))))
+        (make-c-struct-type #f `((a ,<int>) (b ,<double>)))))
 (test* "signature struct with array field"
        '(.struct bar (x::int y:: (.array char (8))))
        (native-type->signature
         (make-c-struct-type 'bar
-          `((x ,<c-int>) (y ,(make-c-array-type <c-char> '(8)))))))
+          `((x ,<int>) (y ,(make-c-array-type <c-char> '(8)))))))
 (test* "signature struct with pointer field"
        '(.struct node (val::int next::int*))
        (native-type->signature
         (make-c-struct-type 'node
-          `((val ,<c-int>) (next ,(make-c-pointer-type <c-int>))))))
+          `((val ,<int>) (next ,(make-c-pointer-type <int>))))))
 
 ;; Union types
 (test* "signature union" '(.union u1 (x::int y::float))
        (native-type->signature
-        (make-c-union-type 'u1 `((x ,<c-int>) (y ,<c-float>)))))
+        (make-c-union-type 'u1 `((x ,<int>) (y ,<float>)))))
 (test* "signature union (anonymous)" '(.union (x::int y::float))
        (native-type->signature
-        (make-c-union-type #f `((x ,<c-int>) (y ,<c-float>)))))
+        (make-c-union-type #f `((x ,<int>) (y ,<float>)))))
 
 ;; Function types
 (test* "signature function" '(.function (int int) double)
        (native-type->signature
-        (make-c-function-type <c-double> `(,<c-int> ,<c-int>))))
+        (make-c-function-type <double> `(,<int> ,<int>))))
 (test* "signature function with pointer arg"
        '(.function (int char*) void)
        (native-type->signature
         (make-c-function-type <void>
-          `(,<c-int> ,(make-c-pointer-type <c-char>)))))
+          `(,<int> ,(make-c-pointer-type <c-char>)))))
 (test* "signature function varargs" '(.function (int ...) int)
        (native-type->signature
-        (make-c-function-type <c-int> `(,<c-int> ...))))
+        (make-c-function-type <int> `(,<int> ...))))
 (test* "signature function no args" '(.function () void)
        (native-type->signature
         (make-c-function-type <void> '())))
