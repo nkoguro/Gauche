@@ -998,7 +998,7 @@
     SCM_INTEGER_FITS_UINT32_P Scm_MakeIntegerU Scm_GetIntegerU)
   (define-native-type <int64>   SCM_CLASS_INTEGER int64_t
     SCM_INTEGER_FITS_INT64_P Scm_MakeInteger64 Scm_GetInteger64)
-  (define-native-type <c-uint64>  SCM_CLASS_INTEGER uint64_t
+  (define-native-type <uint64>  SCM_CLASS_INTEGER uint64_t
     SCM_INTEGER_FITS_UINT64_P Scm_MakeIntegerU64 Scm_GetIntegerU64)
 
   (define-native-type <size_t>  SCM_CLASS_INTEGER size_t
