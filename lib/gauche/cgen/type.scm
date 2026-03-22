@@ -180,44 +180,87 @@
 
 ;; Stub types corresponding to native types.
 (let ()
-  (define (%native native-type pred unbox box)
-    (make <cgen-type>
-      :name (~ native-type'name)
-      :scheme-type native-type
-      :c-type (~ native-type'c-type-name)
-      :description (~ native-type'c-type-name)
-      :c-predicate pred
-      :unboxer unbox
-      :boxer box
-      :maybe #f))
+  (cond-expand
+   [gauche-0.9.15
+    ;; TRANSIENT: We need this to compile 0.9.16 core with 0.9.15
+    ;; Remove this after 0.9.16 release
+    (define (%native native-type pred unbox box)
+      (make <cgen-type>
+        :name (~ native-type'name)
+        :scheme-type native-type
+        :c-type (~ native-type'c-type-name)
+        :description (~ native-type'c-type-name)
+        :c-predicate pred
+        :unboxer unbox
+        :boxer box
+        :maybe #f))
 
-  (%native <fixnum>  "SCM_INTP" "SCM_INT_VALUE" "SCM_MAKE_INT")
-  (%native <int>     "SCM_INTEGER_FITS_INT_P" "Scm_GetInteger" "Scm_MakeInteger")
-  (%native <long>    "SCM_INTEGER_FITS_LONG_P" "Scm_GetInteger" "Scm_MakeInteger")
-  (%native <short>   "SCM_INTEGER_FITS_SHORT_P" "(short)SCM_INT_VALUE" "SCM_MAKE_INT")
-  (%native <int8>    "SCM_INTEGER_FITS_INT8_P" "Scm_GetInteger8" "Scm_MakeInteger")
-  (%native <int16>   "SCM_INTEGER_FITS_INT16_P" "Scm_GetInteger16" "Scm_MakeInteger")
-  (%native <int32>   "SCM_INTEGER_FITS_INT32_P" "Scm_GetInteger32" "Scm_MakeInteger")
-  (%native <int64>   "SCM_INTEGER_FITS_INT64_P" "Scm_GetInteger64" "Scm_MakeInteger")
-  (%native <uint>    "SCM_INTEGER_FITS_UINT_P" "Scm_GetIntegerU" "Scm_MakeIntegerU")
-  (%native <ulong>   "SCM_INTEGER_FITS_ULONG_P" "Scm_GetIntegerU" "Scm_MakeIntegerU")
-  (%native <ushort>  "SCM_INTEGER_FITS_USHORT_P" "(unsigned short)Scm_GetIntegerU" "Scm_MakeIntegerU")
-  (%native <uint8>   "SCM_INTEGER_FITS_UINT8_P" "Scm_GetIntegerU8" "Scm_MakeIntegerU")
-  (%native <uint16>  "SCM_INTEGER_FITS_UINT16_P" "Scm_GetIntegerU16" "Scm_MakeIntegerU")
-  (%native <uint32>  "SCM_INTEGER_FITS_UINT32_P" "Scm_GetIntegerU32" "Scm_MakeIntegerU")
-  (%native <uint64>  "SCM_INTEGER_FITS_UINT64_P" "Scm_GetIntegerU64" "Scm_MakeIntegerU")
-  (%native <float>   "SCM_REALP" "(float)Scm_GetDouble" "Scm_MakeFlonum")
-  (%native <double>  "SCM_REALP" "Scm_GetDouble" "Scm_VMReturnFlonum")
+    (%native <fixnum>  "SCM_INTP" "SCM_INT_VALUE" "SCM_MAKE_INT")
+    (%native <int>     "SCM_INTEGER_FITS_INT_P" "Scm_GetInteger" "Scm_MakeInteger")
+    (%native <long>    "SCM_INTEGER_FITS_LONG_P" "Scm_GetInteger" "Scm_MakeInteger")
+    (%native <short>   "SCM_INTEGER_FITS_SHORT_P" "(short)SCM_INT_VALUE" "SCM_MAKE_INT")
+    (%native <int8>    "SCM_INTEGER_FITS_INT8_P" "Scm_GetInteger8" "Scm_MakeInteger")
+    (%native <int16>   "SCM_INTEGER_FITS_INT16_P" "Scm_GetInteger16" "Scm_MakeInteger")
+    (%native <int32>   "SCM_INTEGER_FITS_INT32_P" "Scm_GetInteger32" "Scm_MakeInteger")
+    (%native <int64>   "SCM_INTEGER_FITS_INT64_P" "Scm_GetInteger64" "Scm_MakeInteger")
+    (%native <uint>    "SCM_INTEGER_FITS_UINT_P" "Scm_GetIntegerU" "Scm_MakeIntegerU")
+    (%native <ulong>   "SCM_INTEGER_FITS_ULONG_P" "Scm_GetIntegerU" "Scm_MakeIntegerU")
+    (%native <ushort>  "SCM_INTEGER_FITS_USHORT_P" "(unsigned short)Scm_GetIntegerU" "Scm_MakeIntegerU")
+    (%native <uint8>   "SCM_INTEGER_FITS_UINT8_P" "Scm_GetIntegerU8" "Scm_MakeIntegerU")
+    (%native <uint16>  "SCM_INTEGER_FITS_UINT16_P" "Scm_GetIntegerU16" "Scm_MakeIntegerU")
+    (%native <uint32>  "SCM_INTEGER_FITS_UINT32_P" "Scm_GetIntegerU32" "Scm_MakeIntegerU")
+    (%native <uint64>  "SCM_INTEGER_FITS_UINT64_P" "Scm_GetIntegerU64" "Scm_MakeIntegerU")
+    (%native <float>   "SCM_REALP" "(float)Scm_GetDouble" "Scm_MakeFlonum")
+    (%native <double>  "SCM_REALP" "Scm_GetDouble" "Scm_VMReturnFlonum")
 
-  (%native <size_t>  "Scm_IntegerFitsSizeP" "Scm_IntegerToSize" "Scm_SizeToInteger")
-  (%native <ssize_t> "Scm_IntegerFitsSsizeP" "Scm_IntegerToSsize" "Scm_SsizeToInteger")
-  (%native <ptrdiff_t> "Scm_IntegerFitsPtrdiffP"  "Scm_IntegerToPtrdiff" "Scm_PtrdiffToInteger")
-  (%native <off_t>   "Scm_IntegerFitsOffsetP" "Scm_IntegerToOffset" "Scm_OffsetToInteger")
-  (%native <intptr_t>   "Scm_IntegerFitsIntptrP" "Scm_IntegerToIntptr" "Scm_IntptrToInteger")
-  (%native <uintptr_t>   "Scm_IntegerFitsUintptrP" "Scm_IntegerToUintptr" "Scm_UintptrToInteger")
+    (%native <size_t>  "Scm_IntegerFitsSizeP" "Scm_IntegerToSize" "Scm_SizeToInteger")
+    (%native <ssize_t> "Scm_IntegerFitsSsizeP" "Scm_IntegerToSsize" "Scm_SsizeToInteger")
+    (%native <ptrdiff_t> "Scm_IntegerFitsPtrdiffP"  "Scm_IntegerToPtrdiff" "Scm_PtrdiffToInteger")
+    (%native <off_t>   "Scm_IntegerFitsOffsetP" "Scm_IntegerToOffset" "Scm_OffsetToInteger")
+    (%native <intptr_t>   "Scm_IntegerFitsIntptrP" "Scm_IntegerToIntptr" "Scm_IntptrToInteger")
+    (%native <uintptr_t>   "Scm_IntegerFitsUintptrP" "Scm_IntegerToUintptr" "Scm_UintptrToInteger")
 
-  (%native <void>    "" "" "SCM_VOID_RETURN_VALUE")
-  )
+    (%native <void>    "" "" "SCM_VOID_RETURN_VALUE")]
+   [else
+    ;; After 0.9.16
+    (define (%native native-type)
+      (make <cgen-type>
+        :name (~ native-type'name)
+        :scheme-type native-type
+        :c-type (~ native-type'c-type-name)
+        :description (~ native-type'c-type-name)
+        :c-predicate (~ native-type'c-typecheck-name)
+        :unboxer (~ native-type'c-unboxer-name)
+        :boxer (~ native-type'c-boxer-name)
+        :maybe #f))
+
+    (%native <fixnum>)
+    (%native <ufixnum>)
+    (%native <int>)
+    (%native <uint>)
+    (%native <long>)
+    (%native <ulong>)
+    (%native <short>)
+    (%native <ushort>)
+    (%native <int8>)
+    (%native <uint8>)
+    (%native <int16>)
+    (%native <uint16>)
+    (%native <int32>)
+    (%native <uint32>)
+    (%native <int64>)
+    (%native <uint64>)
+    (%native <float>)
+    (%native <double>)
+    (%native <size_t>)
+    (%native <ssize_t>)
+    (%native <ptrdiff_t>)
+    (%native <off_t>)
+    (%native <intptr_t>)
+    (%native <uintptr_t>)
+    (%native <void>)
+    ]
+  ))
 
 (make-cgen-type '<const-cstring> <string> "const char*" "C string"
                 "SCM_STRINGP" "SCM_STRING_CONST_CSTRING" "SCM_MAKE_STR_COPYING")
