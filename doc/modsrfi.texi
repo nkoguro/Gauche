@@ -19465,7 +19465,7 @@ This SRFI defines forms to check the types of variables and arguments.
 @c MOD srfi.253
 @c EN
 Checks that @var{expr} conforms to @var{type-pred}.
-The @var{type-pred} argument is a type predicate that returns
+The @var{type-pred} argument is either a type predicate that returns
 true if the value of @var{expr} has the expected type,
 or a type object to be passed to @code{of-type?} for checking.
 (Note: Passing a type object is Gauche's extension to the SRFI).
@@ -19497,10 +19497,10 @@ to indicate who is signalling the error.
 @c COMMON
 
 @c EN
-NB: Gauche has provided undocumented @code{heck-arg} macro for long time,
+NB: Gauche has provided undocumented @code{check-arg} macro for long time,
 to be used in early SRFIs.  Since existing code may rely on it,
 we still provide it in the core (@code{srfi.253} merely re-exports it),
-but the users shoudl use @code{srfi.253} explicitly if they want
+but the users should use @code{srfi.253} explicitly if they want
 @code{check-arg} marco.  Doing so is portable as well.
 Built-in support may be dropped in future.
 @c JP
@@ -19631,7 +19631,7 @@ The second form is a shorthand of
 Defines a record type with checked constructor and field
 accessors/modifiers, like @code{define-record-type}.
 
-Each fields is either of the form @code{(field-name type-red accessor-name)} or
+Each field is the form either @code{(field-name type-red accessor-name)} or
 @code{(field-name type-pred accessor-name modifier-name)}, where
 @var{type-pred} is used with @code{values-checked} and @code{check-arg}
 to ensure that accessor and modifier return
