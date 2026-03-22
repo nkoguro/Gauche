@@ -745,7 +745,13 @@
                      (map (^[val] (shell-escape-string #"-D~|var|=~val")) val)]
                     [var `(,#"-D~var")]))
                 defs))
-  (call-with-input-process `(,(gauche-config "--cc") "-E" ,@Is ,@Ds ,file)
+  ;; Kludge - gauche-config --cc may return something like "gcc --std=gnu23".
+  ;; We need to split the command and the argument.  However, the compiler
+  ;; pathname may include whitespaces, e.g. "c:\\Program Files\\...\\gcc.exe",
+  ;; so we use heuristics.
+  (define cc (string-split (gauche-config "--cc") #/\s(?=-)/))
+
+  (call-with-input-process `(,@cc "-E" ,@Is ,@Ds ,file)
     proc
     :on-abnormal-exit :ignore))
 
