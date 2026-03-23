@@ -2,6 +2,7 @@
 
 	* src/compile-1.scm (pass1/eval-macro-rhs): Support srfi-147
 	  'begin' form.  https://github.com/shirok/Gauche/issues/1067
+	  Now srfi-147 support is official.
 
 2026-03-19  Shiro Kawai  <shiro@acm.org>
 

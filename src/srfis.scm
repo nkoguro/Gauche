@@ -1183,14 +1183,28 @@ Supported by the module @code{scheme.mapping}.
 @ref{R7RS mappings}参照。
 
 
+srfi-147
+(define-syntax let-syntax letrec-syntax syntax-rules begin)
+
+Custom macro transformers
+The built-in macro system supports SRFI-147's extension.
+@xref{Hygienic macros}.
+
+カスタムマクロ変換器
+組み込みのマクロシステムはSRFI-147の拡張もサポートしています。
+@ref{Hygienic macros}参照。
+
+
 srfi-149
 (syntax-rules)
 
 Basic syntax-rules template extensions
-The built-in @code{syntax-rules} support @code{srfi.149}.
+The built-in @code{syntax-rules} support SRFI-149.
+@xref{Syntax-rules macro transformer}.
 
 基本的なsyntax-rulesの拡張
-組み込みの@code{syntax-rules}は@code{srfi.149}に対応しています。
+組み込みの@code{syntax-rules}はSRFI-149に対応しています。
+@ref{Syntax-rules macro transformer}参照。
 
 
 srfi-151, srfi-151

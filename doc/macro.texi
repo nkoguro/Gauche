@@ -533,17 +533,20 @@ in the same scope.
 @c COMMON
 
 @c EN
-The @var{transformer-spec} can be either one of @code{syntax-rules}
-form, @code{er-macro-transformer} form,
-@code{make-id-transformer} form,
-or another macro keyword
-or syntactic keyword.  We'll explain them later.
+The @var{transformer-spec} can be a @code{syntax-rules} form,
+an @code{er-macro-transformer} form, a @code{make-id-transformer} form,
+a macro or syntactic keyword, any expression
+that yields a macro transformer, or a special @code{begin}
+form containing definitions followed by a @var{transformer-spec}.
+We'll explain them later.
 @c JP
 @var{transformer-spec}は@code{syntax-rules}フォーム、
 @code{er-macro-transformer}フォーム、
 @code{make-id-transformer}フォーム、
-あるいは他のマクロキーワードか
-構文キーワードです。これについては後述します。
+マクロキーワードか構文キーワード、
+マクロ変換器を返す任意の式、そして定義と@var{transformer-spec}
+を含む特殊な@var{begin}フォームが使えます。
+これについては後述します。
 @c COMMON
 
 @defspec define-syntax name transformer-spec
@@ -607,15 +610,14 @@ allows mutually recursive macros.
 The @var{transformer-spec} is a special expression that evaluates
 to a macro transformer.  It is evaluated in a different phase
 than the other expressions, since macro transformers must be
-executed during compiling.  So there are some restrictions.
+executed during compiling.
 
-At this moment, only one of the following expressions are allowed:
+The following forms are recognized:
 @c JP
-@var{transformer-spec}は、マクロ展開器へと評価される特別な式です。
+@var{transformer-spec}は、マクロ変換器へと評価される特別な式です。
 マクロ変換器はコンパイル時に実行されるため、他の式とは異なった段階で評価されます。
-そのためにいくらか制限があります。
 
-現在のところ、以下に挙げる式しか許されていません。
+以下のフォームが認識されます。
 @c COMMON
 
 @enumerate
@@ -644,7 +646,7 @@ the program, with required renaming to keep hygienity.  The legacy
 Lisp macro can also be written with ER macro if you don't use
 renaming.  @xref{Explicit-renaming macro transformer}, for the details.
 @c JP
-@code{er-macro-transfomer}フォーム。
+@code{er-macro-transformer}フォーム。
 これは@emph{explicit renaming}(ER)マクロを定義します。
 ERマクロでは、必要な衛生を保ちながら、任意のSchemeコードを使って変換を書けます。
 伝統的なLispのマクロは、ERマクロでリネームを使わない特別な場合と考えられます。
@@ -653,7 +655,7 @@ ERマクロでは、必要な衛生を保ちながら、任意のSchemeコード
 
 @item
 @c EN
-A @code{make-id-transformer} form.  This creates an @emph{identifier macro},
+A @code{make-id-transformer} form.  This creates an @emph{identifier macro}.
 Unlike an ordinary macro, an identifier macro expands without
 being at the head of a list; it looks like a variable in the source.
 @xref{Identifier transformer}, for the details.
@@ -667,10 +669,12 @@ being at the head of a list; it looks like a variable in the source.
 
 @item
 @c EN
-Macro or syntax keyword.  This is Gauche's extension, and can be
-used to define alias of existing macro or syntax keyword.
+A macro or syntax keyword.  This is Gauche's extension (also covered
+by SRFI-147), and can be used to define an alias of an existing macro
+or syntax keyword.
 @c JP
-マクロキーワードか構文キーワード。これはGauche独自の拡張で、
+マクロキーワードか構文キーワード。
+これはGauche独自の拡張(SRFI-147でもカバーされています)で、
 既存のマクロキーワードや構文キーワードの別名を定義するものです。
 @c COMMON
 @example
@@ -679,9 +683,61 @@ used to define alias of existing macro or syntax keyword.
 
 (si (< 2 3) (écrivez "oui"))
 @end example
+
+@item
+@c EN
+[SRFI-147] Any expression that yields a macro transformer.
+In particular, a macro use whose expansion is a valid transformer spec
+is accepted.  This enables writing custom transformer constructors:
+@c JP
+[SRFI-147] マクロ変換器を返す任意の式。
+特に、展開結果が有効なtransformer specになるマクロ使用を書けます。
+これにより、カスタムの変換器コンストラクタを定義できます:
+@c COMMON
+@example
+(define-syntax my-syntax-rules
+  (syntax-rules ()
+    ((my-syntax-rules (literal ...) rule ...)
+     (syntax-rules (literal ...) rule ...))))
+
+;; my-syntax-rules expands into a syntax-rules form,
+;; so it is a valid transformer spec.
+(define-syntax swap!
+  (my-syntax-rules ()
+    ((swap! a b)
+     (let ((tmp a)) (set! a b) (set! b tmp)))))
+@end example
+
+@item
+@c EN
+[SRFI-147] A @code{begin} form containing definitions followed by
+a transformer spec:
+@code{(begin @var{definition} @dots{} @var{transformer-spec})}.
+The @var{definition}s are evaluated at compile time and create
+module-level bindings that the @var{transformer-spec} can refer to.
+This is useful when a custom transformer constructor needs auxiliary
+compile-time values.
+@c JP
+[SRFI-147] 定義とtransformer specからなる@code{begin}フォーム:
+@code{(begin @var{definition} @dots{} @var{transformer-spec})}。
+@var{definition}はコンパイル時に評価され、モジュールレベルの束縛を作ります。
+この束縛は@var{transformer-spec}から参照できます。
+カスタムの変換器コンストラクタが補助的なコンパイル時の値を必要とするときに有用です。
+@c COMMON
+@example
+;; A macro that produces a transformer with an embedded compile-time value.
+(define-syntax make-constant-macro
+  (syntax-rules ()
+    ((make-constant-macro val)
+     (begin
+       (define the-val val)
+       (syntax-rules ()
+         ((_) the-val))))))
+
+(letrec-syntax ((answer (make-constant-macro 42)))
+  (answer))   @result{} 42
+@end example
 @end enumerate
-
-
 
 @menu
 * Syntax-rules macro transformer::
