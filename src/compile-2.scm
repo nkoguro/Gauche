@@ -604,6 +604,14 @@
           [args ($call-args iform)])
       (cond
        [(has-tag? proc $LAMBDA)  ; ((lambda (...) ...) arg ...)
+        ;; Dissolve if this is a true immediate lambda application.
+        ;; If $lambda-used? is set, the lambda was a let-bound
+        ;; single-ref that was pre-processed in a shallower context
+        ;; (process-inits), so we can't resolve it, as doing so
+        ;; would make direct-call? skip real closure boundaries that
+        ;; lie between the pre-processing context and the current call site.
+        (unless ($lambda-used? proc)
+          ($lambda-dissolved-set! proc))
         (pass2/rec (expand-inlined-procedure ($*-src iform) proc args)
                    penv tail?)]
        [(has-tag? proc $CLAMBDA) ; ((case-lambda ...) arg ...)

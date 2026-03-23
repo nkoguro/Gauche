@@ -369,6 +369,18 @@
 (test* "make sure define-inline'd procs be optimized" '()
        (filter-insn foo 'LOCAL-ENV-CLOSURES))
 
+;; https://github.com/shirok/Gauche/issues/1167
+;; cond with => expands to an immediately-applied lambda; it should be
+;; inlined so that the enclosing let loop can be embedded without closures.
+(define (cond-arrow-loop fn lis)
+  (let loop ([lis lis] [r '()])
+    (cond [(null? lis) (reverse r)]
+          [(fn (car lis)) => (^x (loop (cdr lis) (cons x r)))]
+          [else (loop (cdr lis) r)])))
+
+(test* "cond => doesn't inhibit loop inlining" '()
+       (filter-insn cond-arrow-loop 'LOCAL-ENV-CLOSURES))
+
 (test-section "eta reduction")
 
 ;; This is actually to check when eta reductino isn't done
