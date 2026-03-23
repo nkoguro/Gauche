@@ -26052,6 +26052,8 @@ doesn't follow such logic, and reports an error whenever
 it finds your code referring to undefined variable.  In such case,
 you can give a list of symbols to the @var{allow-undefined}
 keyword argument; the test will excludes them from the check.
+(Note: @var{allow-undefined} does not allow variables exported
+but not defined in the module.)
 @c JP
 しばしば、プラットフォームやコンパイルオプションによって
 グローバル変数が定義されるかどうかが異なる場合があります。
@@ -26060,6 +26062,8 @@ keyword argument; the test will excludes them from the check.
 そのようなロジックを追わないため、未定義変数の参照を報告して
 しまいます。そのような場合は、チェックから外す変数名のリストを
 @var{allow-undefined}キーワード引数に渡して下さい。
+(註: @var{allow-undefined}はエクスポートされているけれど
+未定義の変数を許すことはしません。)
 @c COMMON
 
 @c EN
