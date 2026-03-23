@@ -1,3 +1,8 @@
+2026-03-23  Shiro Kawai  <shiro@acm.org>
+
+	* src/compile-1.scm (pass1/eval-macro-rhs): Support srfi-147
+	  'begin' form.  https://github.com/shirok/Gauche/issues/1067
+
 2026-03-19  Shiro Kawai  <shiro@acm.org>
 
 	* ext/tls/tls-mbed.c (mbed_read): Fix potential busy-loop.

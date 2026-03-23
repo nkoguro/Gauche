@@ -2626,6 +2626,23 @@
   (run-tests)
   )
 
+;; Some more involved case
+(define (srfi-147-begin)
+  (let ([x 1])
+    (let-syntax ([foo
+                  (syntax-rules ()
+                    [(_ a) (begin
+                             (define y (a x))
+                             (+ y 1))])])
+      (let ([x 100])
+        (let-syntax ([bar
+                      (syntax-rules ()
+                        [(_ b) (+ b x)])])
+          (foo bar))))))
+
+(test* "srfi-147 begin nested macro" 102
+       (srfi-147-begin))
+
 ;;-----------------------------------------------------------------------
 ;; NB: SRFI-150 is tested in ext/gauche
 

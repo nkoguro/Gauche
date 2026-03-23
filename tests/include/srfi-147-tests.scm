@@ -85,8 +85,7 @@
 
 	(test-equal '(bar 42) (bar 42)))
 
-      ;; NB: This doesn't work in Gauche (yet)
-      '(test-group "Auxiliary definitions in custom macro transformers"
+      (test-group "Auxiliary definitions in custom macro transformers"
 	(define-syntax my-macro-transformer
 	  (syntax-rules ()
 	    ((my-macro-transformer)

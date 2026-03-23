@@ -895,13 +895,40 @@
     [_ (error "syntax-error: define-hybrid-syntax")]))
 
 ;; Returns either <syntax> or <macro>
+;; Note: If expr expands to (begin <definition>... <transformer-spec>),
+;; as allowed by SRFI-147, we need to compile it with a fresh toplevel cenv
+;; so that definitions create module-level bindings accessible at runtime.
 (define (pass1/eval-macro-rhs who expr cenv)
-  (rlet1 transformer ((make-toplevel-closure (compile expr cenv)))
-    (unless (or (is-a? transformer <syntax>)
-                (is-a? transformer <macro>))
-      (errorf "syntax-error: rhs expression of ~a ~s \
-               doesn't yield a syntactic transformer: ~s"
-              who expr transformer))))
+  (define (global-head=? form id.)
+    ;; Check if the head of FORM (a symbol or identifier) resolves to the
+    ;; same global syntax/macro as ID. (id. is a pre-resolved identifier.)
+    (and (pair? form)
+         (identifier? (car form))
+         (let1 head (cenv-lookup cenv (car form))
+           (and (wrapped-identifier? head)
+                (global-syntax=? head id.)))))
+  (define (definition-form? f)
+    (or (global-head=? f define.)
+        (global-head=? f r5rs-define.)
+        (global-head=? f define-syntax.)
+        (global-head=? f define-inline.)))
+  (define (begin-with-definitions? form)
+    (and (global-head=? form begin.)
+         (pair? (cdr form))
+         (any definition-form? (cdr form))))
+  (let1 expanded (%internal-macro-expand expr cenv #f)
+    (rlet1 transformer
+        ((make-toplevel-closure
+          (if (begin-with-definitions? expanded)
+            ;; SRFI-147: compile the expanded begin form with a toplevel cenv
+            (compile expanded (make-bottom-cenv (cenv-module cenv)))
+            ;; Standard case: compile with the current cenv
+            (compile expr cenv))))
+      (unless (or (is-a? transformer <syntax>)
+                  (is-a? transformer <macro>))
+        (errorf "syntax-error: rhs expression of ~a ~s \
+                 doesn't yield a syntactic transformer: ~s"
+                who expr transformer)))))
 
 (inline-stub
  (define-cproc make-toplevel-closure (code::<compiled-code>)
