@@ -76,16 +76,22 @@
 ;; In the second pass we replace its value with -N where N is the label.
 (define-class <pp-context> ()
   ([writer      :init-form write :init-keyword :writer]
+   [port        :init-value #f :init-keyword :port]
    [shared      :init-form (make-hash-table 'eq?) :init-keyword :shared]
-   [counter     :init-value 0]          ;shared label counter
    [controls    :init-keyword :controls]))
 
 ;; for internal convenience
 (define-inline (rp-shared c) (~ c 'shared))
+(define-inline (rp-port c)   (~ c 'port))
 (define-inline (rp-length c) (~ c 'controls 'length))
 (define-inline (rp-level c)  (~ c 'controls 'level))
 (define-inline (rp-width c)  (~ c 'controls 'width))
 (define-inline (rp-indent c) (~ c 'controls 'indent))
+
+(define %port-write-state
+  (with-module gauche.internal %port-write-state))
+(define %call-with-string-port/context
+  (with-module gauche.internal %call-with-string-port/context))
 
 ;; Maybe-ish monadic comparison
 (define-inline (=* a b) (and a b (= a b)))
@@ -100,19 +106,30 @@
 (define-inline (min* a b) (if a (if b (min a b) a) b))
 
 ;; Render OBJ into a string.  The resulting string is then used with
-;; layout-simple.  OBJ must be a 'simple' object (system's writer won't
-;; immediately call to %pretty-print on it).
+;; layout-simple.  We use %call-with-string-port/context so that
+;; write-object methods that call write recursively share the same
+;; write state (shared table and label counter) as the outer write.
 (define (stringify obj c)
-  (let ([w (~ c'writer)]
-        [c2 (~ c'controls)])
-    (write-to-string obj (^x (w x c2)))))
+  (let ([w  (~ c'writer)]
+        [c2 (~ c'controls)]
+        [p  (rp-port c)])
+    (if p
+      (%call-with-string-port/context p (cut w obj <> c2))
+      (write-to-string obj (cut w <> c2)))))
 
 (define (need-label? obj c) (> (hash-table-get (rp-shared c) obj 0) 1))
 (define (has-label? obj c) (<= (hash-table-get (rp-shared c) obj 1) 0))
+;; Labels are assigned using the write state's shared-counter, which is also
+;; used by write_rec when stringify calls write recursively.  This keeps
+;; both paths in sync without manual counter management.
+;; Invariant: %pretty-print guarantees the port always has a write state,
+;; so (%port-write-state (rp-port c)) is always non-#f here.
 (define (add-label! obj c)
-  (rlet1 n (~ c'counter)
+  (let* ([ws (%port-write-state (rp-port c))]
+         [n  (~ ws 'shared-counter)])
     (hash-table-put! (rp-shared c) obj (- n))
-    (set! (~ c'counter) (+ n 1))))
+    (set! (~ ws 'shared-counter) (+ n 1))
+    n))
 
 ;; The second phase takes a Scheme object and creates a "layouter"
 ;; procedure, which determines the optimal layout of presentation
@@ -407,10 +424,15 @@
 ;; Stitch together.  This is called from Scm_Write() family, replacing
 ;; internal write_rec().   Note that we already done pass 1 (write_walk)
 ;; to set up shared-table for shared/circular structure reference.
+;; write_ss() always sets a write-state on PORT before calling us;
+;; %call-with-string-port/context and add-label! both depend on it.
 (define-in-module gauche (%pretty-print obj port shared-table controls)
   (assume shared-table)
+  (unless (%port-write-state port)
+    (error "[internal] %pretty-print called without write-state on port:" port))
   (let1 context (make <pp-context>
                   :controls controls
+                  :port port
                   :shared shared-table)
     (let* ([layouter (layout obj 0 context)]
            [memo (make-memo-hash)]

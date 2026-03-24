@@ -488,6 +488,17 @@
   (let* ([r::ScmWriteState* (Scm_PortWriteState port)])
     (return (?: r (SCM_OBJ r) SCM_FALSE))))
 
+;; Call PROC with a new private output string port that shares the write
+;; state of REF-PORT, then return the accumulated string.  This is useful
+;; to temorarily buffer output to REF-PORT, while keeping shared object
+;; table and labels consistent.
+(define (%call-with-string-port/context ref-port proc)
+  (let* ([out (open-output-string :private? #t)]
+         [ws  (%port-write-state ref-port)])
+    (set! (%port-write-state out) ws)
+    (proc out)
+    (get-output-string out)))
+
 (define-cproc %port-write-controls (port::<port>)
   (let* ([c::(const ScmWriteControls*)
              (Scm_GetWriteControls NULL (Scm_PortWriteState port))])

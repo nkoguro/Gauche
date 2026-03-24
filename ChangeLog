@@ -1,3 +1,8 @@
+2026-03-24  Shiro Kawai  <shiro@acm.org>
+
+	* lib/gauche/pputil.scm (stringify): Fix incorrect labeling in
+	  pprint https://github.com/shirok/Gauche/issues/1147
+
 2026-03-23  Shiro Kawai  <shiro@acm.org>
 
 	* src/compile-1.scm (pass1/eval-macro-rhs): Support srfi-147

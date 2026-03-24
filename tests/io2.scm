@@ -880,6 +880,24 @@
        (call-with-output-string
          (cut pprint '#0=(1 . #1=((2 . #1#) 3 . #0#)) :port <>)))
 
+;; label with custom write-object method with circular reference
+;; https://github.com/shirok/Gauche/issues/1147
+(let ()
+  (define-class <issue-1147> ()
+    ((slot :init-keyword :slot)))
+  (define-method write-object ((obj <issue-1147>) port)
+    (display "#<issue-1147 " port)
+    (write (slot-ref obj 'slot) port)
+    (display ">" port))
+  (define lst (list #f))
+  (define inst (make <issue-1147> :slot lst))
+  (set-car! lst inst)
+  ;; pprint and write should produce the same label structure
+  (let1 pp-out (call-with-output-string (cut pprint lst :port <> :newline #f))
+    (test* "label (issue #1147): no duplicate labels"
+           (write-to-string lst)
+           pp-out)))
+
 (test* "shorthand notation" "('a `b ,c ,@d `(e ,f 'g ,@h))\n"
        (call-with-output-string
          (cut pprint '('a `b ,c ,@d `(e ,f 'g ,@h)) :port <>)))
