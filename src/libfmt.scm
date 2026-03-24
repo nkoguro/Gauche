@@ -522,14 +522,23 @@
       (cond-list [(has-:? flags) @ '(:pretty #t :width 79)]
                  [(has-@? flags) @ '(:length #f :level #f)])
     (^[argptr port ctrl]
-      (let ([arg (fr-next-arg! fmtstr argptr)]
-            [ctrl-args (list* :indent
-                              ((with-module gauche.internal port-column) port)
-                              ctrl-args)])
-        (write-shared arg port
-                      (if ctrl
-                        (apply write-controls-copy ctrl ctrl-args)
-                        (apply make-write-controls ctrl-args)))))))
+      (let* ([arg (fr-next-arg! fmtstr argptr)]
+             [ctrl-args (list* :indent
+                               ((with-module gauche.internal port-column) port)
+                               ctrl-args)]
+             [wctrl (if ctrl
+                      (apply write-controls-copy ctrl ctrl-args)
+                      (apply make-write-controls ctrl-args))]
+             [ws ((with-module gauche.internal %port-write-state) port)])
+        ;; If we're in the rendering phase of a shared write and pretty-print
+        ;; is requested, call %pretty-print directly with the existing shared
+        ;; table.  Going through write-shared would hit the recursive path in
+        ;; Scm_WriteWithControls, which ignores the pretty flag and falls back
+        ;; to write_rec.  This matters when ~:w is used inside write-object.
+        ;; See https://github.com/shirok/Gauche/issues/1190
+        (if (and ws (not (port-walking? port)) (~ wctrl 'pretty))
+          (%pretty-print arg port (~ ws 'shared-table) wctrl)
+          (write-shared arg port wctrl))))))
 
 ;; ~C
 ;; The "spelling out" mode (~:C) isn't supported yet.

@@ -270,6 +270,22 @@
          (format/ss "The answer is ~s ~s" a a)))
 
 ;;---------------------------------------------------------------
+;; Issue #1190 - ~:w inside write-object should pretty-print
+(let ()
+  (define-class <issue-1190> ()
+    ((slots :init-keyword :slots)))
+  (define-method write-object ((obj <issue-1190>) port)
+    (format port "#<issue-1190 ~:w>" (slot-ref obj 'slots)))
+  (test* "~:w inside write-object (issue #1190)"
+         ;; Should produce multiline pretty-print output, not a single long line
+         #t
+         (let* ([data (make-list 10 'abcdefghij)]
+                [out (call-with-output-string
+                       (cut write (make <issue-1190> :slots data) <>))])
+           ;; Pretty-printed output should contain newlines inside
+           (boolean (string-scan out "\n")))))
+
+;;---------------------------------------------------------------
 (test-section "obscure format features")
 
 (test* "format plural" "0 books, 1 book, 2 books, 1.0 books"
