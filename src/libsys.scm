@@ -442,26 +442,25 @@
 
 ;; NB: Alghough tmpnam() is in POSIX, its use is discouraged because of
 ;; potential security risk.  We mimic it's behavior by mkstemp() if possible.
-(define-cproc sys-tmpnam ()
+(define-cproc sys-tmpnam () ::<const-cstring>
   (.if "HAVE_MKSTEMP"
        (let* ([nam::(.array char [*]) "/tmp/fileXXXXXX"] [fd::int])
          (SCM_SYSCALL fd (mkstemp nam))
          (when (< fd 0) (Scm_SysError "mkstemp failed"))
          (close fd)
          (unlink nam)
-         (return (SCM_MAKE_STR_COPYING nam)))
-       (let* ([s::char* (tmpnam NULL)])
-         (return (SCM_MAKE_STR_COPYING s)))))
+         (return nam))
+       (return (tmpnam NULL))))
 
 (define-cproc sys-mkstemp (template::<string>) Scm_SysMkstemp)
 (define-cproc sys-mkdtemp (template::<string>) Scm_SysMkdtemp)
 
 ;; ctermid
-(define-cproc sys-ctermid ()
+(define-cproc sys-ctermid () ::<const-cstring>
   (.if (defined "GAUCHE_WINDOWS")
-    (return '"CON")
+    (return "CON")
     (let* ([buf::(.array char [(+ L_ctermid 1)])])
-      (return (SCM_MAKE_STR_COPYING (ctermid buf))))))
+      (return (ctermid buf)))))
 
 ;;---------------------------------------------------------------------
 ;; stdlib.h
@@ -946,15 +945,12 @@
      (Scm_Printf port "#<sys-tm %S>" (Scm_StrfTime fmt st SCM_FALSE))))
  )
 
-(define-cproc sys-asctime (tm::<sys-tm>)
-  (return (SCM_MAKE_STR_COPYING (asctime tm))))
+(define-cproc sys-asctime (tm::<sys-tm>) ::<const-cstring>
+  (return (asctime tm)))
 
-;; NB: For sys-ctime and sys-strftime, we don't use <const-cstring> return
-;; type to use autoboxing.
-;; See https://github.com/shirok/Gauche/issues/638#issuecomment-601777334
-(define-cproc sys-ctime (time)
+(define-cproc sys-ctime (time) ::<const-cstring>
   (let* ([tim::time_t (Scm_GetSysTime time)])
-    (return (SCM_MAKE_STR_COPYING (ctime (& tim))))))
+    (return (ctime (& tim)))))
 
 (define-cproc sys-difftime (time1 time0) ::<double>
   (return (difftime (Scm_GetSysTime time1) (Scm_GetSysTime time0))))
