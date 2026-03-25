@@ -290,6 +290,7 @@
 (define (p . args)     (apply print args))
 (define (get-c-name prefix scheme-name)
   (cgen-safe-name-friendly (string-append prefix (x->string scheme-name))))
+(define (join/comma strs) (string-join strs ", "))
 
 ;; <cgen-stub-unit> is a specialized class to handle stub forms.
 (define-class <cgen-stub-unit> (<cgen-unit>)
@@ -704,6 +705,9 @@
 (define (cgen-stub-cise-ambient :optional (orig-ambient (cise-ambient)))
   (rlet1 ctx (cise-ambient-copy orig-ambient '())
     ;; Override "return"
+    ;; We generate boxing code inline (at the return site) rather than in the
+    ;; epilogue, to avoid carrying out local pointer out of scope.
+    ;; See https://github.com/shirok/Gauche/issues/643
     ($ cise-register-macro! 'return
        (^[form env]
          (when (and (cise-return-types)
@@ -713,16 +717,40 @@
                    "return macro got wrong number of return values (expecting ~s): ~s"
                    (length (cise-return-types)) form))
          (match form
-           [(_)         `(goto SCM_STUB_RETURN)]
-           [(_ e0)       `(begin (set! SCM_RESULT ,e0)
-                                 (goto SCM_STUB_RETURN))]
-           [(_ xs ...) `(begin
-                          (set!
-                           ,@(concatenate
-                              (map-with-index
-                               (^[i x] `(,(string->symbol #"SCM_RESULT~i") ,x))
-                               xs)))
-                          (goto SCM_STUB_RETURN))]))
+           [(_) `(goto SCM_STUB_RETURN)]
+           [(_ e0)
+            ;; Assign the value to SCM_RESULT first (single evaluation), then
+            ;; box SCM_RESULT into SCM_RESULT_s while still in the current scope.
+            (let* ([types (or (cise-return-types) (list *scm-type*))]
+                   [type  (if (pair? types) (car types) *scm-type*)]
+                   [c-expr (cise-render-to-string e0 'expr)]
+                   [boxed  (cgen-box-tail-expr type "SCM_RESULT")])
+              (list #"SCM_RESULT = ~c-expr;"
+                    #"\nSCM_RESULT_s = ~boxed;"
+                    "\ngoto SCM_STUB_RETURN_BOXED;"))]
+           [(_ xs ...)
+            ;; Multiple return values: assign to SCM_RESULTi first, then box.
+            (let* ([n (length xs)]
+                   [types (or (cise-return-types) (make-list n *scm-type*))]
+                   [assignments
+                    (map-with-index
+                     (^[i x]
+                       #"SCM_RESULT~i = ~(cise-render-to-string x 'expr);")
+                     xs)]
+                   [boxed-args
+                    (map-with-index
+                     (^[i type] (cgen-box-tail-expr type #"SCM_RESULT~i"))
+                     types)]
+                   [values-call
+                    (case n
+                      [(2) #"Scm_Values2(~(join/comma boxed-args))"]
+                      [(3) #"Scm_Values3(~(join/comma boxed-args))"]
+                      [(4) #"Scm_Values4(~(join/comma boxed-args))"]
+                      [(5) #"Scm_Values5(~(join/comma boxed-args))"]
+                      [else #"Scm_Values(Scm_List(~(join/comma boxed-args), NULL))"])])
+              (list #"~(string-join assignments \"\n\")"
+                    #"\nSCM_RESULT_s = ~values-call;"
+                    "\ngoto SCM_STUB_RETURN_BOXED;"))]))
        ctx)))
 
 (define-syntax with-cise-ambient
@@ -1113,9 +1141,8 @@
   (define (err) (error <cgen-stub-error> "malformed 'call' spec:" form))
   (define check-expr (any-pred string? symbol?))
   (define (args)
-    (string-join (map (cut ref <> 'c-name)
-                      (append (~ cproc'args) (~ cproc'keyword-args)))
-                 ", "))
+    (join/comma (map (cut ref <> 'c-name)
+                     (append (~ cproc'args) (~ cproc'keyword-args)))))
   (define (typed-result rettype c-func-name)
     (push-stmt! cproc "{")
     (push-stmt! cproc #"~(~ rettype'c-type) SCM_RESULT;")
@@ -1203,40 +1230,52 @@
                         stmt
                         (cise-render-to-string stmt))))
   (define (typed-result rettype stmts)
+    ;; SCM_RESULT   - C-typed variable for old-style direct assignment.
+    ;; SCM_RESULT_s - ScmObj holding the already-boxed result.
+    ;; The (return x) macro boxes x inline and jumps to SCM_STUB_RETURN_BOXED.
+    ;; Old-style code that assigns SCM_RESULT and jumps to SCM_STUB_RETURN is
+    ;; handled at that label, which boxes SCM_RESULT into SCM_RESULT_s before
+    ;; falling through to SCM_STUB_RETURN_BOXED.
     (push-stmt! cproc "{")
     (push-stmt! cproc #"~(~ rettype'c-type) SCM_RESULT;")
+    (push-stmt! cproc "ScmObj SCM_RESULT_s;")
     (for-each expand-stmt stmts)
-    (push-stmt! cproc "goto SCM_STUB_RETURN;") ; avoid 'label not used' error
-    (push-stmt! cproc "SCM_STUB_RETURN:") ; label
-    (push-stmt! cproc (cgen-return-stmt (cgen-box-tail-expr rettype "SCM_RESULT")))
+    (push-stmt! cproc "goto SCM_STUB_RETURN;")    ; avoid 'label not used' error
+    (push-stmt! cproc "SCM_STUB_RETURN:")          ; target for old-style goto
+    (push-stmt! cproc #"SCM_RESULT_s = ~(cgen-box-tail-expr rettype \"SCM_RESULT\");")
+    (push-stmt! cproc "goto SCM_STUB_RETURN_BOXED;") ; avoid 'label not used' error
+    (push-stmt! cproc "SCM_STUB_RETURN_BOXED:")    ; target for new-style (return x)
+    (push-stmt! cproc (cgen-return-stmt "SCM_RESULT_s"))
     (push-stmt! cproc "}"))
   (define (typed-results rettypes stmts)
     (let1 nrets (length rettypes)
       (for-each-with-index
        (^[i rettype] (push-stmt! cproc #"~(~ rettype'c-type) SCM_RESULT~i;"))
        rettypes)
+      (push-stmt! cproc "ScmObj SCM_RESULT_s;")
       (push-stmt! cproc "{")
       (for-each expand-stmt stmts)
       (push-stmt! cproc "}")
-      (let1 results
-          (string-join
-           (map-with-index (^[i rettype]
-                             (cgen-box-tail-expr rettype #"SCM_RESULT~i"))
-                           rettypes)
-           ",")
-        (push-stmt! cproc "goto SCM_STUB_RETURN;") ; avoid 'label not used' error
-        (push-stmt! cproc "SCM_STUB_RETURN:") ; label
-        (push-stmt! cproc
-                    (case nrets
-                      [(0) (cgen-return-stmt "Scm_Values(SCM_NIL)")]
-                      [(1) (cgen-return-stmt results)]
-                      [(2) (cgen-return-stmt #"Scm_Values2(~results)")]
-                      [(3) (cgen-return-stmt #"Scm_Values3(~results)")]
-                      [(4) (cgen-return-stmt #"Scm_Values4(~results)")]
-                      [(5) (cgen-return-stmt #"Scm_Values5(~results)")]
-                      [else (cgen-return-stmt
-                             #"Scm_Values(Scm_List(~results, NULL))")]))
-        )))
+      (let* ([results
+              (join/comma
+               (map-with-index (^[i rettype]
+                                 (cgen-box-tail-expr rettype #"SCM_RESULT~i"))
+                               rettypes))]
+             [values-call
+              (case nrets
+                [(0) "Scm_Values(SCM_NIL)"]
+                [(1) results]
+                [(2) #"Scm_Values2(~results)"]
+                [(3) #"Scm_Values3(~results)"]
+                [(4) #"Scm_Values4(~results)"]
+                [(5) #"Scm_Values5(~results)"]
+                [else #"Scm_Values(Scm_List(~results, NULL))"])])
+        (push-stmt! cproc "goto SCM_STUB_RETURN;")    ; avoid 'label not used' error
+        (push-stmt! cproc "SCM_STUB_RETURN:")          ; target for old-style goto
+        (push-stmt! cproc #"SCM_RESULT_s = ~values-call;")
+        (push-stmt! cproc "goto SCM_STUB_RETURN_BOXED;") ; avoid 'label not used' error
+        (push-stmt! cproc "SCM_STUB_RETURN_BOXED:")
+        (push-stmt! cproc (cgen-return-stmt "SCM_RESULT_s")))))
   ($ with-return-types rettype
      $ with-cise-ambient cproc
      (match (cise-return-types)

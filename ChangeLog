@@ -1,5 +1,10 @@
 2026-03-24  Shiro Kawai  <shiro@acm.org>
 
+	* lib/gauche/cgen/stub.scm (cgen-stub-cise-ambient, process-body-inner):
+	  Generate boxing code where CiSE 'return' is placed---avoid
+	  carrying local pointers out of their scope.
+	  Fix https://github.com/shirok/Gauche/issues/643
+
 	* src/libfmt.scm (make-format-pprint): Directly call %pretty-print
 	  in the rendering phase so properly handle ~w.
 	  Fix https://github.com/shirok/Gauche/issues/1190

@@ -515,10 +515,14 @@ some_trick();
   (parameterize ([cise-omit-source-line #t]
                  [cise-ambient (cgen-stub-cise-ambient (cise-ambient))])
     (c '(return) "goto SCM_STUB_RETURN;")
-    (c '(return e) "{SCM_RESULT=(e);goto SCM_STUB_RETURN;}")
-    (c '(return e0 e1) "{SCM_RESULT0=(e0),SCM_RESULT1=(e1);goto SCM_STUB_RETURN;}")
-    (c '(return e0 e1 e2) "{SCM_RESULT0=(e0),SCM_RESULT1=(e1),SCM_RESULT2=(e2);goto SCM_STUB_RETURN;}")
-    (c '(return e0 e1 e2 e3) "{SCM_RESULT0=(e0),SCM_RESULT1=(e1),SCM_RESULT2=(e2),SCM_RESULT3=(e3);goto SCM_STUB_RETURN;}")))
+    ;; With no return-type info, the value is treated as ScmObj (pass-through
+    ;; via SCM_OBJ_SAFE).  Boxing is generated inline at the return site
+    ;; (issue #643).  The expression is first assigned to SCM_RESULT to avoid
+    ;; double-evaluation by the boxing macro, then SCM_RESULT is boxed.
+    (c '(return e) "SCM_RESULT = e;\nSCM_RESULT_s = SCM_OBJ_SAFE(SCM_RESULT);\ngoto SCM_STUB_RETURN_BOXED;")
+    (c '(return e0 e1) "SCM_RESULT0 = e0;\nSCM_RESULT1 = e1;\nSCM_RESULT_s = Scm_Values2(SCM_OBJ_SAFE(SCM_RESULT0), SCM_OBJ_SAFE(SCM_RESULT1));\ngoto SCM_STUB_RETURN_BOXED;")
+    (c '(return e0 e1 e2) "SCM_RESULT0 = e0;\nSCM_RESULT1 = e1;\nSCM_RESULT2 = e2;\nSCM_RESULT_s = Scm_Values3(SCM_OBJ_SAFE(SCM_RESULT0), SCM_OBJ_SAFE(SCM_RESULT1), SCM_OBJ_SAFE(SCM_RESULT2));\ngoto SCM_STUB_RETURN_BOXED;")
+    (c '(return e0 e1 e2 e3) "SCM_RESULT0 = e0;\nSCM_RESULT1 = e1;\nSCM_RESULT2 = e2;\nSCM_RESULT3 = e3;\nSCM_RESULT_s = Scm_Values4(SCM_OBJ_SAFE(SCM_RESULT0), SCM_OBJ_SAFE(SCM_RESULT1), SCM_OBJ_SAFE(SCM_RESULT2), SCM_OBJ_SAFE(SCM_RESULT3));\ngoto SCM_STUB_RETURN_BOXED;")))
 
 ;; generate stub and compare with pre-generated file
 (let ()
