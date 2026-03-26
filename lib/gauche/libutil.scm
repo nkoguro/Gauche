@@ -222,7 +222,7 @@
 ;; Those are replaced with parameters.  Since they have been around from
 ;; the very beginning, we keep them for a while.
 
-(define-constant *warn-load-path-setting*
+(define-constant *no-warn-load-path-setting*
   (sys-getenv "GAUCHE_SUPPRESS_LOAD_PATH_SET_WARNING"))
 
 (define-syntax *load-path*
@@ -232,11 +232,14 @@
       (define (set!? x) (c (r x) (r'set!)))
       (match f
         [((? set!?) _ expr)
-         (unless *warn-load-path-setting*
-           (warn "Set!-ing to *load-path* is deprecated and will be removed in \
-                  near future.  Consider parameterization of load-paths: ~s\n"
-                 (unwrap-syntax f)))
-         (quasirename r `(load-paths ,expr))]
+         (if *no-warn-load-path-setting*
+           (quasirename r `(load-paths ,expr))
+           (quasirename r
+             `(begin
+                (warn "Set!-ing to *load-path* is deprecated and will be \
+                       removed in near future.  Consider parameterization \
+                       of load-paths: ~s\n" ',(unwrap-syntax f))
+                (load-paths ,expr))))]
         [_ (quasirename r `(load-paths))])))))
 
 (define-syntax *dynamic-load-path*

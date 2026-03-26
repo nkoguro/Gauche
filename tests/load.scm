@@ -424,4 +424,28 @@
          ((with-module gauche.internal %delete-load-path-hook!)
           dummy-load-path-hook)))
 
+
+(test-section "*load-path* warning")
+
+(define (with-capturing-warning thunk)
+  (call-with-output-string
+    (^[out]
+      (parameterize ([current-error-port out])
+        (thunk)))))
+
+(test* "warning setting *load-path*"
+       "WARNING: Set!-ing to *load-path* is deprecated and will be removed \
+        in near future.  Consider parameterization of load-paths: \
+        (set! *load-path* *load-path*)\n"
+       (with-capturing-warning
+        (^[] (eval '(set! *load-path* *load-path*) (current-module)))))
+
+(define (always-false) #f) ; to avoid compiler optimize away the code
+
+(test* "no warning if setting *load-path* isn't executed"
+       ""
+       (with-capturing-warning
+        (^[] (eval '(when (always-false) (set! *load-path* *load-path*))
+                   (current-module)))))
+
 (test-end)
