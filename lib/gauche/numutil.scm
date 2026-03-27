@@ -336,6 +336,7 @@
 (define (real-log-gamma x)
   (assume-type x <real>)
   (if (or (positive? x)
+          (integer? x) ; lgamma returns +inf.0 for negative integers
           (even? (floor x)))
     (real-log-abs-gamma x)
     (error "Invalid value for real-log-gamma:" x)))
