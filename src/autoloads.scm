@@ -79,7 +79,7 @@
 (autoload gauche.numutil
           exact-integer-sqrt
           continued-fraction real->rational
-          expt-mod inverse-mod gamma lgamma
+          expt-mod inverse-mod gamma real-gamma lgamma real-lgamma
           real-valued? rational-valued? integer-valued?
           div-and-mod div mod div0-and-mod0 div0 mod0
           floor/ floor-quotient floor-remainder

@@ -33,7 +33,7 @@
 
 (define-module gauche.numutil
   (export continued-fraction real->rational
-          expt-mod inverse-mod gamma lgamma
+          expt-mod inverse-mod gamma real-gamma lgamma real-lgamma
           exact-integer-sqrt real-valued? rational-valued? integer-valued?
           div-and-mod div mod
           div0-and-mod0 div0 mod0
@@ -270,12 +270,74 @@
                      (/ sum x))]))]))
   )
 
-(define gamma
+;; Complex gamma/lgamma using the Lanczos approximation (g=7, 9 coefficients).
+;; For real arguments, the faster C-backed %gamma/%lgamma (or their Scheme
+;; fallbacks) are used instead.  For complex z, we use:
+;;   - Lanczos series for Re(z) >= 0.5
+;;   - Reflection formula  Γ(z) = π / (sin(πz)·Γ(1−z))  for Re(z) < 0.5
+(with-module gauche.internal
+  (define %gamma-pi         3.141592653589793238462643383279502884)
+  (define %gamma-log-sqrt2pi 0.9189385332046727417803297364056176398) ; log(√(2π))
+
+  ;; Lanczos coefficients for g=7, n=9
+  (define %lanczos-c
+    '#( 0.99999999999980993
+       676.5203681218851
+     -1259.1392167224028
+       771.32342877765313
+      -176.61502916214059
+        12.507343278686905
+        -0.13857109526572012
+         9.9843695780195716e-6
+         1.5056327351493116e-7))
+
+  ;; log Γ(z) via Lanczos, valid for Re(z) >= 0.5.
+  ;; With z' = z-1 and t = z' + g + 1/2 = z + 6.5:
+  ;;   log Γ(z) = log(√(2π)) + (z'+½)·log(t) − t + log(A(z'))
+  ;;   A(z') = c[0] + Σ_{k=1}^{8} c[k]/(z'+k)
+  (define (%lanczos-lgamma z)
+    (let* ([z-1 (- z 1)]
+           [t   (+ z-1 7.5)]           ; g + 0.5 = 7.5, so t = z + 6.5
+           [s   (do ([k 1 (+ k 1)]
+                     [s (vector-ref %lanczos-c 0)
+                        (+ s (/ (vector-ref %lanczos-c k) (+ z-1 k)))])
+                    [(> k 8) s])])
+      (+ %gamma-log-sqrt2pi
+         (* (+ z-1 0.5) (log t))
+         (- t)
+         (log s))))
+
+  ;; log Γ(z) for complex z, with reflection for Re(z) < 0.5.
+  ;; log Γ(z) = log(π) − log(sin(πz)) − log Γ(1−z)
+  (define (%complex-lgamma z)
+    (if (< (real-part z) 0.5)
+      (- (log %gamma-pi)
+         (log (sin (* %gamma-pi z)))
+         (%complex-lgamma (- 1 z)))
+      (%lanczos-lgamma z)))
+
+  ;; Γ(z) for complex z.
+  (define (%complex-gamma z)
+    (exp (%complex-lgamma z)))
+  )
+
+;; Public gamma and lgamma
+(define real-gamma
   (module-binding-ref 'gauche.internal '%gamma
                       (with-module gauche.internal %alt-gamma)))
-(define lgamma
+(define real-lgamma
   (module-binding-ref 'gauche.internal '%lgamma
                       (with-module gauche.internal %alt-lgamma)))
+
+(define (gamma z)
+  (if (real? z)
+    (real-gamma z)
+    ((with-module gauche.internal %complex-gamma) z)))
+
+(define (lgamma z)
+  (if (real? z)
+    (real-lgamma z)
+    ((with-module gauche.internal %complex-lgamma) z)))
 
 ;;
 ;; Some R6RS stuff

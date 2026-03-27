@@ -1,3 +1,9 @@
+2026-03-26  Shiro Kawai  <shiro@acm.org>
+
+	* lib/gauche/numutil.scm (gamma, lgamma): Extended their domain
+	  to complex.  Also added real-gamma and real-lgamma for
+	  real domain counterparts.
+
 2026-03-24  Shiro Kawai  <shiro@acm.org>
 
 	* lib/gauche/cgen/stub.scm (cgen-stub-cise-ambient, process-body-inner):

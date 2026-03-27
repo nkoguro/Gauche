@@ -2496,6 +2496,59 @@
               (with-module gauche.internal %alt-lgamma))
   )
 
+;; Complex gamma and lgamma via Lanczos approximation.
+;; Γ(1+i) is a standard reference point; |Γ(1+i)| = √(π/sinh(π)).
+(let ()
+  (define pi (acos -1.0))
+
+  ;; Reference value: Γ(1+i) = 0.4980156681183560 - 0.1549498283018107i
+  ;; Derivable from |Γ(1+i)|² = π/sinh(π) and the known argument.
+  (test* "gamma(1+i) real part"
+         0.4980156681183560
+         (real-part (gamma 1.0+1.0i))
+         (cut approx=? <> <> 1e-10))
+  (test* "gamma(1+i) imag part"
+         -0.1549498283018107
+         (imag-part (gamma 1.0+1.0i))
+         (cut approx=? <> <> 1e-10))
+
+  ;; Functional equation: Γ(z+1) = z·Γ(z)
+  (dolist [z '(1.0+1.0i  0.5+2.0i  -0.5+1.0i  2.0+0.5i  0.1+0.1i)]
+    (let ([lhs (gamma (+ z 1))] [rhs (* z (gamma z))])
+      (test* (format "gamma functional eq at ~s" z) #t
+             (and (approx=? (real-part lhs) (real-part rhs) 1e-9 1e-12)
+                  (approx=? (imag-part lhs) (imag-part rhs) 1e-9 1e-12)))))
+
+  ;; Reflection formula: Γ(z)·Γ(1−z) = π/sin(πz)
+  ;; Note: sin(πz) may have a tiny spurious imaginary part from FP, so we
+  ;; need an absolute tolerance floor for the imaginary-part comparison.
+  (dolist [z '(0.5+1.0i  0.3+0.7i  -0.5+1.0i)]
+    (let ([lhs (* (gamma z) (gamma (- 1 z)))]
+          [rhs (/ pi (sin (* pi z)))])
+      (test* (format "gamma reflection formula at ~s" z) #t
+             (and (approx=? (real-part lhs) (real-part rhs) 1e-9 1e-12)
+                  (approx=? (imag-part lhs) (imag-part rhs) 1e-9 1e-12)))))
+
+  ;; Schwarz reflection: Γ(conj(z)) = conj(Γ(z))
+  (dolist [z '(1.0+1.0i  0.5+2.0i  2.0+3.0i)]
+    (let ([lhs (gamma (make-rectangular (real-part z) (- (imag-part z))))]
+          [rhs (make-rectangular (real-part (gamma z)) (- (imag-part (gamma z))))])
+      (test* (format "gamma Schwarz reflection at ~s" z) #t
+             (and (approx=? (real-part lhs) (real-part rhs) 1e-9 1e-12)
+                  (approx=? (imag-part lhs) (imag-part rhs) 1e-9 1e-12)))))
+
+  ;; exp(lgamma(z)) ≈ gamma(z) for complex z
+  (dolist [z '(1.0+1.0i  2.0+1.0i  5.0+2.0i  0.3+0.7i)]
+    (let ([lhs (exp (lgamma z))] [rhs (gamma z)])
+      (test* (format "exp(lgamma(z)) ≈ gamma(z) at ~s" z) #t
+             (and (approx=? (real-part lhs) (real-part rhs) 1e-9 1e-12)
+                  (approx=? (imag-part lhs) (imag-part rhs) 1e-9 1e-12)))))
+
+  ;; Real inputs still use the fast real path (returns real, not complex)
+  (test* "gamma(2.0) real?" #t (real? (gamma 2.0)))
+  (test* "lgamma(2.0) real?" #t (real? (lgamma 2.0)))
+  )
+
 ;; log on huge number - naive use of Scm_GetDouble overflows
 (let-syntax ([log-tester
               (syntax-rules ()
