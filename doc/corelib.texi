@@ -9005,6 +9005,14 @@ Returns one of the following symbols, representing the Unicode general category 
 @item @code{Zp} @tab Separator, Paragraph
 @item @code{Zs} @tab Separator, Space
 @end multitable
+
+@c EN
+Module @code{gauche.unicode} provides proceduers to deal with
+Unicode East Asian Width property.  @xref{East asian width property}.
+@c JP
+@code{gauche.unicode}では、Unicodenの東アジア文字幅プロパティを扱う
+手続きも提供しています。@ref{East asian width property}参照。
+@c COMMON
 @end defun
 
 @defun char->integer char
@@ -9032,6 +9040,17 @@ that doesn't have a corresponding character.
 
 対応する文字が無い数値を@code{integer->char}に渡した
 場合の結果は不定です。
+@c COMMON
+
+@c EN
+If you need Unicode encoded value (e.g. utf8 octets or utf16 words) corresponding
+to a character/codepoint, you can use @code{gauche.unicode} module.
+@xref{Unicode transfer encodings}.
+@c JP
+もし文字/コードポイントに対するUnicodeのエンコードされた値
+(UTF8オクテット列やUTF16ワード列)が必要なら、
+@code{gauche.unicode}モジュールの手続きが使えます。
+@ref{Unicode transfer encodings}参照。
 @c COMMON
 @end defun
 
