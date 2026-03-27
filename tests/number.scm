@@ -2496,7 +2496,7 @@
               (with-module gauche.internal %alt-lgamma))
   )
 
-;; Complex gamma and lgamma via Lanczos approximation.
+;; Complex gamma and log-gamma via Lanczos approximation.
 ;; Γ(1+i) is a standard reference point; |Γ(1+i)| = √(π/sinh(π)).
 (let ()
   (define pi (acos -1.0))
@@ -2539,14 +2539,14 @@
 
   ;; exp(lgamma(z)) ≈ gamma(z) for complex z
   (dolist [z '(1.0+1.0i  2.0+1.0i  5.0+2.0i  0.3+0.7i)]
-    (let ([lhs (exp (lgamma z))] [rhs (gamma z)])
+    (let ([lhs (exp (log-gamma z))] [rhs (gamma z)])
       (test* (format "exp(lgamma(z)) ≈ gamma(z) at ~s" z) #t
              (and (approx=? (real-part lhs) (real-part rhs) 1e-9 1e-12)
                   (approx=? (imag-part lhs) (imag-part rhs) 1e-9 1e-12)))))
 
-  ;; Real inputs still use the fast real path (returns real, not complex)
+  ;; Real inputs still use the fast real path
   (test* "gamma(2.0) real?" #t (real? (gamma 2.0)))
-  (test* "lgamma(2.0) real?" #t (real? (lgamma 2.0)))
+  (test* "lgamma(2.0) real?" #t (real? (log-gamma 2.0)))
   )
 
 ;; log on huge number - naive use of Scm_GetDouble overflows

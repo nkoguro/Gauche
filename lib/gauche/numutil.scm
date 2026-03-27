@@ -33,7 +33,9 @@
 
 (define-module gauche.numutil
   (export continued-fraction real->rational
-          expt-mod inverse-mod gamma real-gamma lgamma real-lgamma
+          expt-mod inverse-mod
+          gamma real-gamma log-gamma real-log-gamma
+          lgamma real-log-abs-gamma
           exact-integer-sqrt real-valued? rational-valued? integer-valued?
           div-and-mod div mod
           div0-and-mod0 div0 mod0
@@ -295,7 +297,7 @@
   ;; With z' = z-1 and t = z' + g + 1/2 = z + 6.5:
   ;;   log Γ(z) = log(√(2π)) + (z'+½)·log(t) − t + log(A(z'))
   ;;   A(z') = c[0] + Σ_{k=1}^{8} c[k]/(z'+k)
-  (define (%lanczos-lgamma z)
+  (define (%lanczos-log-gamma z)
     (let* ([z-1 (- z 1)]
            [t   (+ z-1 7.5)]           ; g + 0.5 = 7.5, so t = z + 6.5
            [s   (do ([k 1 (+ k 1)]
@@ -309,35 +311,44 @@
 
   ;; log Γ(z) for complex z, with reflection for Re(z) < 0.5.
   ;; log Γ(z) = log(π) − log(sin(πz)) − log Γ(1−z)
-  (define (%complex-lgamma z)
+  (define (%complex-log-gamma z)
     (if (< (real-part z) 0.5)
       (- (log %gamma-pi)
          (log (sin (* %gamma-pi z)))
-         (%complex-lgamma (- 1 z)))
-      (%lanczos-lgamma z)))
+         (%complex-log-gamma (- 1 z)))
+      (%lanczos-log-gamma z)))
 
   ;; Γ(z) for complex z.
   (define (%complex-gamma z)
-    (exp (%complex-lgamma z)))
+    (exp (%complex-log-gamma z)))
   )
 
-;; Public gamma and lgamma
+;; Public gamma and log-gamma
 (define real-gamma
   (module-binding-ref 'gauche.internal '%gamma
                       (with-module gauche.internal %alt-gamma)))
-(define real-lgamma
+(define real-log-abs-gamma
   (module-binding-ref 'gauche.internal '%lgamma
                       (with-module gauche.internal %alt-lgamma)))
+
+(define lgamma real-log-abs-gamma) ;; backward compatibility (DEPRECATED)
+
+(define (real-log-gamma x)
+  (assume-type x <real>)
+  (if (or (positive? x)
+          (even? (floor x)))
+    (real-log-abs-gamma x)
+    (error "Invalid value for real-log-gamma:" x)))
 
 (define (gamma z)
   (if (real? z)
     (real-gamma z)
     ((with-module gauche.internal %complex-gamma) z)))
 
-(define (lgamma z)
+(define (log-gamma z)
   (if (real? z)
-    (real-lgamma z)
-    ((with-module gauche.internal %complex-lgamma) z)))
+    (real-log-gamma z)
+    ((with-module gauche.internal %complex-log-gamma) z)))
 
 ;;
 ;; Some R6RS stuff
