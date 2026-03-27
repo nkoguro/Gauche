@@ -2496,6 +2496,15 @@
               (with-module gauche.internal %alt-lgamma))
   )
 
+(test* "real-log-gamma and real-log-ab-gamma"
+       1.2655121234846454
+       (real-log-abs-gamma -0.5)
+       approx=?)
+
+(test* "real-log-gamma and real-log-ab-gamma"
+       (test-error)
+       (real-log-gamma -0.5))
+
 ;; Complex gamma and log-gamma via Lanczos approximation.
 ;; Γ(1+i) is a standard reference point; |Γ(1+i)| = √(π/sinh(π)).
 (let ()

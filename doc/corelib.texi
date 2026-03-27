@@ -4379,20 +4379,38 @@ An error is signaled if the argument is not a real number.
 @end defun
 
 @defun gamma z
-@defunx lgamma z
+@defunx log-gamma z
 @c EN
-Gamma function and natural logarithmic of absolute value of Gamma function.
+Gamma function and natural logarithmic of Gamma function.
+This is complex-domain function.
 @c JP
-ガンマ関数と、ガンマ関数の絶対値の自然対数です。
+ガンマ関数と、ガンマ関数の自然対数です。これは複素関数です。
 @c COMMON
 @end defun
 
 @defun real-gamma x
-@defunx real-lgamma x
+@defunx real-log-gamma x
+@defunx real-log-abs-gamma x
 @c EN
-Real-only version of gamma and lgamma functions.
+Real-only version of gamma, log-gamma, and log of absolute value of gamma.
+
+Note: C's math function @code{lgamma} is log of absolute value of gamma.
+Taking absolute value allows it defined in all real values
+(it returns @code{+inf.0} for nonpositive integers).
+For the continuity of complex domain @code{log-gamma}, we provide
+@code{real-log-gamma}, which throws an error for the input when
+@code{gamma} gets negative.
+@code{lgamma} function is provided as  @code{real-log-abs-gamma}
+to avoid confusion.
 @c JP
-実数限定のガンマ関数とガンマ関数の絶対値の自然対数です。
+実数限定のガンマ関数、ガンマ関数の対数、そしてガンマ関数の絶対値の対数です。
+
+註: Cの算術関数@code{lgamma}はガンマの絶対値の自然対数を返します。
+絶対値を取ることで実数全域で定義されるからです (ゼロおよび負の整数に対しては
+@code{+inf.0}を返します)。
+複素関数としての@code{log-gamma}との連続性のため、@code{real-log-gamma}
+はガンマの値が負になる入力に対してはエラーを投げます。
+@code{lgamma}の機能は@code{real-log-abs-gamma}の名で提供されます。
 @c COMMON
 @end defun
 
