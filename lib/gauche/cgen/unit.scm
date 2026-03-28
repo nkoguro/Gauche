@@ -328,13 +328,16 @@
 
 ;; Call thunk while binding current-output-port to a temp file,
 ;; then calls (finisher tmpfile file).
+;; NB: We create tmp file in the same directory as final destination
+;; file, so that simple sys-rename works as a finisher (If the directory
+;; differ, it can be a cross-device rename and may fail).
 (define (cgen-with-output-file file finisher thunk)
   (call-with-temporary-file
    (^[port tmpfile]
      (with-output-to-port port thunk)
      (close-output-port port)
      (finisher tmpfile file))
-   :directory "."))
+   :directory (sys-dirname file)))
 
 (define (emit-raw code)
   (if (list? code)

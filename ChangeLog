@@ -1,3 +1,9 @@
+2026-03-28  Shiro Kawai  <shiro@acm.org>
+
+	* lib/gauche/cgen/unit.scm (cgen-with-output-file): Create tmpfile
+	  in the same directory as the final destination, so that
+	  simple sys-rename works as a finisher.
+
 2026-03-26  Shiro Kawai  <shiro@acm.org>
 
 	* lib/gauche/numutil.scm (gamma, log-gamma): Extended their domain
