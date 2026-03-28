@@ -215,8 +215,6 @@ void usage(int errorp)
             "      macro transformer' section of the manual for the details.\n"
             "  GAUCHE_REPL_NO_PPRINT\n"
             "      If set, suppress using pretty printer in REPL.\n"
-            "  GAUCHE_WARN_SRFI_FEATURE_ID\n"
-            "      If set, warn if srfi-N is used as a feature id in cond-expand.\n"
             "  GAUCHE_SUPPRESS_WARNING\n"
             "      Suppress warnings displayed by ``warn''.  This should be a quick-fix\n"
             "      when you need to get rid of warnings but do not have time to fix the\n"
@@ -230,6 +228,8 @@ void usage(int errorp)
             "  GAUCHE_VERSION_INFO_EXCLUSION\n"
             "      The value must be a comma-separated keys in version-alist.\n"
             "      The keys listed here are excluded from the output of gosh -V.\n"
+            "  GAUCHE_WARN_SRFI_FEATURE_ID\n"
+            "      If set, warn if srfi-N is used as a feature id in cond-expand.\n"
 #if defined(GAUCHE_WINDOWS)
             "  GAUCHE_WINDOWS_CONSOLE_RAW\n"
             "      (Windows only) On Windows (MinGW), gosh in interactive mode wraps\n"

@@ -536,6 +536,34 @@ the return value of @code{sys-available-processors}.
 @c COMMON
 @end deftp
 
+@deftp {Environment variable} GAUCHE_CHARSET_UNICODE_PUNCTUATION
+@c EN
+When set, switch named character set @code{[:punct:]} and
+@code{[:PUNCT:]} back to the behavior of 0.9.15 or before.
+From 0.9.16, these character set became POSIX-compatible.
+@xref{Character set literals}, for the details.
+@c JP
+この環境変数がセットされていると、名前つき文字セット@code{[:punct:]}と
+@code{[:PUNCT:]}の振る舞いを0.9.15とそれ以前の振る舞いに戻します。
+0.9.16からはこの文字セットはPOSIX互換に変更されました。
+詳しくは@ref{Character set literals}を参照してください。
+@c COMMON
+@end deftp
+
+@deftp {Environment variable} GAUCHE_COMPARE_IDENTIFIERS_LOOSELY
+@c EN
+The comparison rule of @code{free-identifier=?} becamse strict
+in 0.9.16.  Legacy macros may rely on the old loose behavior.
+Setting this environment variable allows the old behavior.
+See @code{free-identifier=?} for the details
+(@ref{Identifiers}).
+@c JP
+0.9.16から@code{free-identifier=?}での識別子比較が厳密化されましたが、
+以前の緩い振る舞いに依存した古いマクロを動かすにはこの環境変数をセットします。
+詳しくは@code{free-identifier=?}の項を参照してください(@ref{Identifiers})。
+@c COMMON
+@end deftp
+
 @deftp {Environment variable} GAUCHE_DYNLOAD_PATH
 @c EN
 You can specify additional load paths for dynamically loaded
@@ -749,6 +777,18 @@ output of @code{gosh -V} to a bug report or something.
 GAUCHE_VERSION_INFO_EXCLUSION=scheme.path,build.configure
 @end example
 @end deftp
+
+@deftp {Environment variable} GAUCHE_WARN_SRFI_FEATURE_ID
+@c EN
+If set, warn if @code{srfi-N} is used as a feature id in @code{cond-expand}.
+@xref{Feature conditional}, for the details.
+@c JP
+セットされていると、@code{srfi-N}という機能識別子が@code{cond-expand}
+で使われた場合に警告を発します。
+詳しくは@ref{Feature conditional}を参照してください。
+@c COMMON
+@end deftp
+
 
 @deftp {Environment variable} TMP
 @deftpx {Environment variable} TMPDIR
