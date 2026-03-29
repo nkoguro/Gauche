@@ -2101,12 +2101,22 @@
 
 
 ;;----------------------------------------------------------------------
-;; SRFI-147 begin
-;; (not yest supported)
+;; SRFI-147
 
-'(test-section "SRFI-147 begin")
+(test-section "SRFI-147")
 
-'(test "SRFI-147 begin (internal) 1"
+(define-module srfi-147-tests
+  (use gauche.test)
+  (use srfi.147)
+  (test-module 'srfi.147)
+
+  (use srfi.64)
+  (use compat.r7rs-srfi-tests)
+  (include "include/srfi-147-tests.scm")
+  (run-tests)
+  )
+
+(test "SRFI-147 begin (internal) 1"
       '(yes no)
       (lambda ()
         (define-syntax foo
@@ -2116,7 +2126,7 @@
         (list (foo 'yes 'no (zero? 0))
               (foo 'yes 'no (zero? 1)))))
 
-'(test "SRFI-147 begin (internal) 2"
+(test "SRFI-147 begin (internal) 2"
       11
       (lambda ()
         (let-syntax ([foo (syntax-rules ()
