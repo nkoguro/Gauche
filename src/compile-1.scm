@@ -916,19 +916,24 @@
     (and (global-head=? form begin.)
          (pair? (cdr form))
          (any definition-form? (cdr form))))
-  (let1 expanded (%internal-macro-expand expr cenv #f)
-    (rlet1 transformer
-        ((make-toplevel-closure
-          (if (begin-with-definitions? expanded)
-            ;; SRFI-147: compile the expanded begin form with a toplevel cenv
-            (compile expanded (make-bottom-cenv (cenv-module cenv)))
-            ;; Standard case: compile with the current cenv
-            (compile expr cenv))))
-      (unless (or (is-a? transformer <syntax>)
-                  (is-a? transformer <macro>))
-        (errorf "syntax-error: rhs expression of ~a ~s \
+  (define (local-macro expr)
+    (and (identifier? expr)
+         (let1 r (cenv-lookup cenv expr)
+           (and (or (macro? r) (syntax? r)) r))))
+  (or (local-macro expr)
+      (let1 expanded (%internal-macro-expand expr cenv #f)
+        (rlet1 transformer
+            ((make-toplevel-closure
+              (if (begin-with-definitions? expanded)
+                ;; SRFI-147: compile the expanded begin form with a toplevel cenv
+                (compile expanded (make-bottom-cenv (cenv-module cenv)))
+                ;; Standard case: compile with the current cenv
+                (compile expr cenv))))
+          (unless (or (is-a? transformer <syntax>)
+                      (is-a? transformer <macro>))
+            (errorf "syntax-error: rhs expression of ~a ~s \
                  doesn't yield a syntactic transformer: ~s"
-                who expr transformer)))))
+                    who expr transformer))))))
 
 (inline-stub
  (define-cproc make-toplevel-closure (code::<compiled-code>)

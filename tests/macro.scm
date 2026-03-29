@@ -2136,4 +2136,11 @@
           (define-syntax bar (foo 3))
           (bar 5))))
 
+(test "SRFI-147 local macro"
+      45
+      (lambda ()
+        (let-syntax ([foo (syntax-rules () [(_) 42])])
+          (let-syntax ([bar foo])
+            (+ (bar) 3)))))
+
 (test-end)
