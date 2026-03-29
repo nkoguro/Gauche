@@ -929,10 +929,10 @@
                 (compile expanded (make-bottom-cenv (cenv-module cenv)))
                 ;; Standard case: compile with the current cenv
                 (compile expr cenv))))
-          (unless (or (is-a? transformer <syntax>)
-                      (is-a? transformer <macro>))
+          (unless (or (macro? transformer)
+                      (syntax? transformer))
             (errorf "syntax-error: rhs expression of ~a ~s \
-                 doesn't yield a syntactic transformer: ~s"
+                     doesn't yield a syntactic transformer: ~s"
                     who expr transformer))))))
 
 (inline-stub
