@@ -387,6 +387,17 @@ else
   build_doc=Yes
 fi
 
+# A program used to canonicalize top_srcdir file
+# The file is placed in top_builddir and referenced when gosh is
+# run in-place.
+AC_CHECK_PROGS(CYGPATH, cygpath)
+if test -z "$CYGPATH"; then
+  REALPATH=realpath
+else
+  REALPATH="cygpath -w -a"
+fi
+AC_SUBST(REALPATH)
+
 dnl for cross build
 AC_CHECK_PROGS(BUILD_CC, ${build}-gcc ${build_alias}-gcc gcc cc)
 

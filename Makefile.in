@@ -29,6 +29,7 @@ GAUCHE_ACLOCAL_DIR = $(GAUCHE_DATA_DIR)/$(GAUCHE_VERSION)/
 BUILD_GOSH = @BUILD_GOSH@
 BUILD_GOSH_VERSION = @BUILD_GOSH_VERSION@
 BUILD_GOSH_FLAGS = -v:$(BUILD_GOSH_VERSION)
+REALPATH     = @REALPATH@
 DESTDIR =
 
 GOSH = gosh
@@ -42,7 +43,7 @@ AUTOCONF_GENERATED = $(CONFIG_GENERATED) configure
 
 TESTRECORD = ./test.record
 
-all: pre-package.stamp
+all: pre-package.stamp top_srcdir
 	if [ $(srcdir) != "." ]; then $(srcdir)/wirebuildlibs "$(srcdir)" "$(LN_S)"; fi
 	for d in $(SUBDIRS); do (cd $$d; $(MAKE) all) || exit 1; done
 	cd src; $(MAKE) -s static
@@ -75,6 +76,10 @@ pre-package: $(PRE_PACKAGE_GENERATED)
 # Check if the host's Gauche is recent enough to generate files for this version.
 pre-package.stamp:
 	"$(BUILD_GOSH)" "$(srcdir)/tools/check-build-version" ${BUILD_GOSH_VERSION} && touch pre-package.stamp
+
+# Saving top_srcdir help in-place execution finds source directory
+top_srcdir:
+	rm -f top_srcdir && echo `$(REALPATH) "${top_srcdir}"` > top_srcdir
 
 INSTALL.en.adoc: INSTALL.adoc
 	sed -e '/^ifdef::JA/,/^endif::JA/d ; /^ifdef::EN/d ; /^endif::EN/d ; /^\/\/@start header/,/^\/\/@end header/d' $< > $@
@@ -121,7 +126,8 @@ install-examples:
 #  NB: we don't run maintainer-clean in $(LIBATOMICDIR) to avoid
 #      dealing with automake.
 clean:
-	rm -rf test.log test.record core Gauche.framework rpmfiles-*.txt *~
+	rm -rf test.log test.record core Gauche.framework rpmfiles-*.txt *~ \
+	   top_srcdir
 	-for d in $(SRIDBUS); do (cd $$d; $(MAKE) clean); done
 	-if test -f $(LIBATOMICDIR)/Makefile; then (cd $(LIBATOMICDIR); $(MAKE) clean); fi
 
