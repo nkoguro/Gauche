@@ -562,6 +562,14 @@ some_trick();
   )
 
 ;;====================================================================
+(test-section "gauche.cgen")
+(use gauche.cgen)
+
+;; This extends gauche.cgen.unit, gauche.cgen.literal, gauche.cgen.type
+;; and gauche.cgen.cise, each of which is tested above.
+(test-module 'gauche.cgen)
+
+;;====================================================================
 (test-section "gauche.cgen.precomp")
 (use gauche.cgen.precomp)
 (test-module 'gauche.cgen.precomp)
@@ -572,8 +580,28 @@ some_trick();
 (test-module 'gauche.cgen.standalone)
 
 ;;====================================================================
-(test-section "gauche.cgen")
-(use gauche.cgen)
-(test-module 'gauche.cgen)
+(test-section "gauche.cgen.dyncomp")
+(use gauche.cgen.dyncomp)
+(test-module 'gauche.cgen.dyncomp)
+
+;; Create a module for the dynamically-loaded subr to be defined in.
+(define-module dyncomp-test-module)
+
+(let ()
+  (define unit (make <cgen-unit> :name "dyncomp-test"))
+  (parameterize ([cgen-current-unit unit])
+    (cgen-decl "#include <gauche.h>")
+    (cgen-body
+     "static ScmObj dyncomp_test_proc(ScmObj *SCM_FP, int SCM_ARGCNT, void *data_)"
+     "{"
+     "  return SCM_MAKE_INT(42);"
+     "}")
+    (cgen-init
+     "  ScmModule *mod = SCM_FIND_MODULE(\"dyncomp-test-module\", SCM_FIND_MODULE_CREATE);"
+     "  SCM_DEFINE(mod, \"dyncomp-test-answer\","
+     "             Scm_MakeSubr(dyncomp_test_proc, NULL, 0, 0, SCM_FALSE));"))
+  (cgen-dynamic-load unit)
+  (test* "cgen-dynamic-load basic subr" 42
+         ((eval 'dyncomp-test-answer (find-module 'dyncomp-test-module)))))
 
 (test-end)
