@@ -7,15 +7,15 @@ include ../Makefile.ext
 SCM_CATEGORY = gauche
 
 LIBFILES = gauche--ctype.$(SOEXT)
-SCMFILES = ctype.sci
+SCMFILES = ctype.sci ffi.scm ffi/stubgen.scm
 
 OBJECTS = $(gauche_ctype_OBJECTS)
 
 CONFIG_GENERATED = Makefile
 PREGENERATED =
-XCLEANFILES = gauche--ctype.c ctype.sci
+XCLEANFILES = gauche--ctype.c ctype.sci f.$(OBJEXT) f.$(SOEXT)
 
-all : $(LIBFILES)
+all : $(LIBFILES) f.$(SOEXT)
 
 gauche_ctype_OBJECTS = gauche--ctype.$(OBJEXT)
 
@@ -24,5 +24,12 @@ gauche--ctype.$(SOEXT) : $(gauche_ctype_OBJECTS)
 
 gauche--ctype.c ctype.sci : ctype.scm
 	$(PRECOMP) -e -P -o gauche--ctype $(srcdir)/ctype.scm
+
+# We borrow test C file from ext/native
+f.$(SOEXT): ../native/test/f.h ../native/test/f.c
+	$(COMPILE) -c -I $(srcdir)/../native/test $(srcdir)/../native/test/f.c -o f.$(OBJEXT)
+	$(LINK) f.$(SOEXT) f.$(OBJEXT)
+
+
 
 install : install-std

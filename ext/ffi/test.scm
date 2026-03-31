@@ -1026,4 +1026,41 @@
                       (pos::(.struct point (x::int y::int))
                        val::double))))
 
+;;----------------------------------------------------------
+(test-section "gauche.ffi")
+
+(use gauche.ffi)
+(test-module 'gauche.ffi)
+
+(define-module ffi-test-sandbox
+  (use gauche.test)
+  (use gauche.ffi)
+
+  (test* "with-ffi (stubgen)" 'ok
+         (eval
+          '(with-ffi (dynamic-load "./f" :init-function #f) ()
+                     (define-c-function f_c () ::char)
+                     (define-c-function f_i () ::int)
+                     (define-c-function f_f () ::float)
+                     (define-c-function f_d () ::double)
+                     (define-c-function f_v () ::void)
+                     (define-c-function f_i_i (n::int) ::int)
+                     (define-c-function f_f_f (n::float) ::float)
+                     (define-c-function f_d_d (n::double) ::double)
+
+                     (define (fiii) (f_i_i (f_i)))
+                     'ok)
+          (current-module)))
+
+  (test* "f_c" #\x09 (f_c))
+  (test* "f_i" 42 (f_i))
+  (test* "f_f" 1.25 (f_f))
+  (test* "f_d" 3.14 (f_d))
+  (test* "f_v" (undefined) (f_v))
+  (test* "f_i_i" 101 (f_i_i 100))
+  (test* "f_f_f" 0.125 (f_f_f 0.25))
+  (test* "f_d_d" 1.2 (f_d_d 0.6))
+  (test* "fiii" 43 (fiii))
+  )
+
 (test-end)

@@ -1,5 +1,8 @@
 2026-03-30  Shiro Kawai  <shiro@acm.org>
 
+	* ext/ffi/ffi.scm, ext/ffi/ffi/stubgen.scm: Add FFI with stubgen
+	  subsystem.
+
 	* lib/gauche/cgen/dyncomp.scm: Added.
 
 2026-03-28  Shiro Kawai  <shiro@acm.org>
