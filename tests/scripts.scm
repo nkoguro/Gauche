@@ -752,12 +752,6 @@
    `("../../src/gosh" "-ftest"
      ,(build-path *top-srcdir* "src/gauche-package.in")
      "compile"
-     ,#"--cppflags=-I~(fix-path (build-path *top-srcdir* \"src\")) \
-                   -I~(fix-path (build-path *top-srcdir* \"gc/include\")) \
-                   -I~(fix-path (build-path *top-builddir* \"src\")) \
-                   -I~(fix-path (build-path *top-builddir* \"gc/include\"))"
-     ,#"--ldflags=-L~(fix-path (build-path *top-srcdir* \"src\")) \
-                  -L~(fix-path (build-path *top-builddir* \"src\"))"
      ,output
      ,@files)
    :directory "test.o"))
