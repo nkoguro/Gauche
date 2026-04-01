@@ -588,9 +588,12 @@ some_trick();
 (define-module dyncomp-test-module)
 
 (let ()
-  (define unit (make <cgen-unit> :name "dyncomp-test"))
+  (define unit (make <cgen-unit>
+                 :name "dyncomp-test"
+                 :init-prologue "SCM_EXTENSION_ENTRY void Scm__Init_dyncomp_2dtest(void) {"))
   (parameterize ([cgen-current-unit unit])
     (cgen-decl "#include <gauche.h>")
+    (cgen-decl "#include <gauche/extend.h>")
     (cgen-body
      "static ScmObj dyncomp_test_proc(ScmObj *SCM_FP, int SCM_ARGCNT, void *data_)"
      "{"
