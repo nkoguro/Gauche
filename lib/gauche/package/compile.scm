@@ -43,15 +43,42 @@
   (use gauche.cgen.stub)
   (use gauche.cgen.precomp)
   (use file.util)
+  (use srfi.13)
   (export gauche-package-compile-and-link
           gauche-package-compile
           gauche-package-link
           gauche-package-clean))
 (select-module gauche.package.compile)
 
-;; If we use Gauche that's not installed yet, this parameter contains
-;; its top builddir.  We intercept INCDIR and LIBDIR
-(define in-place-dir (make-parameter #f))
+;; When we run external compiler from gosh in the build tree instead of
+;; installed one, referenced include paths and library paths are different.
+;; Our API automatically translates configured incdirs and libdirs
+;; when we detect in-place execution.
+;;
+;; (*) This alternative directory used to be provided by the caller
+;; with gauche-buiddir keyword arguemnt.  However, this depends on the
+;; very specific situation and we know exactly what we need, so ther's
+;; no point to bother the caller.  We keep the keyword argument for
+;; the backward compatibility but ignore it.
+
+(define-values [*top-srcdir* *top-builddir*]
+  (cond-expand
+   [gauche.in-place
+    ;; Builddir can be derived from this file (NB: out-of-tree build
+    ;; create a symlink of scm files in build tree].
+    ;; Srcdir is recorded in the file ${top_builddir}/top_srcdir
+    (let* ([builddir (sys-normalize-pathname
+                      (build-path (sys-dirname (current-load-path))
+                                  ".." ".." "..")
+                      :canonicalize #t)]
+           [srcdir (string-trim-both
+                    (file->string (build-path builddir "top_srcdir")))])
+      (unless (file-exists? (build-path srcdir "src" "gauche.h"))
+        (warn "Unsure about top_srcdir ~s\n" srcdir))
+      (unless (file-exists? (build-path builddir "src" "gauche" "config.h"))
+        (warn "Unsure about top_builddir ~s\n" builddir))
+      (values srcdir builddir))]
+   [else (values #f #f)]))
 
 (define CC       (gauche-config "--cc"))
 (define CFLAGS   (gauche-config "--so-cflags"))
@@ -69,7 +96,7 @@
                                           (c++-mode #f)
                                           (cc #f)
                                           (srcdir #f)
-                                          (gauche-builddir #f)
+                                          (gauche-builddir #f) ; dummy (*)
                                           (keep-c #f)
                                           (no-line #f)
                                           (sofile #f)
@@ -80,7 +107,6 @@
                                           ((:verbose verb?) #f))
   (parameterize ([dry-run dry?]
                  [verbose-run verb?]
-                 [in-place-dir gauche-builddir]
                  [cise-omit-source-line no-line])
     (define srcfile (build-path srcdir file))
     (define cppflags+ (string-join (cond-list
@@ -120,7 +146,7 @@
                                                 (libs #f)
                                                 (ld #f)
                                                 (srcdir #f)   ; dummy
-                                                (gauche-builddir #f)
+                                                (gauche-builddir #f) ; dummy (*)
                                                 (keep-c #f)   ; dummy
                                                 (no-line #f)  ; dummy
                                                 (output #f)   ; dummy
@@ -131,8 +157,7 @@
                                                 ((:dry-run dry?) #f)
                                                 ((:verbose verb?) #f))
   (parameterize ([dry-run dry?]
-                 [verbose-run verb?]
-                 [in-place-dir gauche-builddir])
+                 [verbose-run verb?])
     (unless (and (file-exists? sofile)
                  (every (cut file-mtime>? sofile <>) ofiles))
       (let1 all-ofiles (string-join (map (^f #"'~f'") ofiles) " ")
@@ -164,25 +189,42 @@
     (when (not (equal? (path-extension f) OBJEXT))
       (sys-unlink (sys-basename (path-swap-extension f OBJEXT))))))
 
+;;
+;; Utilities for in-place execution
+;;
+(define (replace-dir path
+                     orig-dir  ; (gauche-config "--sysincdir") etc.
+                     new-dir)  ; can be #f
+  (if-let1 hit (and new-dir (string-contains path orig-dir))
+    (string-replace path new-dir hit (+ hit (string-length orig-dir)))
+    path))
+
 ;; Adjust pathnames in INCDIR and LIBDIR
 ;;   If we're running compiler in-place during testing, we replace
 ;;   the paths 'gauche-config --incdir' or 'gauche-config --libdir' returns
 ;;   with the source tree directories.
 (define (filter-dir flag olddirs dir-key)
-  (define sep (cond-expand [gauche.os.windows ";"][else ":"]))
-  (define dirs
-    (or (and-let* ([to-dir   (in-place-dir)]
-                   [orig-dir (regexp-quote (gauche-config dir-key))]
-                   ;; NB: we wrap to-dir by closure to for the case if
-                   ;; to-dir includes submatch replacement spec.
-                   [new (regexp-replace-all (string->regexp orig-dir) olddirs
-                                            (^m #"~|to-dir|/src"))])
-          (if (equal? dir-key "--sysincdir")
-            #"~|new|~|sep|~|to-dir|/gc/include"
-            new))
-        olddirs))
+  (define dirlist
+    (string-split olddirs (cond-expand [gauche.os.windows ";"][else ":"])))
+  (define orig-dir (gauche-config dir-key))
+  (define new-dirs
+    (cond [(not *top-builddir*) '()] ; no conversion
+          [(equal? dir-key "--sysarchdir")
+           ;; for linking, we only need this
+           (list (build-path *top-builddir* "src"))]
+          [else
+           (cond-list [#t (build-path *top-builddir* "src")]
+                      [(not (equal? *top-builddir* *top-srcdir*))
+                       (build-path *top-srcdir* "src")]
+                      [#t (build-path *top-srcdir* "gc" "include")])]))
+
+  (define (convert-1 dir)
+    (if (null? new-dirs)
+      (list dir)
+      (map (cut replace-dir dir orig-dir <>) new-dirs)))
   ;; Return "-I<path> -I<path> ..." or "-L<path> -L<path> ...".
   ;; We exclude nonexistent paths, for OSX complains about it.
   (string-join (map (^s #"'-~|flag|~|s|'")
-                    (filter file-exists? (string-split dirs sep)))
+                    ($ filter file-exists?
+                       $ append-map convert-1 dirlist))
                " "))

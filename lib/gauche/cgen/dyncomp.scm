@@ -42,16 +42,6 @@
 ;; This module provides a convenient way to generate C code, compile, link,
 ;; and dynamically load on-the-fly.
 
-;; Extra cppflags needed when running in a build tree (not installed).
-;; The headers are next to libgauche, so we derive the include path from it.
-(define dyncomp-extra-cppflags
-  (cond-expand
-    [gauche.in-place
-     (let1 in-place-path
-         (sys-dirname ((with-module gauche.internal %gauche-libgauche-path)))
-       #"-I~|in-place-path|")]
-    [else #f]))
-
 ;; Entry point
 ;;   `unit` is a <cgen-unit>
 ;;   `tmpdir` is the parent of the temporary work directory created here.
@@ -71,8 +61,7 @@
     (cgen-emit-c unit)
     (gauche-package-compile (sys-basename c-file)
                             :srcdir   workdir
-                            :output   o-file
-                            :cppflags dyncomp-extra-cppflags)
+                            :output   o-file)
     (gauche-package-link so-file (list o-file))
 
     (let1 dlo (dynamic-load (path-sans-extension so-file)

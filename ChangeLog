@@ -1,3 +1,8 @@
+2026-04-01  Shiro Kawai  <shiro@acm.org>
+
+	* lib/gauche/package/compile.scm: Derive in-place path replacement
+
+
 2026-03-31  Shiro Kawai  <shiro@acm.org>
 
 	* lib/gauche/package/compile.scm (gauche-package-link): Fix:

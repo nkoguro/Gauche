@@ -359,8 +359,7 @@
    [srcdir       "S|srcdir=s{DIR}" ? "Specify the source directory when
                                       building out-of-tree."]
    [gauche-builddir "gauche-builddir=s{DIR}"
-                    ? "Specify the top builddir of the Gauche when the
-                      extensions should be compiled for /uninstalled/ Gauche."]
+                    ? "Ignored.  Kept for the backward compatibility."]
    [local        "l|local=s{PATH:PATH:...}"
                  ? "Adds {PATH}/include to include paths and {PATH}/lib to
                     library search paths for compiling."]
@@ -417,7 +416,6 @@
       (gauche-package-compile (car args)
                               :dry-run dry-run :verbose verbose
                               :srcdir srcdir
-                              :gauche-builddir gauche-builddir
                               :keep-c keep-c :no-line no-line
                               :output output :c++-mode use-c++
                               :cc compiler
@@ -427,7 +425,6 @@
       (gauche-package-compile-and-link (car args) (cdr args)
                                        :dry-run dry-run :verbose verbose
                                        :srcdir srcdir
-                                       :gauche-builddir gauche-builddir
                                        :keep-c keep-c :no-line no-line
                                        :output output :c++-mode use-c++
                                        :cc compiler :ld compiler
