@@ -1,3 +1,10 @@
+2026-03-31  Shiro Kawai  <shiro@acm.org>
+
+	* lib/gauche/package/compile.scm (gauche-package-link): Fix:
+	  Quote output so-file name---without it, link fails on
+	  mingw environment when the output is given in Windows-style
+	  pathname.
+
 2026-03-30  Shiro Kawai  <shiro@acm.org>
 
 	* ext/ffi/ffi.scm, ext/ffi/ffi/stubgen.scm: Add FFI with stubgen
