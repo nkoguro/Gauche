@@ -1,7 +1,8 @@
 2026-04-01  Shiro Kawai  <shiro@acm.org>
 
 	* lib/gauche/package/compile.scm: Derive in-place path replacement
-
+	  automatically, instead of asking the caller to provide
+	  :gauche-builddir keyword argument.
 
 2026-03-31  Shiro Kawai  <shiro@acm.org>
 

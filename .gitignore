@@ -13,6 +13,7 @@ libtool
 /test-driver
 autom4te.cache
 Makefile
+top_srcdir
 /doc/man-gauche-config.texi
 /doc/gauche-config.1.in
 /gc/Makefile.in
