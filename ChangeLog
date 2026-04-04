@@ -1,3 +1,9 @@
+2026-04-03  Shiro Kawai  <shiro@acm.org>
+
+	* ext/ffi/ffi/native.scm: Connect native call interface (currently
+	  only available on linux/amd64) as an alternative ffi subsystem.
+	  Still experimental.
+
 2026-04-01  Shiro Kawai  <shiro@acm.org>
 
 	* lib/gauche/package/compile.scm: Derive in-place path replacement

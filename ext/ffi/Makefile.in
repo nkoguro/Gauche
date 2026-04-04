@@ -7,7 +7,7 @@ include ../Makefile.ext
 SCM_CATEGORY = gauche
 
 LIBFILES = gauche--ctype.$(SOEXT)
-SCMFILES = ctype.sci ffi.scm ffi/stubgen.scm
+SCMFILES = ctype.sci ffi.scm ffi/stubgen.scm ffi/native.scm
 
 OBJECTS = $(gauche_ctype_OBJECTS)
 

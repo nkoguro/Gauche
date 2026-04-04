@@ -1,5 +1,5 @@
 ;;;
-;;; gauche.ffi - Foreign function interfce
+;;; gauche.ffi - Foreign function interface
 ;;;
 ;;;   Copyright (c) 2026  Shiro Kawai  <shiro@acm.org>
 ;;;
@@ -34,8 +34,11 @@
 (define-module gauche.ffi
   (use util.match)
   (use gauche.ctype)
+  (use gauche.cgen.unit :only (cgen-safe-name-friendly))
   (export with-ffi
-          define-c-function)
+          define-c-function
+          <foreign-c-function>
+          parse-define-c-function)
   )
 (select-module gauche.ffi)
 
@@ -53,7 +56,7 @@
 ;;  <dlobj> is an expression that yields #<dlobj>, e.g. call to 'dynamic-load'.
 ;;
 ;;  The list of <option>s is for future extension.  Currently it should be
-;;  an empty list.
+;;  an empty list.  (:subsystem :native) selects the native FFI backend.
 ;;
 ;;  What follows are <body> just like let body.  In it, you can use
 ;;  define-c-function form at the toplevel.
@@ -66,7 +69,7 @@
 ;;  <name> is an identifier that must match the exported function name
 ;;  in the <dlobj>.
 ;;
-;;  <arglist> and <rettype> are slimiar to CiSE function, e.g.
+;;  <arglist> and <rettype> are similar to CiSE function, e.g.
 ;;
 ;;   (define-c-function mylib-init
 ;;     (argc::int argv::(.array c-string)) ::int)
@@ -81,37 +84,176 @@
 ;;
 ;;   (define-c-function mylib-init
 ;;     (::int ::(.array c-string)) ::int)
-;;
-;;  with-ffi form works in 2 passes.
-;;
-;;  The first pass collects define-c-function, and generate C code in a
-;;  temporary file that does the following:
-;;
-;;    - Define a C pointer variable where looked up function pointer
-;;      is set.
-;;    - Define a SUBR that accepts Scheme argments, type checks and
-;;      converts them, then call the C function pointer.  Receives the
-;;      result and converts it back to Scheme to return.
-;;      It keeps a pointer ScmCFunction in 'data' slot, which is used
-;;      for type checking and conversion.
-;;    - An FFI setup function that takes ScmDLObj.  It sets the C
-;;      function pointers needed in each SUBR.
-;;    - An initializatoin function Scm_Init.xxx that takes ScmModule.
-;;      In it, bindings for the Scheme procedure with the generated SUBR,
-;;      using Scm_MakeSubr.
-;;
-;;  Then it calls C compiler and linker on the generated source to produce
-;;  DSO.
-;;
-;;  The second pass generates a Scheme code (as a macro expander) that does
-;;  the following:
-;;
-;;    - Evaluate <dlobj> expression to obtain #<dlobj> for external DSO.
-;;    - Load teh generated DSO in the first pass.
-;;    - Call FFI setup function with the extenal DSO.
-;;    - Emit rest of the code excluding define-c-function.
 
-(define ffi-dlo (make-parameter #f))
+;;;
+;;; <foreign-c-function> - parsed representation of a define-c-function form
+;;;
+;;; Created by parse-define-c-function at macro-expansion time.
+;;; Backend macros receive a list of its instances.
+;;;
+
+(define-class <foreign-c-function> ()
+  ((scheme-name  :init-keyword :scheme-name)  ; symbol
+   (c-name       :init-keyword :c-name)       ; string, C-safe function name
+   (args         :init-keyword :args)         ; list of (symbol <native-type>)
+   (return-type  :init-keyword :return-type)  ; <native-type>
+   ))
+
+;;;
+;;; Parsing helpers
+;;;
+
+;; Resolve a type spec to a <native-type> instance.
+;;   <native-type> already   - returned as-is
+;;   (unquote expr)          - eval expr in gauche module (covers all builtins)
+;;   symbol like 'int        - resolved via native-type
+;;   S-expr like (.array ...) - resolved via native-type
+(define (%resolve-type-spec spec)
+  (match spec
+    [(? (cut is-a? <> <native-type>)) spec]
+    [('unquote expr) (eval expr (find-module 'gauche))]
+    [_ (native-type spec)]))
+
+;; Parse the return-type tail of define-c-function.
+;; rettype-rest is the list after the arglist:
+;;   (::int)               - keyword ::int
+;;   (:: (.array int (3))) - separator :: then compound type
+;;   (:: ,<c-int>)         - separator :: then unquoted expression
+;; Returns the raw type spec (symbol, S-expr, or (unquote expr)).
+(define (%parse-rettype-syntax rettype-rest)
+  (match rettype-rest
+    [(kw)
+     (unless (keyword? kw)
+       (errorf "Expected return type ::TYPE keyword, got: ~s" kw))
+     (let1 s (keyword->string kw)
+       (unless (#/^:/ s)
+         (errorf "Expected ::TYPE, got :~a (did you mean ::~a?)" s s))
+       (string->symbol (string-copy s 1)))]
+    [(sep compound-type)
+     (unless (and (keyword? sep) (equal? ":" (keyword->string sep)))
+       (errorf "Expected :: separator before compound return type, got: ~s" sep))
+     compound-type]
+    [_
+     (errorf "Invalid return type specification: ~s" rettype-rest)]))
+
+;; Parse a define-c-function arglist into a list of (arg-sym type-spec) pairs.
+;; arg-sym is always a symbol (generated "argN" for unnamed args).
+;; type-spec is a symbol, S-expression, or (unquote expr) form.
+;;
+;; Handles:
+;;   name::type           - "name::type" as a single symbol
+;;   name:: type          - "name::" symbol followed by type
+;;   name :: type         - plain name, :: keyword separator, then type
+;;   name ::type          - plain name, ::type keyword
+;;   ::type               - unnamed: ::type keyword
+;;   :: type              - unnamed: :: separator keyword followed by type
+(define (%parse-cfn-arglist arglist)
+  ;; Split "name::type" or "name::" into (name type-or-#f)
+  (define (split-name::type sym)
+    (and (symbol? sym)
+         (let1 s (symbol->string sym)
+           (cond
+             [(#/^([^:]+)::([^:]+)$/ s)
+              => (^m (list (string->symbol (m 1)) (string->symbol (m 2))))]
+             [(#/^([^:]+)::$/ s)
+              => (^m (list (string->symbol (m 1)) #f))]
+             [else #f]))))
+  ;; Extract type symbol from ::type keyword (keyword->string gives ":type")
+  (define (keyword->type-sym kw)
+    (and (keyword? kw)
+         (let1 s (keyword->string kw)
+           (cond
+             [(#/^:([^:]+)$/ s) => (^m (string->symbol (m 1)))]
+             [else #f]))))
+  ;; True for the standalone "::" separator keyword
+  (define (double-colon? x)
+    (and (keyword? x) (equal? ":" (keyword->string x))))
+
+  (let loop ([args arglist] [i 0] [result '()])
+    (match args
+      [()
+       (reverse result)]
+      ;; Keyword head checked BEFORE symbol: in Gauche, keywords are also
+      ;; symbols, so we must distinguish ::type keywords from plain names.
+      [((? keyword? kw) . rest)
+       (cond
+         [(keyword->type-sym kw)
+          ;; ::type keyword - unnamed arg
+          => (^t
+               (let1 sym (string->symbol (format "arg~a" i))
+                 (loop rest (+ i 1) (cons (list sym t) result))))]
+         [(double-colon? kw)
+          ;; :: separator keyword - unnamed arg, type follows
+          (match rest
+            [(type . rest2)
+             (let1 sym (string->symbol (format "arg~a" i))
+               (loop rest2 (+ i 1) (cons (list sym type) result)))]
+            [_ (error "missing type after ::")])]
+         [else
+          (loop rest i result)])]
+      ;; Non-keyword symbol
+      [((? symbol? head) . rest)
+       (cond
+         [(split-name::type head)
+          => (^[nt]
+               (if (cadr nt)
+                 ;; name::type embedded
+                 (loop rest (+ i 1) (cons nt result))
+                 ;; name:: - type follows
+                 (match rest
+                   [(type . rest2)
+                    (loop rest2 (+ i 1) (cons (list (car nt) type) result))]
+                   [_ (error "missing type after" head)])))]
+         [else
+          ;; Plain name - look for :: separator or ::type keyword
+          (match rest
+            [((? double-colon?) type . rest2)
+             (loop rest2 (+ i 1) (cons (list head type) result))]
+            [((? keyword? kw) . rest2)
+             (let1 t (keyword->type-sym kw)
+               (if t
+                 (loop rest2 (+ i 1) (cons (list head t) result))
+                 (loop rest i result)))]
+            [_
+             (loop rest (+ i 1) (cons (list head 'void) result))])])]
+      ;; Anything else - skip
+      [(_ . rest)
+       (loop rest i result)])))
+
+;;;
+;;; Public API
+;;;
+
+;; Parse a (define-c-function name arglist . rettype-rest) form into a
+;; <foreign-c-function> instance, resolving all type specifications to
+;; <native-type> instances immediately.
+;;
+;; This is called at macro-expansion time inside with-ffi's transformer.
+;; The resulting instances are live Scheme objects passed as literal data
+;; to the backend macros.
+(define (parse-define-c-function form)
+  (match form
+    [('define-c-function name arglist . rettype-rest)
+     (unless (symbol? name)
+       (errorf "define-c-function: name must be a symbol, got: ~s" name))
+     (let* ([sym-specs   (%parse-cfn-arglist (unwrap-syntax arglist))]
+            [args         (map (^[ss]
+                                 (list (car ss)
+                                       (%resolve-type-spec (cadr ss))))
+                               sym-specs)]
+            [ret-spec     (%parse-rettype-syntax rettype-rest)]
+            [return-type  (%resolve-type-spec ret-spec)])
+       (make <foreign-c-function>
+         :scheme-name name
+         :c-name      (cgen-safe-name-friendly (x->string name))
+         :args        args
+         :return-type return-type))]
+    [_
+     (errorf "Invalid define-c-function form: ~s" form)]))
+
+;;;
+;;; Syntax
+;;;
 
 (define-syntax define-c-function
   (syntax-rules ()
@@ -119,6 +261,7 @@
      (syntax-error "define-c-function used outside with-ffi")]))
 
 (autoload gauche.ffi.stubgen (:macro with-stubgen-ffi))
+(autoload gauche.ffi.native  (:macro with-native-ffi))
 
 (define-syntax with-ffi
   (er-macro-transformer
@@ -126,6 +269,8 @@
      (match f
        [(_ dlo-expr options . body)
         (define cfns '())
+        (define subsystem
+          (get-keyword :subsystem (unwrap-syntax options) :stubgen))
         (define forms
           (filter-map
            (^[form]
@@ -137,5 +282,14 @@
                  #f)
                form))
            body))
-        (quasirename r
-          (with-stubgen-ffi ,dlo-expr ,options ,(reverse cfns) ,forms))]))))
+        ;; Parse all collected define-c-function forms into
+        ;; <foreign-c-function> instances at macro-expansion time.
+        ;; These live objects are embedded directly into the generated form.
+        (let1 cfn-instances (map parse-define-c-function (reverse cfns))
+          (ecase subsystem
+            [(:stubgen)
+             (quasirename r
+               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-instances ,forms))]
+            [(:native)
+             (quasirename r
+               `(with-native-ffi ,dlo-expr ,options ,cfn-instances ,forms))]))]))))
