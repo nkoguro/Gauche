@@ -25,9 +25,8 @@ gauche--ctype.$(SOEXT) : $(gauche_ctype_OBJECTS)
 gauche--ctype.c ctype.sci : ctype.scm
 	$(PRECOMP) -e -P -o gauche--ctype $(srcdir)/ctype.scm
 
-# We borrow test C file from ext/native
-f.$(SOEXT): ../native/test/f.h ../native/test/f.c
-	$(COMPILE) -c -I $(srcdir)/../native/test $(srcdir)/../native/test/f.c -o f.$(OBJEXT)
+f.$(SOEXT): c/f.h c/f.c
+	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/f.c -o f.$(OBJEXT)
 	$(LINK) f.$(SOEXT) f.$(OBJEXT)
 
 
