@@ -100,11 +100,12 @@
 (define (generate-c-function-entry cfn r dlo-var)
   (let* ([name       (~ cfn'scheme-name)]
          [c-name     (~ cfn'c-name)]
-         [args       (~ cfn'args)]          ; ((sym <native-type>) ...)
+         [arg-types  (~ cfn'arg-types)] ; (<native-type> ...)
          [ret-type   (~ cfn'return-type)]
-         [arg-syms   (map car args)]
+         [arg-syms   (map (^i (string->symbol (format "arg~a" i)))
+                          (iota (length arg-types)))]
          [ret-canon  (native-type->call-canon ret-type)]
-         [arg-canons (map (compose native-type->call-canon cadr) args)])
+         [arg-canons (map native-type->call-canon arg-types)])
     (quasirename r
       `(define ,name
          (let1 ptr (dlobj-get-entry-address ,dlo-var ,c-name)

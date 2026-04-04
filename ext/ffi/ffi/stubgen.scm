@@ -137,12 +137,12 @@
 ;;; e.g.: static int (*ffi_fn_mylib_add)(int, int) = NULL;
 (define (emit-fn-ptr-decl cfn)
   (let* ([c-name    (~ cfn'c-name)]
-         [args      (~ cfn'args)]
+         [arg-types (~ cfn'arg-types)]
          [ret-type  (~ cfn'return-type)]
          [ret-c     (native-type->c-type ret-type)]
-         [arg-c-str (if (null? args)
+         [arg-c-str (if (null? arg-types)
                       "void"
-                      (string-join (map (compose native-type->c-type cadr) args) ", "))])
+                      (string-join (map native-type->c-type arg-types) ", "))])
     (cgen-decl (format "static ~a (*ffi_fn_~a)(~a) = NULL;"
                        ret-c c-name arg-c-str))))
 
@@ -150,7 +150,7 @@
 (define (emit-subr-body cfn)
   (let* ([scm-name  (~ cfn'scheme-name)]
          [c-name    (~ cfn'c-name)]
-         [args      (~ cfn'args)]
+         [arg-types (~ cfn'arg-types)]
          [ret-type  (~ cfn'return-type)])
     (cgen-body
      (format "static ScmObj ffi_subr_~a(ScmObj *args, int nargs SCM_UNUSED, void *data SCM_UNUSED)"
@@ -162,23 +162,17 @@
                        (symbol->string scm-name)))
     ;; Unbox each argument into a typed C local variable
     (for-each-with-index
-     (lambda (i arg)
-       (let* ([arg-sym  (car arg)]
-              [arg-type (cadr arg)]
-              [c-argname (cgen-safe-name-friendly (symbol->string arg-sym))]
-              [c-type   (native-type->c-type arg-type)]
-              [unbox    (native-type->unbox-expr arg-type (format "args[~a]" i))])
-         (cgen-body (format "    ~a c_~a = ~a;" c-type c-argname unbox))))
-     args)
+     (lambda (i arg-type)
+       (let* ([c-type (native-type->c-type arg-type)]
+              [unbox  (native-type->unbox-expr arg-type (format "args[~a]" i))])
+         (cgen-body (format "    ~a arg~a = ~a;" c-type i unbox))))
+     arg-types)
     ;; Build the call expression and box the result
     (let1 call-expr
         (format "ffi_fn_~a(~a)"
                 c-name
-                (string-join (map (^[arg]
-                                    (string-append "c_"
-                                      (cgen-safe-name-friendly
-                                        (symbol->string (car arg)))))
-                                  args)
+                (string-join (map (^i (format "arg~a" i))
+                                  (iota (length arg-types)))
                              ", "))
       (cgen-body (format "    return ~a;"
                          (native-type->box-expr ret-type call-expr))))
@@ -205,7 +199,7 @@
 (define (init-code-for-fn cfn)
   (let* ([scm-name (~ cfn'scheme-name)]
          [c-name   (~ cfn'c-name)]
-         [nargs    (length (~ cfn'args))])
+         [nargs    (length (~ cfn'arg-types))])
     (format "    Scm_Define(SCM_CURRENT_MODULE(), SCM_SYMBOL(SCM_INTERN(~a)),\
            \n    Scm_MakeSubr(ffi_subr_~a, NULL, ~a, 0, SCM_INTERN(~a)));"
             (cgen-safe-string (symbol->string scm-name))

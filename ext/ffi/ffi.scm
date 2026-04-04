@@ -69,21 +69,18 @@
 ;;  <name> is an identifier that must match the exported function name
 ;;  in the <dlobj>.
 ;;
-;;  <arglist> and <rettype> are similar to CiSE function, e.g.
+;;  <arglist> :: (<typespec> ...)
+;;  <retttype> :: <typespec>
+;;
+;;  <typespec> can be either native type signature, or ,type-expr
+;;  where type-expr must yield <native-type>.
 ;;
 ;;   (define-c-function mylib-init
-;;     (argc::int argv::(.array c-string)) ::int)
-;;
-;;  Or, you can include an expression that yields <native-type> by unquoting
-;;  it, e.g.
+;;     (int (.array c-string)) int)
 ;;
 ;;   (define-c-function mylib-init
-;;     (argc::,<c-int> argv::,(make-c-array-type <c-string>)) ::,<c-int>)
+;;     (,<c-int> ,(make-c-array-type <c-string>)) ,<c-int>)
 ;;
-;;  The argument names are only for information.  They can be omitted.
-;;
-;;   (define-c-function mylib-init
-;;     (::int ::(.array c-string)) ::int)
 
 ;;;
 ;;; <foreign-c-function> - parsed representation of a define-c-function form
@@ -95,7 +92,7 @@
 (define-class <foreign-c-function> ()
   ((scheme-name  :init-keyword :scheme-name)  ; symbol
    (c-name       :init-keyword :c-name)       ; string, C-safe function name
-   (args         :init-keyword :args)         ; list of (symbol <native-type>)
+   (arg-types    :init-keyword :arg-types)    ; list of <native-type>
    (return-type  :init-keyword :return-type)  ; <native-type>
    ))
 
@@ -104,9 +101,9 @@
 ;;;
 
 ;; Resolve a type spec to a <native-type> instance.
-;;   <native-type> already   - returned as-is
-;;   (unquote expr)          - eval expr in gauche module (covers all builtins)
-;;   symbol like 'int        - resolved via native-type
+;;   <native-type> already    - returned as-is
+;;   (unquote expr)           - eval expr in gauche module (covers all builtins)
+;;   symbol like 'int         - resolved via native-type
 ;;   S-expr like (.array ...) - resolved via native-type
 (define (%resolve-type-spec spec)
   (match spec
@@ -114,117 +111,11 @@
     [('unquote expr) (eval expr (find-module 'gauche))]
     [_ (native-type spec)]))
 
-;; Parse the return-type tail of define-c-function.
-;; rettype-rest is the list after the arglist:
-;;   (::int)               - keyword ::int
-;;   (:: (.array int (3))) - separator :: then compound type
-;;   (:: ,<c-int>)         - separator :: then unquoted expression
-;; Returns the raw type spec (symbol, S-expr, or (unquote expr)).
-(define (%parse-rettype-syntax rettype-rest)
-  (match rettype-rest
-    [(kw)
-     (unless (keyword? kw)
-       (errorf "Expected return type ::TYPE keyword, got: ~s" kw))
-     (let1 s (keyword->string kw)
-       (unless (#/^:/ s)
-         (errorf "Expected ::TYPE, got :~a (did you mean ::~a?)" s s))
-       (string->symbol (string-copy s 1)))]
-    [(sep compound-type)
-     (unless (and (keyword? sep) (equal? ":" (keyword->string sep)))
-       (errorf "Expected :: separator before compound return type, got: ~s" sep))
-     compound-type]
-    [_
-     (errorf "Invalid return type specification: ~s" rettype-rest)]))
-
-;; Parse a define-c-function arglist into a list of (arg-sym type-spec) pairs.
-;; arg-sym is always a symbol (generated "argN" for unnamed args).
-;; type-spec is a symbol, S-expression, or (unquote expr) form.
-;;
-;; Handles:
-;;   name::type           - "name::type" as a single symbol
-;;   name:: type          - "name::" symbol followed by type
-;;   name :: type         - plain name, :: keyword separator, then type
-;;   name ::type          - plain name, ::type keyword
-;;   ::type               - unnamed: ::type keyword
-;;   :: type              - unnamed: :: separator keyword followed by type
-(define (%parse-cfn-arglist arglist)
-  ;; Split "name::type" or "name::" into (name type-or-#f)
-  (define (split-name::type sym)
-    (and (symbol? sym)
-         (let1 s (symbol->string sym)
-           (cond
-             [(#/^([^:]+)::([^:]+)$/ s)
-              => (^m (list (string->symbol (m 1)) (string->symbol (m 2))))]
-             [(#/^([^:]+)::$/ s)
-              => (^m (list (string->symbol (m 1)) #f))]
-             [else #f]))))
-  ;; Extract type symbol from ::type keyword (keyword->string gives ":type")
-  (define (keyword->type-sym kw)
-    (and (keyword? kw)
-         (let1 s (keyword->string kw)
-           (cond
-             [(#/^:([^:]+)$/ s) => (^m (string->symbol (m 1)))]
-             [else #f]))))
-  ;; True for the standalone "::" separator keyword
-  (define (double-colon? x)
-    (and (keyword? x) (equal? ":" (keyword->string x))))
-
-  (let loop ([args arglist] [i 0] [result '()])
-    (match args
-      [()
-       (reverse result)]
-      ;; Keyword head checked BEFORE symbol: in Gauche, keywords are also
-      ;; symbols, so we must distinguish ::type keywords from plain names.
-      [((? keyword? kw) . rest)
-       (cond
-         [(keyword->type-sym kw)
-          ;; ::type keyword - unnamed arg
-          => (^t
-               (let1 sym (string->symbol (format "arg~a" i))
-                 (loop rest (+ i 1) (cons (list sym t) result))))]
-         [(double-colon? kw)
-          ;; :: separator keyword - unnamed arg, type follows
-          (match rest
-            [(type . rest2)
-             (let1 sym (string->symbol (format "arg~a" i))
-               (loop rest2 (+ i 1) (cons (list sym type) result)))]
-            [_ (error "missing type after ::")])]
-         [else
-          (loop rest i result)])]
-      ;; Non-keyword symbol
-      [((? symbol? head) . rest)
-       (cond
-         [(split-name::type head)
-          => (^[nt]
-               (if (cadr nt)
-                 ;; name::type embedded
-                 (loop rest (+ i 1) (cons nt result))
-                 ;; name:: - type follows
-                 (match rest
-                   [(type . rest2)
-                    (loop rest2 (+ i 1) (cons (list (car nt) type) result))]
-                   [_ (error "missing type after" head)])))]
-         [else
-          ;; Plain name - look for :: separator or ::type keyword
-          (match rest
-            [((? double-colon?) type . rest2)
-             (loop rest2 (+ i 1) (cons (list head type) result))]
-            [((? keyword? kw) . rest2)
-             (let1 t (keyword->type-sym kw)
-               (if t
-                 (loop rest2 (+ i 1) (cons (list head t) result))
-                 (loop rest i result)))]
-            [_
-             (loop rest (+ i 1) (cons (list head 'void) result))])])]
-      ;; Anything else - skip
-      [(_ . rest)
-       (loop rest i result)])))
-
 ;;;
 ;;; Public API
 ;;;
 
-;; Parse a (define-c-function name arglist . rettype-rest) form into a
+;; Parse a (define-c-function name (typespec ...) rettype) form into a
 ;; <foreign-c-function> instance, resolving all type specifications to
 ;; <native-type> instances immediately.
 ;;
@@ -233,20 +124,16 @@
 ;; to the backend macros.
 (define (parse-define-c-function form)
   (match form
-    [('define-c-function name arglist . rettype-rest)
+    [('define-c-function name arglist rettype)
      (unless (symbol? name)
        (errorf "define-c-function: name must be a symbol, got: ~s" name))
-     (let* ([sym-specs   (%parse-cfn-arglist (unwrap-syntax arglist))]
-            [args         (map (^[ss]
-                                 (list (car ss)
-                                       (%resolve-type-spec (cadr ss))))
-                               sym-specs)]
-            [ret-spec     (%parse-rettype-syntax rettype-rest)]
-            [return-type  (%resolve-type-spec ret-spec)])
+     (let* ([type-specs  (unwrap-syntax arglist)]
+            [arg-types   (map %resolve-type-spec type-specs)]
+            [return-type (%resolve-type-spec rettype)])
        (make <foreign-c-function>
          :scheme-name name
          :c-name      (cgen-safe-name-friendly (x->string name))
-         :args        args
+         :arg-types   arg-types
          :return-type return-type))]
     [_
      (errorf "Invalid define-c-function form: ~s" form)]))
