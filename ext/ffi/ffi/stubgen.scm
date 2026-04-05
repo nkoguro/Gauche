@@ -49,12 +49,12 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-instances body)
+       [(_ dlo-expr options cfn-list-expr body)
         (quasirename r
           `(begin
              (define _dummy
                (compile-and-link-ffi-stub ,dlo-expr
-                                          ',cfn-instances
+                                          ,cfn-list-expr
                                           (current-module)))
              ,@body))]))))
 

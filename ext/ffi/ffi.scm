@@ -37,8 +37,7 @@
   (use gauche.cgen.unit :only (cgen-safe-name-friendly))
   (export with-ffi
           define-c-function
-          <foreign-c-function>
-          parse-define-c-function)
+          <foreign-c-function>)
   )
 (select-module gauche.ffi)
 
@@ -69,17 +68,14 @@
 ;;  <name> is an identifier that must match the exported function name
 ;;  in the <dlobj>.
 ;;
-;;  <arglist> :: (<typespec> ...)
-;;  <retttype> :: <typespec>
+;;  <arglist> and <rettype> are evaluated expressions.  <arglist> must yield
+;;  a list of typespecs, and <rettype> must yield a typespec.  A typespec is
+;;  either a native-type signature symbol/S-expr (resolved via native-type)
+;;  or a <native-type> instance directly.
 ;;
-;;  <typespec> can be either native type signature, or ,type-expr
-;;  where type-expr must yield <native-type>.
+;;   (define-c-function mylib-init '(int (.array c-string)) 'int)
 ;;
-;;   (define-c-function mylib-init
-;;     (int (.array c-string)) int)
-;;
-;;   (define-c-function mylib-init
-;;     (,<c-int> ,(make-c-array-type <c-string>)) ,<c-int>)
+;;   (define-c-function mylib-init `(,<c-int> ,(make-c-array-type <c-string>)) <c-int>)
 ;;
 
 ;;;
@@ -96,47 +92,14 @@
    (return-type  :init-keyword :return-type)  ; <native-type>
    ))
 
-;;;
-;;; Parsing helpers
-;;;
-
-;; Resolve a type spec to a <native-type> instance.
-;;   <native-type> already    - returned as-is
-;;   (unquote expr)           - eval expr in gauche module (covers all builtins)
-;;   symbol like 'int         - resolved via native-type
-;;   S-expr like (.array ...) - resolved via native-type
-(define (%resolve-type-spec spec)
-  (match spec
-    [(? (cut is-a? <> <native-type>)) spec]
-    [('unquote expr) (eval expr (find-module 'gauche))]
-    [_ (native-type spec)]))
-
-;;;
-;;; Public API
-;;;
-
-;; Parse a (define-c-function name (typespec ...) rettype) form into a
-;; <foreign-c-function> instance, resolving all type specifications to
-;; <native-type> instances immediately.
-;;
-;; This is called at macro-expansion time inside with-ffi's transformer.
-;; The resulting instances are live Scheme objects passed as literal data
-;; to the backend macros.
-(define (parse-define-c-function form)
-  (match form
-    [('define-c-function name arglist rettype)
-     (unless (symbol? name)
-       (errorf "define-c-function: name must be a symbol, got: ~s" name))
-     (let* ([type-specs  (unwrap-syntax arglist)]
-            [arg-types   (map %resolve-type-spec type-specs)]
-            [return-type (%resolve-type-spec rettype)])
-       (make <foreign-c-function>
-         :scheme-name name
-         :c-name      (cgen-safe-name-friendly (x->string name))
-         :arg-types   arg-types
-         :return-type return-type))]
-    [_
-     (errorf "Invalid define-c-function form: ~s" form)]))
+;; Resolve a typespec to a <native-type> instance at runtime.
+;; Reference to this procedure is inserted by macro expander.
+;; A typespec is either a <native-type> instance (returned as-is) or a
+;; native-type signature.
+(define (%resolve-typespec spec)
+  (if (is-a? spec <native-type>)
+    spec
+    (native-type spec)))
 
 ;;;
 ;;; Syntax
@@ -169,14 +132,26 @@
                  #f)
                form))
            body))
-        ;; Parse all collected define-c-function forms into
-        ;; <foreign-c-function> instances at macro-expansion time.
-        ;; These live objects are embedded directly into the generated form.
-        (let1 cfn-instances (map parse-define-c-function (reverse cfns))
+        ;; For each define-c-function form, build a runtime
+        ;; (make <foreign-c-function> ...) expression.
+        (define (make-cfn-expr cfn-form)
+          (match cfn-form
+            [(_ name arg-types-expr rettype-expr)
+             (quasirename r
+               `(make <foreign-c-function>
+                  :scheme-name ',name
+                  :c-name ,(cgen-safe-name-friendly (x->string name))
+                  :arg-types (map %resolve-typespec ,arg-types-expr)
+                  :return-type (%resolve-typespec ,rettype-expr)))]))
+        (let* ([ordered-cfns  (reverse cfns)]
+               [cfn-names     (map cadr ordered-cfns)]
+               [cfn-list-expr (quasirename r
+                                `(list ,@(map make-cfn-expr ordered-cfns)))])
           (ecase subsystem
             [(:stubgen)
              (quasirename r
-               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-instances ,forms))]
+               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-list-expr ,forms))]
             [(:native)
              (quasirename r
-               `(with-native-ffi ,dlo-expr ,options ,cfn-instances ,forms))]))]))))
+               `(with-native-ffi ,dlo-expr ,options ,cfn-list-expr ,cfn-names ,forms))]
+            ))]))))

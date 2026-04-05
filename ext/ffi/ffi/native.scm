@@ -44,22 +44,35 @@
 ;;; Main macro
 ;;;
 
-;; (with-native-ffi dlo-expr options cfn-instances body)
+;; (with-native-ffi dlo-expr options cfn-list-expr cfn-names forms)
 ;;
-;; cfn-instances is a list of <foreign-c-function> objects produced by
-;; with-ffi at macro-expansion time.  For each entry, a Scheme procedure
-;; is defined that calls the named C function via call-amd64.
+;; cfn-list-expr is a form that evaluates to a list of <foreign-c-function>
+;; instances.  cfn-names is a literal list of the corresponding Scheme names
+;; (known at expansion time).
+;;
+;; The provisional (define name #f) bindings have already been emitted by
+;; with-ffi at begin level.  Body forms are also at begin level.  This macro
+;; only handles evaluating the cfn list and set!ing each name.
 (define-syntax with-native-ffi
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-instances body)
-        (let1 dlo-var (gensym "dlo")
-          (quasirename r
-            `(let1 ,dlo-var ,dlo-expr
-               ,@(map (cut generate-c-function-entry <> r dlo-var) cfn-instances)
-               ,@body)))]))))
-
+       [(_ dlo-expr options cfn-list-expr cfn-names forms)
+        (quasirename r
+          `(begin
+             ,@(map (^[name] (quasirename r
+                               `(define ,name)))
+                    cfn-names)
+             (define _dummy
+               (let ([dlo ,dlo-expr]
+                     [cfns ,cfn-list-expr])
+                 ,@(map (^[i name]
+                          (quasirename r
+                            `(set! ,name
+                                   (make-native-ffi-proc dlo (list-ref cfns ,i)))))
+                        (iota (length cfn-names))
+                        cfn-names)))
+             ,@forms))]))))
 ;;;
 ;;; Type canonicalization
 ;;;
@@ -77,43 +90,44 @@
     [(or (is-a? type <c-pointer>)
          (is-a? type <c-array>)
          (is-a? type <c-function>))  'p]
+    [(or (is-a? type <c-struct>)
+         (is-a? type <c-union>))
+     (error "Directly passing struct or union isn't supported yet")]
     [(eq? type <void>)               'v]
     [(eq? type <double>)             'd]
     [(eq? type <float>)              'f]
     [(eq? type <c-string>)           's]
     [else                            'i]))
 
+;; <c-char> object needs to be passed as integer
+(define (native-type->arg-coerce type)
+  (if (eq? type <c-char>) char->integer values))
+
+(define (native-type->return-coerce type)
+  (if (eq? type <c-char>) integer->char values))
+
 ;;;
-;;; Code generation
+;;; Runtime procedure builder
 ;;;
 
-;; Generate a (define name ...) form for one <foreign-c-function> instance.
-;;
-;; cfn     - <foreign-c-function> instance
-;; r       - er-macro renamer
-;; dlo-var - symbol bound to the dlobj in the generated let
-;;
-;; Canonical types are computed at macro-expansion time from the already-resolved
-;; <native-type> instances and baked in as quoted literals.  The generated code:
-;;  1. Looks up the function pointer from the dlobj once at definition time.
-;;  2. Produces a lambda that builds the typed-arg list and invokes call-amd64.
-(define (generate-c-function-entry cfn r dlo-var)
-  (let* ([name       (~ cfn'scheme-name)]
-         [c-name     (~ cfn'c-name)]
-         [arg-types  (~ cfn'arg-types)] ; (<native-type> ...)
+;; Build a Scheme procedure that calls the C function described by cfn via
+;; call-amd64.  Called at load time from the set! forms emitted by
+;; with-native-ffi.
+(define (make-native-ffi-proc dlo cfn)
+  (let* ([ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
          [ret-type   (~ cfn'return-type)]
-         [arg-syms   (map (^i (string->symbol (format "arg~a" i)))
-                          (iota (length arg-types)))]
+         [arg-types  (~ cfn'arg-types)]
          [ret-canon  (native-type->call-canon ret-type)]
-         [arg-canons (map native-type->call-canon arg-types)])
-    (quasirename r
-      `(define ,name
-         (let1 ptr (dlobj-get-entry-address ,dlo-var ,c-name)
-           (unless ptr
-             (error "FFI (native): cannot find function in library:" ',name))
-           (^ ,arg-syms
-              ((with-module gauche.internal call-amd64)
-               ptr
-               (list ,@(map (^[sym canon] `(,(r 'list) ',canon ,sym))
-                            arg-syms arg-canons))
-               ',ret-canon)))))))
+         [arg-canons (map native-type->call-canon arg-types)]
+         [arg-coerce (map native-type->arg-coerce arg-types)]
+         [ret-coerce (native-type->return-coerce ret-type)])
+    (unless ptr
+      (error "FFI (native): cannot find function in library:"
+             (~ cfn'scheme-name)))
+    (^ args
+       (ret-coerce
+        ((with-module gauche.internal call-amd64)
+         ptr
+         (map (^[canon coerce val] (list canon (coerce val)))
+              arg-canons arg-coerce args)
+         ret-canon)))))
