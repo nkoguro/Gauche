@@ -57,22 +57,21 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-list-expr cfn-names forms)
+       [(_ dlo-expr options cfn-specs forms)
         (quasirename r
           `(begin
-             ,@(map (^[name] (quasirename r
-                               `(define ,name)))
-                    cfn-names)
+             ,@(map (^[spec] (quasirename r
+                               `(define ,(car spec))))
+                    cfn-specs)
              (define _dummy
-               (let ([dlo ,dlo-expr]
-                     [cfns ,cfn-list-expr])
-                 ,@(map (^[i name]
+               (let ([dlo ,dlo-expr])
+                 ,@(map (^[spec]
                           (quasirename r
-                            `(set! ,name
-                                   (make-native-ffi-proc dlo (list-ref cfns ,i)))))
-                        (iota (length cfn-names))
-                        cfn-names)))
+                            `(set! ,(car spec)
+                                   (make-native-ffi-proc dlo ,(cdr spec)))))
+                        cfn-specs)))
              ,@forms))]))))
+
 ;;;
 ;;; Type canonicalization
 ;;;

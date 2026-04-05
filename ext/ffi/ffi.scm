@@ -143,15 +143,20 @@
                   :c-name ,(cgen-safe-name-friendly (x->string name))
                   :arg-types (map %resolve-typespec ,arg-types-expr)
                   :return-type (%resolve-typespec ,rettype-expr)))]))
+        ;; cfn-specs is ((name . cfn-expr) ...), where name is a symbol
+        ;; name of cfn, and cfn-expr is (make <foreivn-c-function> ...)
+        ;; constructed above.  The subsystem macro should rearrange
+        ;; cfn-specs so that cfn-expr is evaluated in proper context.
         (let* ([ordered-cfns  (reverse cfns)]
-               [cfn-names     (map cadr ordered-cfns)]
-               [cfn-list-expr (quasirename r
-                                `(list ,@(map make-cfn-expr ordered-cfns)))])
+               [cfn-specs     (map (^[cfn]
+                                     (cons (cadr cfn) ; name
+                                           (make-cfn-expr cfn))) ;expr
+                                   ordered-cfns)])
           (ecase subsystem
             [(:stubgen)
              (quasirename r
-               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-list-expr ,forms))]
+               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-specs ,forms))]
             [(:native)
              (quasirename r
-               `(with-native-ffi ,dlo-expr ,options ,cfn-list-expr ,cfn-names ,forms))]
+               `(with-native-ffi ,dlo-expr ,options ,cfn-specs ,forms))]
             ))]))))

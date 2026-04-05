@@ -49,14 +49,17 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-list-expr body)
-        (quasirename r
-          `(begin
-             (define _dummy
-               (compile-and-link-ffi-stub ,dlo-expr
-                                          ,cfn-list-expr
-                                          (current-module)))
-             ,@body))]))))
+       [(_ dlo-expr options cfn-specs body)
+        (let1 cfn-list-expr
+            (quasirename r
+              `(list ,@(map cdr cfn-specs)))
+          (quasirename r
+            `(begin
+               (define _dummy
+                 (compile-and-link-ffi-stub ,dlo-expr
+                                            ,cfn-list-expr
+                                            (current-module)))
+               ,@body)))]))))
 
 (define (compile-and-link-ffi-stub dlobj cfn-instances mod)
   (let ([unit (generate-ffi-c-code-unit cfn-instances)])
