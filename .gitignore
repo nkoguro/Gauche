@@ -187,6 +187,8 @@ test.record
 /lib/gauche/charconv.scm
 /lib/gauche/exports.scm
 /lib/gauche/fcntl.scm
+/lib/gauche/ffi.scm
+/lib/gauche/ffi/
 /lib/gauche/matrix.scm
 /lib/gauche/net.scm
 /lib/gauche/termios.scm
