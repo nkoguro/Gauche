@@ -286,7 +286,7 @@ SCM_CLASS_DECL(Scm_UndefinedObjectClass);
 SCM_CLASS_DECL(Scm_UnknownClass);
 SCM_CLASS_DECL(Scm_ObjectClass); /* base of Scheme-defined objects */
 SCM_CLASS_DECL(Scm_ForeignPointerClass);
-
+SCM_CLASS_DECL(Scm_NativeHandleClass);
 
 #define SCM_CLASS_TOP              (&Scm_TopClass)
 #define SCM_CLASS_BOTTOM           (&Scm_BottomClass)
@@ -299,6 +299,7 @@ SCM_CLASS_DECL(Scm_ForeignPointerClass);
 #define SCM_CLASS_UNKNOWN          (&Scm_UnknownClass)
 #define SCM_CLASS_OBJECT           (&Scm_ObjectClass)
 #define SCM_CLASS_FOREIGN_POINTER  (&Scm_ForeignPointerClass)
+#define SCM_CLASS_NATIVE_HANDLE    (&Scm_NativeHandleClass)
 
 /* NB: we can't use SCM_EXTERN because Windows DLL can't use the address of
    dllimport-ed variables as constants. */
@@ -453,6 +454,33 @@ SCM_EXTERN ScmObj Scm_ForeignPointerAttrGet(ScmForeignPointer *fp,
                                             ScmObj key, ScmObj fallback);
 SCM_EXTERN ScmObj Scm_ForeignPointerAttrSet(ScmForeignPointer *fp,
                                             ScmObj key, ScmObj value);
+
+/*
+ * Native handle class
+ *
+ *  <native-handle> is a typed handle to access low-level data structure;
+ *  foreign pointers and other data structues can be accessed from Scheme
+ *  world via native handles.
+ *  (It is effectively a wrapped pointer, but it may be a C pointer
+ *  or C struct; e.g. in the contect of FFI, we need to distinguish
+ *  "C pointer to a struct" and "C struct itself".  To avoid confusion,
+ *  we expose 'handle' to the Scheme world.)
+ */
+
+typedef struct ScmNativeHandleRec ScmNativeHandle;
+#define SCM_NATIVE_HANDLE(obj)    ((ScmNativeHandle*)(obj))
+#define SCM_NATIVE_HANDLE_P(obj)  (SCM_ISA(obj, SCM_CLASS_NATIVE_HANDLE))
+
+/* Public accessors.
+   NativeHandlePtr returns the pointer value if it is <c-pointer>,
+   otherwise the pointer to the native object.
+ */
+SCM_EXTERN void *Scm_NativeHandlePtr(ScmNativeHandle *h);
+
+/* Create a native handle wrapping a C pointer, with the given native type.
+   This is intended for generated code by stubgen FFI.
+   No region bounds or ownership information is recorded. */
+SCM_EXTERN ScmObj Scm_MakeNativeHandleSimple(void *ptr, ScmObj type);
 
 /*
  * Proxy types

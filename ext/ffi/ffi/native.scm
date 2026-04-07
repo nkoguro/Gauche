@@ -63,6 +63,7 @@
              ,@(map (^[spec] (quasirename r
                                `(define ,(car spec))))
                     cfn-specs)
+             ,@forms
              (define _dummy
                (let ([dlo ,dlo-expr])
                  ,@(map (^[spec]
@@ -70,7 +71,7 @@
                             `(set! ,(car spec)
                                    (make-native-ffi-proc dlo ,(cdr spec)))))
                         cfn-specs)))
-             ,@forms))]))))
+             ))]))))
 
 ;;;
 ;;; Type canonicalization

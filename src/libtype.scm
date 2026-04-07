@@ -217,6 +217,11 @@
      (SCM_CLASS_STATIC_PTR Scm_TopClass)
      NULL))
 
+ (define-cfn Scm_NativeHandlePtr (h::ScmNativeHandle*) ::void*
+   (return (-> h ptr)))
+ (define-cfn Scm_NativeHandleType (h::ScmNativeHandle*) ::ScmNativeType*
+   (return (-> h type)))
+
  (define-cclass <c-pointer> :base :no-meta
    "ScmCPointer*" "Scm_CPointerClass"
    (c "native_type_cpa")
@@ -1138,6 +1143,17 @@
            (-> h attrs) attrs
            (-> h flags) flags)
      (return (SCM_OBJ h))))
+
+ ;; Public API for stubgen FFI
+ (define-cfn Scm_MakeNativeHandleSimple (ptr::void* type::ScmObj) ::ScmObj
+   (SCM_ASSERT (SCM_NATIVE_TYPE_P type))
+   (return (Scm__MakeNativeHandle ptr
+                                  (SCM_NATIVE_TYPE type)
+                                  (-> (SCM_NATIVE_TYPE type) name)
+                                  NULL NULL
+                                  SCM_UNDEFINED
+                                  SCM_NIL
+                                  0)))
  )
 
 ;;

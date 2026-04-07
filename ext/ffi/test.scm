@@ -1042,20 +1042,41 @@
       [(_ opts)
        (begin
          (test* "with-ffi (stubgen)" 'ok
-                (eval
-                 `(with-ffi (dynamic-load "./f" :init-function #f)
-                            opts
-                            (define-c-function f-c () 'char)
-                            (define-c-function f-i () 'int)
-                            (define-c-function f-f () 'float)
-                            (define-c-function f-d () 'double)
-                            (define-c-function f-v () 'void)
-                            (define-c-function f-i-i '(int) 'int)
-                            (define-c-function f-f-f '(float) 'float)
-                            (define-c-function f-d-d '(double) 'double)
-                            (define (fiii) (f-i-i (f-i)))
-                            'ok)
-                 (current-module)))
+                (begin
+                  (eval
+                   `(with-ffi
+                     (dynamic-load "./f" :init-function #f)
+                     opts
+                     ;; Primitive interface
+                     (define-c-function f-c () 'char)
+                     (define-c-function f-i () 'int)
+                     (define-c-function f-f () 'float)
+                     (define-c-function f-d () 'double)
+                     (define-c-function f-v () 'void)
+                     (define-c-function f-i-i '(int) 'int)
+                     (define-c-function f-f-f '(float) 'float)
+                     (define-c-function f-d-d '(double) 'double)
+                     ;; mixing normal form
+                     (define (fiii) (f-i-i (f-i)))
+
+                     ;; using native-type instance
+                     (define-c-function ff-d-d `(,<double>) <double>)
+
+                     (define foo (native-type
+                                  '(.struct foo (c::char i::int s::short
+                                                         l::long f::float d::double))))
+                     (define foo* (make-c-pointer-type foo))
+
+                     ;; struct pointer passing
+                     (define-c-function f-pstruct-c-pstruct `(,foo* char) foo*)
+                     (define-c-function f-pstruct-s-pstruct `(,foo* short) foo*)
+                     (define-c-function f-pstruct-i-pstruct `(,foo* int) foo*)
+                     (define-c-function f-pstruct-l-pstruct `(,foo* long) foo*)
+                     (define-c-function f-pstruct-f-pstruct `(,foo* float) foo*)
+                     (define-c-function f-pstruct-d-pstruct `(,foo* double) foo*)
+                     )
+                   (current-module))
+                  'ok))
 
          (test* "f_c" #\x09 (f-c))
          (test* "f_i" 42 (f-i))
@@ -1065,6 +1086,7 @@
          (test* "f_i_i" 101 (f-i-i 100))
          (test* "f_f_f" 0.125 (f-f-f 0.25))
          (test* "f_d_d" 1.2 (f-d-d 0.6))
+         (test* "ff_d_d" 1.2 (ff-d-d 0.6))
          (test* "fiii" 43 (fiii)))]))
 
   (do-test ())                          ;default

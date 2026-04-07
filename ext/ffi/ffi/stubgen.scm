@@ -49,22 +49,32 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-specs body)
+       [(_ dlo-expr options cfn-specs forms)
         (let1 cfn-list-expr
             (quasirename r
               `(list ,@(map cdr cfn-specs)))
           (quasirename r
             `(begin
+               ,@forms
+               ;; We insert dummy binding so that expansion contanis
+               ;; only definitions.
                (define _dummy
                  (compile-and-link-ffi-stub ,dlo-expr
                                             ,cfn-list-expr
                                             (current-module)))
-               ,@body)))]))))
+               )))]))))
 
 (define (compile-and-link-ffi-stub dlobj cfn-instances mod)
-  (let ([unit (generate-ffi-c-code-unit cfn-instances)])
+  (let ([unit (generate-ffi-c-code-unit cfn-instances)]
+        ;; Collect return types for pointer-returning functions, in order.
+        ;; These are passed as extra args to ffisetup so it can populate
+        ;; the per-function static type variables used in boxing.
+        [pointer-ret-types
+         (filter-map (^[cfn] (and (pointer-type? (~ cfn'return-type))
+                                  (~ cfn'return-type)))
+                     cfn-instances)])
     (cgen-dynamic-load unit (sys-tmpdir))
-    ((module-binding-ref mod 'ffisetup) dlobj)))
+    ((module-binding-ref mod 'ffisetup) dlobj pointer-ret-types)))
 
 ;;;
 ;;; Type helpers operating on <native-type> instances
@@ -82,6 +92,16 @@
       (is-a? type <c-struct>)
       (is-a? type <c-union>)
       (is-a? type <c-function>)))
+
+;;; True if the type is a C pointer type (<c-pointer>).  These require
+;;; special boxing/unboxing via Scm_NativeHandlePtr / Scm_MakeNativeHandleSimple.
+(define (pointer-type? type)
+  (is-a? type <c-pointer>))
+
+;;; Name of the static ScmObj variable that holds the return type for boxing
+;;; for a function that returns a <c-pointer>.
+(define (ffi-rettype-varname cfn)
+  (format "ffi_rettype_~a" (~ cfn'c-name)))
 
 ;;; Convert a <native-type> to a C type string.
 (define (native-type->c-type type)
@@ -101,35 +121,36 @@
      (~ type'c-type-name)]))
 
 ;;; Generate a C expression that unboxes a Scheme value to a C value.
-;;; arg-expr: C string expression yielding ScmObj
+;;; arg-expr: C string expression yielding ScmObj.
+;;; For <c-pointer> types, extracts the raw pointer from the native handle.
 (define (native-type->unbox-expr type arg-expr)
   (assume-type type <native-type>)
-  (cond
-    [(equal? (~ type'c-type-name) "void")
-     (errorf "void cannot be used as an argument type")]
-    [(compound-native-type? type)
-     ;; Pointer and aggregate types are passed as native handles
-     (format "(~a)ffi_unbox_ptr(~a)" (native-type->c-type type) arg-expr)]
-    [else
-     (let1 unboxer (~ type'c-unboxer-name)
-       (if (or (not unboxer) (equal? unboxer ""))
-         (errorf "No unboxer for type: ~s" type)
-         (format "~a(~a)" unboxer arg-expr)))]))
+  (if (pointer-type? type)
+    ;; Extract void* from the native handle and cast to the C pointer type.
+    ;; Scm_NativeHandlePtr is the public accessor for the pointer field.
+    (format "(~a)Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(~a))"
+            (native-type->c-type type) arg-expr)
+    (let1 unboxer (~ type'c-unboxer-name)
+      (if (or (not unboxer) (equal? unboxer ""))
+        (errorf "No unboxer for type: ~s" type)
+        (format "~a(~a)" unboxer arg-expr)))))
 
 ;;; Generate a C expression that boxes a C value back to a Scheme object.
 ;;; val-expr: C string expression yielding the C value.
-(define (native-type->box-expr type val-expr)
+;;; For <c-pointer> return types, type-var is the name of a static ScmObj
+;;; variable that holds the native type object (populated during ffisetup).
+(define (native-type->box-expr type val-expr :optional (type-var #f))
   (assume-type type <native-type>)
-  (cond
-    [(equal? (~ type'c-type-name) "void")
-     (format "SCM_VOID_RETURN_VALUE(~a)" val-expr)]
-    [(compound-native-type? type)
-     (format "ffi_box_ptr(~a)" val-expr)]
-    [else
-     (let1 boxer (~ type'c-boxer-name)
-       (if (or (not boxer) (equal? boxer ""))
-         (errorf "No boxer for type: ~s" type)
-         (format "~a(~a)" boxer val-expr)))]))
+  (if (pointer-type? type)
+    (begin
+      (unless type-var
+        (errorf "type-var required for boxing <c-pointer> return type: ~s" type))
+      ;; Wrap the raw C pointer in a native handle using the stored type object.
+      (format "Scm_MakeNativeHandleSimple((void*)(~a), ~a)" val-expr type-var))
+    (let1 boxer (~ type'c-boxer-name)
+      (if (or (not boxer) (equal? boxer ""))
+        (errorf "No boxer for type: ~s" type)
+        (format "~a(~a)" boxer val-expr)))))
 
 ;;;
 ;;; C code emitters
@@ -154,7 +175,10 @@
   (let* ([scm-name  (~ cfn'scheme-name)]
          [c-name    (~ cfn'c-name)]
          [arg-types (~ cfn'arg-types)]
-         [ret-type  (~ cfn'return-type)])
+         [ret-type  (~ cfn'return-type)]
+         ;; For <c-pointer> return types we use a per-function static ScmObj
+         ;; variable (populated during ffisetup) to hold the type for boxing.
+         [ret-typevar (and (pointer-type? ret-type) (ffi-rettype-varname cfn))])
     (cgen-body
      (format "static ScmObj ffi_subr_~a(ScmObj *args, int nargs SCM_UNUSED, void *data SCM_UNUSED)"
              c-name))
@@ -178,7 +202,7 @@
                                   (iota (length arg-types)))
                              ", "))
       (cgen-body (format "    return ~a;"
-                         (native-type->box-expr ret-type call-expr))))
+                         (native-type->box-expr ret-type call-expr ret-typevar))))
     (cgen-body "}")))
 
 ;;; Return a string with the setup code for one FFI function.
@@ -221,24 +245,41 @@
       :preamble
       (list "/* Generated by gauche.ffi.stubgen.  Do not edit. */")
       :init-name "ffi"))
+  ;; Collect functions that return a <c-pointer> — they need a static ScmObj
+  ;; variable to hold the type object for use in boxing the return value.
+  (define pointer-return-cfns
+    (filter (^[cfn] (pointer-type? (~ cfn'return-type))) cfn-instances))
   (parameterize ([cgen-current-unit unit])
     (cgen-decl "#include <gauche.h>")
 
     (for-each emit-fn-ptr-decl cfn-instances)
 
+    ;; Static type variables for functions that return a <c-pointer>.
+    ;; Populated during ffisetup; used in the boxer call.
+    (dolist [cfn pointer-return-cfns]
+      (cgen-decl (format "static ScmObj ~a = SCM_FALSE;" (ffi-rettype-varname cfn))))
+
     (cgen-body "")
     (for-each emit-subr-body cfn-instances)
 
-    ;; FFI setup function (body section) — called by with-ffi
+    ;; FFI setup function (body section) — called by with-ffi.
+    ;; argv[0] = DLObj; argv[1] = list of return-type ScmObjs for
+    ;; pointer-returning functions, in the same order as pointer-return-cfns.
     (cgen-body ""
                "ScmObj ffisetup(ScmObj *argv, int argc, void *data)"
                "{"
-               "    SCM_ASSERT(argc == 1);"
+               "    SCM_ASSERT(argc == 2);"
                "    SCM_ASSERT(SCM_DLOBJP(argv[0]));"
                "    ScmDLObj *dlo = SCM_DLOBJ(argv[0]);"
                "    ScmObj fptr;")
+    (when (pair? pointer-return-cfns)
+      (cgen-body "    ScmObj types = argv[1];"))
     (dolist [cfn cfn-instances]
       (cgen-body (setup-code-for-fn cfn)))
+    ;; Populate per-function return-type variables from the types list.
+    (dolist [cfn pointer-return-cfns]
+      (cgen-body (format "    ~a = SCM_CAR(types); types = SCM_CDR(types);"
+                         (ffi-rettype-varname cfn))))
     (cgen-body "    return SCM_UNDEFINED;"
                "}")
 
@@ -246,9 +287,10 @@
     (dolist [cfn cfn-instances]
       (cgen-init (init-code-for-fn cfn)))
 
+    ;; ffisetup takes 1 required arg (DLObj) + 1 rest arg (types list).
     (cgen-init "    Scm_Define(SCM_CURRENT_MODULE(),"
                "               SCM_SYMBOL(SCM_INTERN(\"ffisetup\")),"
-               "               Scm_MakeSubr(ffisetup, NULL, 1, 0, SCM_FALSE));")
+               "               Scm_MakeSubr(ffisetup, NULL, 2, 0, SCM_FALSE));")
     )
   ;; Return unit
   unit)
