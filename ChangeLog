@@ -1,3 +1,7 @@
+2026-04-06  Shiro Kawai  <shiro@acm.org>
+
+	* Document gauche.in-place feature identifier.
+
 2026-04-03  Shiro Kawai  <shiro@acm.org>
 
 	* ext/ffi/ffi/native.scm: Connect native call interface (currently

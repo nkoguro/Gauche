@@ -3611,6 +3611,26 @@ also works within a vector.
 シングはベクタに対しても機能します。
 @c COMMON
 
+@c TODO: Enhance this section
+
+@c @c EN
+@c @subheading Nested quasiquote
+@c @c JP
+@c @subheading 入れ子になった準クオート
+@c @c COMMON
+
+@c @c EN
+@c Quasiquote can be nested.  When the outermost quasiquote is processed,
+@c it corresponds to the innermost unquotes.  Nested quasiquotes
+@c frequently appear in macro-generating macros and may need some
+@c mental-gymnastics to figure out.
+@c @c JP
+@c 準クォートは入れ子にすることができます。一番外側の準クォートが処理される
+@c とき、それは一番内側のアンクォートに対応します。入れ子になった準クォート
+@c はマクロを生成するマクロによく現れ、理解するのに少し頭の体操が必要なことがあります。
+@c @c COMMON
+
+
 @c EN
 @subheading Multi-argument unquotes
 @c JP
@@ -5036,6 +5056,19 @@ Gauche特有のコードを埋め込むのに便利です。
 (処理系のバージョンつきの機能識別子はR7RSで示唆されているものですが、
 バージョンを比較する機能がないとあまり有用ではないでしょう。
 将来はそのような機能が追加されるかもしれません。)
+@c COMMON
+
+@item gauche.in-place
+@c EN
+Defined when @code{gosh} is run within the build tree (by
+@code{-ftest} option).  Some tests need to figure out
+paths for files they rely on, which may be in different places
+before installation.
+@c JP
+@code{gosh}が@code{-ftest}オプションによって、ビルドツリーの中で
+実行されている時に定義されます。いくつかのテストは依存するファイルを
+探さなければならず、インストールされる前にはそれらが別の場所に
+あるかもしれません。
 @c COMMON
 
 @item gauche.os.windows
