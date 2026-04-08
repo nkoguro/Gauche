@@ -153,7 +153,7 @@ Literals with insignificat digits are inexact without the explicit
 exact prefix, even without a decimal point or exponential part.
 For example, @code{12##.##} is read as @code{1200.00},
 @code{0.123##e5} is read as @code{0.12300e5},
-and @code{1##+2##i} is read as @code{100+200i}.
+and @code{1##+2##i} is read as @code{100.0+200.0i}.
 @item
 If the literal has a decimal point, and one '@code{#}' followed by at
 least one digit in the fractional part,
@@ -222,7 +222,7 @@ Gaucheはそれらの桁を0で置き換えます。
 持たなくても、明示的な正確数プレフィクスがない限りは非正確数となります。
 例: @code{12##.##} @equiv{} @code{1200.00}、
 @code{0.123##e5} @equiv{} @code{0.12300e5}、
-@code{1##+2##i} @equiv{} @code{100+200i}。
+@code{1##+2##i} @equiv{} @code{100.0+200.0i}。
 @item
 リテラルの小数部にひとつ@code{#}がありその後にひとつ以上の数字が続いている
 場合、それは@emph{循環小数}を表します。
@@ -351,281 +351,281 @@ See the table below.
 @c EN
 The table below lists hash-syntaxes.
 @c JP
-以下の表はシャープ構文のリストです。
+以下の表はハッシュ構文のリストです。
 @c COMMON
 
-@multitable {aaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@table @asis
 @item @code{#!}
 @c EN
- @tab [R6RS][R7RS][SRFI-22] It is either a beginning of an interpreter line
-      (shebang) of a script, or a special token that affects the mode
-      of the reader.  See `hash-bang token' section below.
+[R6RS][R7RS][SRFI-22] It is either a beginning of an interpreter line
+(shebang) of a script, or a special token that affects the mode
+of the reader.  See `hash-bang token' section below.
 @c JP
- @tab [R6RS][R7RS][SRFI-22] これは、スクリプトのインタプリタ指定行(shebang)の
-      開始を示すか、リーダのモードに影響を与える特別なトークンとして読まれます。
-      下の`hash-bang token'の節を参照してください。
+[R6RS][R7RS][SRFI-22] これは、スクリプトのインタプリタ指定行(shebang)の
+開始を示すか、リーダのモードに影響を与える特別なトークンとして読まれます。
+下の`hash-bang token'の節を参照してください。
 @c COMMON
 @item @code{#"}
 @c EN
- @tab Introduces an interpolated string.  @xref{String interpolation}.
+Introduces an interpolated string.  @xref{String interpolation}.
 @c JP
- @tab 補間された文字列を先導します。@ref{String interpolation}参照。
+補間された文字列を先導します。@ref{String interpolation}参照。
 @c COMMON
 @item @code{##}, @code{#$}, @code{#%}, @code{#&}, @code{#'}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#(}
 @c EN
- @tab [R7RS] Introduces a vector.
+[R7RS] Introduces a vector.
 @c JP
- @tab [R7RS] リテラルベクタ表記の開始です。
+[R7RS] リテラルベクタ表記の開始です。
 @c COMMON
 @item @code{#)}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#*}
 @c EN
- @tab [SRFI-178] Bitvector (or an incomplete string).  @xref{Bitvectors}.
+[SRFI-178] Bitvector (or an incomplete string).  @xref{Bitvectors}.
 @c JP
- @tab [SRFI-178] ビットベクタ(あるいは不完全な文字列)。@ref{Bitvectors}参照。
+[SRFI-178] ビットベクタ(あるいは不完全な文字列)。@ref{Bitvectors}参照。
 @c COMMON
 @item @code{#+}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#,}
 @c EN
- @tab [SRFI-10] Introduces reader constructor syntax.
+[SRFI-10] Introduces reader constructor syntax. @xref{Read-time constructor}.
 @c JP
- @tab [SRFI-10] リーダ構築子構文を開始します。
+[SRFI-10] リーダ構築子構文を開始します。@ref{Read-time constructor}参照。
 @c COMMON
 @item @code{#-}, @code{#.}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#/}
 @c EN
- @tab Introduces a literal regular expression.  @xref{Regular expressions}.
+Introduces a literal regular expression.  @xref{Regular expressions}.
 @c JP
- @tab リテラルの正規表現を先導します。@ref{Regular expressions}参照。
+リテラルの正規表現を先導します。@ref{Regular expressions}参照。
 @c COMMON
 @item @code{#0} @dots{} @code{#9}
 @c EN
- @tab @code{#@var{n}#}, @code{#@var{n}=}: [SRFI-38] Shared substructure definition and reference.@*
+@code{#@var{n}#}, @code{#@var{n}=}: [SRFI-38] Shared substructure definition and reference.@*
 @code{#@var{n}R}, @code{#@var{n}r}: Radix prefixed numeric literals. @*
 @code{#@var{n}a}, @code{#@var{n}s8}, @code{#@var{n}u8}, @dots{} @code{#@var{n}c128}: [SRFI-163] Array literals.  @xref{Array literal syntax}.
 @c JP
- @tab @code{#@var{n}#}, @code{#@var{n}=}: [SRFI-38] 共有サブストラクチャの定義と参照。@*
+@code{#@var{n}#}, @code{#@var{n}=}: [SRFI-38] 共有サブストラクチャの定義と参照。@*
 @code{#@var{n}R}, @code{#@var{n}r}: 基数を明示した数値リテラル。@*
 @code{#@var{n}a}, @code{#@var{n}s8}, @code{#@var{n}u8}, @dots{} @code{#@var{n}c128}: [SRFI-163] 配列リテラル。 @ref{Array literal syntax}参照。
 @c COMMON
 @item @code{#:}
 @c EN
- @tab Uninterned symbol.  @xref{Symbols}.
+Uninterned symbol.  @xref{Symbols}.
 @c JP
- @tab インターンされていないシンボル。@ref{Symbols}参照。
+インターンされていないシンボル。@ref{Symbols}参照。
 @c COMMON
 @item @code{#;}
 @c EN
- @tab [SRFI-62] S-expression comment.  Reads next one S-expression and
+[SRFI-62] S-expression comment.  Reads next one S-expression and
       discard it.
 @c JP
- @tab [SRFI-62] S式コメント。続くS式をひとつ読んで捨てます。
+[SRFI-62] S式コメント。続くS式をひとつ読んで捨てます。
 @c COMMON
 @item @code{#<}
 @c EN
- @tab Introduces an unreadable object.
+Introduces an unreadable object.
 @c JP
- @tab 読み取り不可能オブジェクトを先導します。
+読み取り不可能オブジェクトを先導します。
 @c COMMON
 @item @code{#=}, @code{#>}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#?}
 @c EN
- @tab Introduces debug macros.  @xref{Debugging}.
+Introduces debug macros.  @xref{Debugging}.
 @c JP
- @tab デバッグマクロを先導します。@ref{Debugging}参照。
+デバッグマクロを先導します。@ref{Debugging}参照。
 @c COMMON
 @item @code{#@@}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#a}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#b}
 @c EN
- @tab [R7RS] Binary number prefix.
+[R7RS] Binary number prefix.
 @c JP
- @tab [R7RS] 2進数接頭辞。
+[R7RS] 2進数接頭辞。
 @c COMMON
 @item @code{#c}
 @c EN
- @tab (1) [R7RS] Complex uniform vector (@code{#c32(...)}, @code{#c64(...)},
- @code{#c128(...)}).  @xref{Uniform vectors}. @*
- (2) Complex notation (@`a la Common Lisp).  @code{#c(1.0 2.0)} is
- @code{1.0+2.0i}.  @xref{Output controls}.
+(1) [R7RS] Complex uniform vector (@code{#c32(...)}, @code{#c64(...)},
+@code{#c128(...)}).  @xref{Uniform vectors}. @*
+(2) Complex notation (@`a la Common Lisp).  @code{#c(1.0 2.0)} is
+@code{1.0+2.0i}.  @xref{Output controls}.
 @c JP
- @tab (1) [R7RS] 複素数ユニフォームベクタ (@code{#c32(...)}, @code{#c64(...)},
- @code{#c128(...)}。@ref{Uniform vectors}参照。@*
- (2) Common Lisp風の複素数表記。@code{#c(1.0 2.0)}は@code{1.0+2.0i}です。
- @ref{Output controls}参照。
+(1) [R7RS] 複素数ユニフォームベクタ (@code{#c32(...)}, @code{#c64(...)},
+@code{#c128(...)}。@ref{Uniform vectors}参照。@*
+(2) Common Lisp風の複素数表記。@code{#c(1.0 2.0)}は@code{1.0+2.0i}です。
+@ref{Output controls}参照。
 @c COMMON
 @item @code{#d}
 @c EN
- @tab [R7RS] Decimal number prefix.
+[R7RS] Decimal number prefix.
 @c JP
- @tab [R7RS] 10進数接頭辞。
+[R7RS] 10進数接頭辞。
 @c COMMON
 @item @code{#e}
 @c EN
- @tab [R7RS] Exact number prefix.
+[R7RS] Exact number prefix.
 @c JP
- @tab [R7RS] 正確数接頭辞。
+[R7RS] 正確数接頭辞。
 @c COMMON
 @item @code{#f}
 @c EN
- @tab [R7RS] Boolean false, or
-      introducing R7RS uniform vector.  @xref{Uniform vectors}.
-      R7RS defines both @code{#f} and @code{#false} as a boolean false value.
+[R7RS] Boolean false, or
+introducing R7RS uniform vector.  @xref{Uniform vectors}.
+R7RS defines both @code{#f} and @code{#false} as a boolean false value.
 @c JP
- @tab [R7RS] 真理値の偽、あるいは
-      R7RS のユニフォームベクタを先導します。@ref{Uniform vectors}参照。
-      R7RSでは真理値の偽として@code{#f}と@code{#false}が使えます。
+[R7RS] 真理値の偽、あるいは
+R7RS のユニフォームベクタを先導します。@ref{Uniform vectors}参照。
+R7RSでは真理値の偽として@code{#f}と@code{#false}が使えます。
 @c COMMON
 @item @code{#g}, @code{#h}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#i}
 @c EN
- @tab [R7RS] Inexact number prefix.
+[R7RS] Inexact number prefix.
 @c JP
- @tab [R7RS] 非正確数接頭辞。
+[R7RS] 非正確数接頭辞。
 @c COMMON
 @item @code{#j}, @code{#k}, @code{#l}, @code{#m}, @code{#n}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#o}
 @c EN
- @tab [R7RS] Octal number prefix.
+[R7RS] Octal number prefix.
 @c JP
- @tab [R7RS] 8進数接頭辞。
+[R7RS] 8進数接頭辞。
 @c COMMON
 @item @code{#p}, @code{#q}, @code{#r}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#s}
 @c EN
- @tab [R7RS vector.@@] introducing R7RS uniform vector.  @xref{Uniform vectors}.
+[R7RS vector.@@] introducing R7RS uniform vector.  @xref{Uniform vectors}.
 @c JP
- @tab [R7RS vector.@@] R7RSのユニフォームベクタを先導します。@ref{Uniform vectors}参照。
+[R7RS vector.@@] R7RSのユニフォームベクタを先導します。@ref{Uniform vectors}参照。
 @c COMMON
 @item @code{#t}
 @c EN
- @tab [R7RS] Boolean true.  R7RS defines @code{#t} and @code{#true}
+[R7RS] Boolean true.  R7RS defines @code{#t} and @code{#true}
       as a boolean true value.
 @c JP
- @tab [R7RS] 真理値の真。R7RSでは真理値の真として@code{#t}と@code{#true}が使えます。
+[R7RS] 真理値の真。R7RSでは真理値の真として@code{#t}と@code{#true}が使えます。
 @c COMMON
 @item @code{#u}
 @c EN
- @tab [R7RS vector.@@] introducing R7RS uniform vector.  @xref{Uniform vectors}.
+[R7RS vector.@@] introducing R7RS uniform vector.  @xref{Uniform vectors}.
  R7RS uses @code{#u8} prefix for bytevectors, which is compatible to
  @code{u8} uniform vectors.
 @c JP
- @tab [R7RS vector.@@] R7RS のユニフォームベクタを先導します。@ref{Uniform vectors}参照。
+[R7RS vector.@@] R7RS のユニフォームベクタを先導します。@ref{Uniform vectors}参照。
  R7RSもバイトベクタに@code{#u8}のプリフィクスを使いますが、これは
  @code{u8}ユニフォームベクタと互換です。
 @c COMMON
 @item @code{#v}, @code{#w}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#x}
 @c EN
- @tab [R7RS] Hexadecimal number prefix.
+[R7RS] Hexadecimal number prefix.
 @c JP
- @tab [R7RS] 16進数接頭辞
+[R7RS] 16進数接頭辞
 @c COMMON
 @item @code{#y}, @code{#z}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#[}
 @c EN
- @tab Introduces a literal character set.  @xref{Character sets}.
+Introduces a literal character set.  @xref{Character sets}.
 @c JP
- @tab リテラルの文字集合を先導します。@ref{Character sets}参照
+リテラルの文字集合を先導します。@ref{Character sets}参照
 @c COMMON
 @item @code{#\}
 @c EN
- @tab [R7RS] Introduces a literal character.  @xref{Characters}.
+[R7RS] Introduces a literal character.  @xref{Characters}.
 @c JP
- @tab [R7RS] リテラルの文字を先導します。@ref{Characters}参照。
+[R7RS] リテラルの文字を先導します。@ref{Characters}参照。
 @c COMMON
 @item @code{#]}, @code{#^}, @code{#_}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#`}
 @c EN
- @tab Legacy syntax for string interpolation, superseded by @code{#"}.
+Legacy syntax for string interpolation, superseded by @code{#"}.
 @c JP
- @tab 文字列補間の古い構文です。新しいコードでは@code{#"}を使ってください。
+文字列補間の古い構文です。新しいコードでは@code{#"}を使ってください。
 @c COMMON
 @item @code{#@{}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
 @item @code{#|}
 @c EN
- @tab [SRFI-30] Introduces a block comment.  Comment ends by matching '@code{|#}'.
+[SRFI-30] Introduces a block comment.  Comment ends by matching '@code{|#}'.
 @c JP
- @tab [SRFI-30] ブロックコメントを先導します。コメントは対応する '@code{|#}' で終ります。
+[SRFI-30] ブロックコメントを先導します。コメントは対応する '@code{|#}' で終ります。
 @c COMMON
 @item @code{#@}}, @code{#~}
 @c EN
- @tab Unused.
+Unused.
 @c JP
- @tab 未使用。
+未使用。
 @c COMMON
-@end multitable
+@end table
 
 @node Hash-bang token,  , Hash syntax, Lexical structure
 @subsection Hash-bang token
