@@ -99,7 +99,7 @@
                    "@b{Deprecated. }\n"
                    "@b{非推奨。}\n"))
         (in (read-line) modtag)]
-      [#/^\[SRFI/ (#f)
+      [#/^\[SRFI-\d+\]\s*$/ (#f)
         (when (eq? modtag 'mod)
            (warn #"SRFI tag follows MOD directive: ~|line|\n"))
         (display line)
