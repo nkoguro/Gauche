@@ -50,6 +50,7 @@
 #include "gauche/priv/vmP.h"
 #include "gauche/priv/mmapP.h"
 #include "gauche/priv/nativeP.h"
+#include "gauche/priv/typeP.h"
 
 #if defined(HAVE_SYS_MMAN_H)
 #include <sys/mman.h>
@@ -83,18 +84,6 @@ struct ScmCodeCacheRec {
 };
 
 #define CODE_PAD_SIZE 4096
-
-static ScmObj sym_o;
-static ScmObj sym_p;
-static ScmObj sym_i;
-static ScmObj sym_b;
-static ScmObj sym_i16;
-static ScmObj sym_i32;
-static ScmObj sym_i64;
-static ScmObj sym_d;
-static ScmObj sym_f;
-static ScmObj sym_s;
-static ScmObj sym_v;
 
 static void init_code_cache(ScmVM *vm) {
     if (vm->codeCache != NULL) return;
@@ -179,23 +168,23 @@ static inline void patch1(void *dst, ScmSmallInt pos,
  *
  *    <pos>  - specifies the position in the byte array to be filled.
  *
- *    <type> - one of the following symbols:
- *        o : ScmObj.   <value>'s ScmObj is used as is.
- *        p : pointer.  <value> is <dlptr>.
- *        i : integer (intptr_t).  <value> must be an integral type.
- *                      its integer value is used.
- *        b : byte.     <value> must be an integer [0..255].
- *        i16 : 16bit integer.  <value> must be an integral type.
- *        i32 : 32bit integer.  <value> must be an integral type.
- *        i64 : 64bit integer.  <value> must be an integral type.
- *        d : double.   <value> must be a real number.
- *        f : float.    <value> must be a real number.
- *        s : string    <value> must be a string type.  Pointer to the cstring
- *                      is used.
+ *    <type> - a <native-type> object or <top>:
+ *        <top>      : ScmObj.  <value>'s ScmObj is used as is.
+ *        <void*>    : pointer. <value> is <dlptr>.
+ *        <intptr_t> : integer (intptr_t).  <value> must be an integral type.
+ *                     Its integer value is used.
+ *        <uint8>    : byte.    <value> must be an integer [0..255].
+ *        <int16>    : 16bit integer.  <value> must be an integral type.
+ *        <int32>    : 32bit integer.  <value> must be an integral type.
+ *        <int64>    : 64bit integer.  <value> must be an integral type.
+ *        <double>   : double.  <value> must be a real number.
+ *        <float>    : float.   <value> must be a real number.
+ *        <c-string> : string.  <value> must be a string.  Pointer to the
+ *                     cstring is used.
  *
  *    <value> - Scheme value to pass.
  *
- * RETTYPE is also a symbol similar to <type>, plus 'v' as no value.
+ * RETTYPE is also a <native-type> or <top>, plus <void> for no value.
  */
 
 ScmObj Scm__VMCallNative(ScmVM *vm,
@@ -251,44 +240,45 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
             ScmObj type = SCM_CADR(e);
             ScmObj val = SCM_CAR(SCM_CDDR(e));
 
-            if (!SCM_INTP(s_pos) || !SCM_SYMBOLP(type)) {
+            if (!SCM_INTP(s_pos)
+                || (!SCM_NATIVE_TYPE_P(type) && !SCM_EQ(type, SCM_OBJ(SCM_CLASS_TOP)))) {
                 Scm_Error("bad filler entry: %S", e);
             }
             ScmSmallInt pos = SCM_INT_VALUE(s_pos);
 
             pun_t pun;
 
-            if (SCM_EQ(type, sym_o)) {
+            if (SCM_EQ(type, SCM_OBJ(SCM_CLASS_TOP))) {
                 pun.n = (intptr_t)val;
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, sym_p)) {
+            } else if (SCM_EQ(type, Scm_NativeVoidPointerType)) {
                 if (!Scm_DLPtrP(val)) SCM_TYPE_ERROR(val, "dlptr");
                 pun.n = SCM_FOREIGN_POINTER_REF(intptr_t, val);
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, sym_i)) {
+            } else if (SCM_EQ(type, Scm_NativeIntptrtType)) {
                 pun.n = Scm_IntegerToIntptr(val);
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, sym_b)) {
+            } else if (SCM_EQ(type, Scm_NativeUint8Type)) {
                 if (!SCM_INTP(val)) SCM_TYPE_ERROR(val, "fixnum");
                 uint8_t byte = SCM_INT_VALUE(val);
                 patch1(codepad, pos, &byte, 1, limit);
-            } else if (SCM_EQ(type, sym_i16)) {
+            } else if (SCM_EQ(type, Scm_NativeInt16Type)) {
                 if (!SCM_INTP(val)) SCM_TYPE_ERROR(val, "fixnum");
                 pun.i16 = SCM_INT_VALUE(val);
                 patch1(codepad, pos, pun.bi16, 2, limit);
-            } else if (SCM_EQ(type, sym_i32)) {
+            } else if (SCM_EQ(type, Scm_NativeInt32Type)) {
                 pun.i32 = Scm_GetInteger32(val);
                 patch1(codepad, pos, pun.bi32, 4, limit);
-            } else if (SCM_EQ(type, sym_i64)) {
+            } else if (SCM_EQ(type, Scm_NativeInt64Type)) {
                 pun.i64 = Scm_GetInteger64(val);
                 patch1(codepad, pos, pun.bi64, 8, limit);
-            } else if (SCM_EQ(type, sym_d)) {
+            } else if (SCM_EQ(type, Scm_NativeDoubleType)) {
                 pun.d = Scm_GetDouble(val);
                 patch1(codepad, pos, pun.bd, SIZEOF_DOUBLE, limit);
-            } else if (SCM_EQ(type, sym_f)) {
+            } else if (SCM_EQ(type, Scm_NativeFloatType)) {
                 pun.f = (float)Scm_GetDouble(val);
                 patch1(codepad, pos, pun.bf, SIZEOF_FLOAT, limit);
-            } else if (SCM_EQ(type, sym_s)) {
+            } else if (SCM_EQ(type, Scm_NativeCStringType)) {
                 /* NB: If the callee retains the pointer, we need malloc. */
                 if (!SCM_STRINGP(val)) SCM_TYPE_ERROR(val, "string");
                 pun.n = (intptr_t)Scm_GetStringConst(SCM_STRING(val));
@@ -302,25 +292,25 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
          * Call the code
          */
         void *entryPtr = get_entry_address(vm->codeCache, codepad + entry);
-        if (SCM_EQ(rettype, sym_d)) {
+        if (SCM_EQ(rettype, Scm_NativeDoubleType)) {
             double r = ((double (*)())entryPtr)();
             result = Scm_VMReturnFlonum(r);
-        } else if (SCM_EQ(rettype, sym_f)) {
+        } else if (SCM_EQ(rettype, Scm_NativeFloatType)) {
             float r = ((float (*)())entryPtr)();
             result = Scm_VMReturnFlonum((double)r);
-        } else if (SCM_EQ(rettype, sym_s)) {
+        } else if (SCM_EQ(rettype, Scm_NativeCStringType)) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = SCM_MAKE_STR_COPYING((const char*)r);
-        } else if (SCM_EQ(rettype, sym_i)) {
+        } else if (SCM_EQ(rettype, Scm_NativeIntptrtType)) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = Scm_IntptrToInteger(r);
-        } else if (SCM_EQ(rettype, sym_b)) {
+        } else if (SCM_EQ(rettype, Scm_NativeUint8Type)) {
             uint8_t r = ((uint8_t (*)())entryPtr)();
             result = SCM_MAKE_INT(r);
-        } else if (SCM_EQ(rettype, sym_o)) {
+        } else if (SCM_EQ(rettype, SCM_OBJ(SCM_CLASS_TOP))) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = SCM_OBJ(r);      /* trust the caller */
-        } else if (SCM_EQ(rettype, sym_v)) {
+        } else if (SCM_EQ(rettype, Scm_NativeVoidType)) {
             ((void (*)())entryPtr)();
         } else {
             Scm_Error("unknown return type: %S", rettype);
@@ -365,16 +355,4 @@ ScmObj Scm__AllocateCodePage(ScmU8Vector *code)
 
 void Scm__InitNative(void)
 {
-    /* symbols for type */
-    sym_o   = SCM_INTERN("o");
-    sym_p   = SCM_INTERN("p");
-    sym_b   = SCM_INTERN("b");
-    sym_i   = SCM_INTERN("i");
-    sym_i16 = SCM_INTERN("i16");
-    sym_i32 = SCM_INTERN("i32");
-    sym_i64 = SCM_INTERN("i64");
-    sym_d   = SCM_INTERN("d");
-    sym_f   = SCM_INTERN("f");
-    sym_s   = SCM_INTERN("s");
-    sym_v   = SCM_INTERN("v");
 }

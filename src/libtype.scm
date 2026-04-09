@@ -1260,7 +1260,10 @@
 (inline-stub
  (initcode
   (set! Scm_NativeVoidPointerType
-        (%make-c-pointer-type-fn "void*" Scm_NativeVoidType))))
+        (%make-c-pointer-type-fn "void*" Scm_NativeVoidType))
+  (Scm_MakeBinding (Scm_GaucheModule) (SCM_SYMBOL '<void*>)
+                   Scm_NativeVoidPointerType
+                   SCM_BINDING_INLINABLE)))
 
 ;; Argument-types are list of native types, optionally end with
 ;; a symbol ... for varargs.

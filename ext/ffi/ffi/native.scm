@@ -77,27 +77,27 @@
 ;;; Type canonicalization
 ;;;
 
-;; Convert a <native-type> instance to the call-amd64 canonical type symbol:
-;;   'v  - void (return only)
-;;   'd  - double (xmm register, 64-bit float)
-;;   'f  - float  (xmm register, 32-bit float)
-;;   's  - C string (Scheme string passed as const char*)
-;;   'p  - raw pointer (native-handle or foreign-pointer)
-;;   'i  - integer (all other integral types)
+;; Convert a <native-type> instance to the call-amd64 canonical type:
+;;   <void>     - void (return only)
+;;   <double>   - double (xmm register, 64-bit float)
+;;   <float>    - float  (xmm register, 32-bit float)
+;;   <c-string> - C string (Scheme string passed as const char*)
+;;   <void*>    - raw pointer (native-handle or foreign-pointer)
+;;   <intptr_t> - integer (all other integral types)
 (define (native-type->call-canon type)
   (assume-type type <native-type>)
   (cond
     [(or (is-a? type <c-pointer>)
          (is-a? type <c-array>)
-         (is-a? type <c-function>))  'p]
+         (is-a? type <c-function>))  <void*>]
     [(or (is-a? type <c-struct>)
          (is-a? type <c-union>))
      (error "Directly passing struct or union isn't supported yet")]
-    [(eq? type <void>)               'v]
-    [(eq? type <double>)             'd]
-    [(eq? type <float>)              'f]
-    [(eq? type <c-string>)           's]
-    [else                            'i]))
+    [(eq? type <void>)               <void>]
+    [(eq? type <double>)             <double>]
+    [(eq? type <float>)              <float>]
+    [(eq? type <c-string>)           <c-string>]
+    [else                            <intptr_t>]))
 
 ;; <c-char> object needs to be passed as integer
 (define (native-type->arg-coerce type)

@@ -135,8 +135,13 @@
   (pprint
    `(define call-amd64
       (^[ptr args rettype]
-        (let* ([num-iargs (count (^p (memq (car p) '(o p i s))) args)]
-               [num-fargs (count (^p (memq (car p) '(f d))) args)]
+        (let* ([num-iargs (count (^p (let ([t (car p)])
+                                       (or (eq? t <top>) (eq? t <void*>)
+                                           (eq? t <intptr_t>) (eq? t <c-string>))))
+                                 args)]
+               [num-fargs (count (^p (or (eq? (car p) <double>)
+                                         (eq? (car p) <float>)))
+                                 args)]
                [num-spills (+ (max 0 (- num-iargs 6))
                               (max 0 (- num-fargs 8)))])
           (if (zero? num-spills)
@@ -159,13 +164,15 @@
                  [patcher
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
-                          [(memq (caar args) '(o p i s))
+                          [(let ([t (caar args)])
+                             (or (eq? t <top>) (eq? t <void*>)
+                                 (eq? t <intptr_t>) (eq? t <c-string>)))
                            (loop (cdr args) (+ icount 1) fcount
                                  ;; +2 is offset of immediate field
                                  (cons `(,(+ (~ entry-offsets (+ 1 icount)) 2)
                                          ,@(car args))
                                        r))]
-                          [(memq (caar args) '(f d))
+                          [(or (eq? (caar args) <double>) (eq? (caar args) <float>))
                            (loop (cdr args) icount (+ fcount 1)
                                  (cons `(,(~ farg-offsets fcount) ,@(car args))
                                        r))]
@@ -175,8 +182,8 @@
                            entry
                            ,(end-addr reg-labels)
                            entry
-                           (list* `(0 p ,ptr)
-                                  `(,(+ (~ entry-offsets 0) 1) b ,num-fargs)
+                           (list* `(0 ,<void*> ,ptr)
+                                  `(,(+ (~ entry-offsets 0) 1) ,<uint8> ,num-fargs)
                                   patcher)
                            rettype)))))
    :port port)
@@ -196,7 +203,9 @@
                   (let loop ([args args] [icount 0] [fcount 0] [scount 0]
                              [r '()])
                     (cond [(null? args) r]
-                          [(memq (caar args) '(o p i s))
+                          [(let ([t (caar args)])
+                             (or (eq? t <top>) (eq? t <void*>)
+                                 (eq? t <intptr_t>) (eq? t <c-string>)))
                            (if (< icount 6)
                              (loop (cdr args) (+ icount 1) fcount scount
                                    ;; +2 is offset of immediate field
@@ -207,7 +216,7 @@
                                    (+ scount 1)
                                    (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
                                          r)))]
-                          [(memq (caar args) '(d))
+                          [(eq? (caar args) <double>)
                            (if (< fcount 8)
                              (loop (cdr args) icount (+ fcount 1) scount
                                    (cons `(,(~ farg-offsets fcount) ,@(car args))
@@ -224,14 +233,14 @@
                            entry
                            ,(assq-ref spill-labels 'spill:)
                            entry
-                           (list* `(0 p ,ptr)
-                                  `(,(+ (~ entry-offsets 0) 1) b ,num-fargs)
+                           (list* `(0 ,<void*> ,ptr)
+                                  `(,(+ (~ entry-offsets 0) 1) ,<uint8> ,num-fargs)
                                   ;; +3 for movq imm32 offset
                                   `(,',(+ (assq-ref spill-labels 'init:) 3)
-                                    i32 ,(* 8 num-spills))
+                                    ,<int32> ,(* 8 num-spills))
                                   ;; +3 for addq imm32 offset
                                   `(,',(+ (assq-ref spill-labels 'epilogue:) 3)
-                                    i32 ,(* 8 num-spills))
+                                    ,<int32> ,(* 8 num-spills))
                                   patcher)
                            rettype)))))
    :port port)
@@ -285,8 +294,13 @@
   (pprint
    `(define call-winx64
       (^[ptr args rettype]
-        (let* ([num-iargs (count (^p (memq (car p) '(o p i s))) args)]
-               [num-fargs (count (^p (memq (car p) '(f d))) args)]
+        (let* ([num-iargs (count (^p (let ([t (car p)])
+                                       (or (eq? t <top>) (eq? t <void*>)
+                                           (eq? t <intptr_t>) (eq? t <c-string>))))
+                                 args)]
+               [num-fargs (count (^p (or (eq? (car p) <double>)
+                                         (eq? (car p) <float>)))
+                                 args)]
                [num-spills (+ (max 0 (- num-iargs 4))
                               (max 0 (- num-fargs 4)))])
           (if (zero? num-spills)
@@ -306,13 +320,15 @@
                  [patcher
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
-                          [(memq (caar args) '(o p i s))
+                          [(let ([t (caar args)])
+                             (or (eq? t <top>) (eq? t <void*>)
+                                 (eq? t <intptr_t>) (eq? t <c-string>)))
                            (loop (cdr args) (+ icount 1) fcount
                                  ;; +2 is offset of immediate field
                                  (cons `(,(+ (~ entry-offsets (+ 1 icount)) 2)
                                          ,@(car args))
                                        r))]
-                          [(memq (caar args) '(f d))
+                          [(or (eq? (caar args) <double>) (eq? (caar args) <float>))
                            (loop (cdr args) icount (+ fcount 1)
                                  (cons `(,(~ farg-offsets fcount) ,@(car args))
                                        r))]
@@ -322,8 +338,8 @@
                            entry
                            ,(end-addr reg-labels)
                            entry
-                           (list* `(0 p ,ptr)
-                                  `(,(+ (~ entry-offsets 0) 1) b ,num-fargs)
+                           (list* `(0 ,<void*> ,ptr)
+                                  `(,(+ (~ entry-offsets 0) 1) ,<uint8> ,num-fargs)
                                   patcher)
                            rettype)))))
    :port port)
