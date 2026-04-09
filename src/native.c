@@ -170,7 +170,8 @@ static inline void patch1(void *dst, ScmSmallInt pos,
  *
  *    <type> - a <native-type> object or <top>:
  *        <top>      : ScmObj.  <value>'s ScmObj is used as is.
- *        <void*>    : pointer. <value> is <dlptr>.
+ *        <c-pointer ...> or <c-array ...>
+ *                   : pointer. <value> is <native-handle>
  *        <intptr_t> : integer (intptr_t).  <value> must be an integral type.
  *                     Its integer value is used.
  *        <uint8>    : byte.    <value> must be an integer [0..255].
@@ -251,9 +252,14 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
             if (SCM_EQ(type, SCM_OBJ(SCM_CLASS_TOP))) {
                 pun.n = (intptr_t)val;
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, Scm_NativeVoidPointerType)) {
-                if (!Scm_DLPtrP(val)) SCM_TYPE_ERROR(val, "dlptr");
-                pun.n = SCM_FOREIGN_POINTER_REF(intptr_t, val);
+            } else if (SCM_C_POINTER_P(type) || SCM_C_ARRAY_P(type)) {
+                if (SCM_NATIVE_HANDLE_P(val)) {
+                    pun.n = (intptr_t)Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(val));
+                } else if (Scm_DLPtrP(val)) {
+                    pun.n = SCM_FOREIGN_POINTER_REF(intptr_t, val);
+                } else {
+                    SCM_TYPE_ERROR(val, "native-handle or dlptr");
+                }
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
             } else if (SCM_EQ(type, Scm_NativeIntptrtType)) {
                 pun.n = Scm_IntegerToIntptr(val);
