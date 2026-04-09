@@ -39,8 +39,10 @@
   (use gauche.cgen.type.parse)
   (use gauche.uvector)
   (extend gauche.typeutil)              ;access internal routines
-  (export native-ref
-          native-set!
+  (export native*
+          native-aref
+          native.
+          native->
 
           uvector->native-handle
 
@@ -246,33 +248,107 @@
 ;;;  Public accessor/modifier
 ;;;
 
-(define (native-ref handle selector :optional (type #f))
+;; Pointer dereference
+(define (native* handle :optional (type #f))
   (assume-type handle <native-handle>)
   (let* ([t (%handle-type handle type)]
-         [offset (native-type-offset t selector)])
-    (typecase t
-      [<c-pointer>
-       (%handle-ref (~ t'pointee-type) handle offset)]
-      [<c-array>
-       (%handle-ref (%array-dereference-type t selector) handle offset)]
-      [(</> <c-struct> <c-union>)
-       (let1 ctype (cadr (c-struct-field t selector))
-         (%handle-ref ctype handle offset))]
-      [else (error "Unsupported native aggregate type:" handle)])))
+         [offset (native-type-offset t 0)])
+    (assume-type t <c-pointer>)
+    (%handle-ref (~ t'pointee-type) handle offset)))
 
-(define (native-set! handle selector val :optional (type #f))
+(define (%native*-set! handle type val)
   (assume-type handle <native-handle>)
+  (let* ([t (%handle-type handle type)])
+    (assume-type t <c-pointer>)
+    (%handle-set! (~ t'pointee-type) handle 0 val)))
+(set! (setter native*)
+      (case-lambda
+        [(handle type val) (%native*-set! handle type val)]
+        [(handle val) (%native*-set! handle #f val)]))
+
+;; Array reference
+;; (Pointer reference with offset, e.g. *(p+i), can be handled with this, too)
+(define (native-aref handle indices :optional (type #f))
+  (assume-type handle <native-handle>)
+  (assume-type indices (</> <fixnum> (<List> <fixnum>)))
   (let* ([t (%handle-type handle type)]
-         [offset (native-type-offset t selector)])
-    (typecase t
-      [<c-pointer>
-       (%handle-set! (~ t'pointee-type) handle offset val)]
+         [offset (native-type-offset t indices)])
+    (etypecase t
       [<c-array>
-       (%handle-set! (%array-dereference-type t selector) handle offset val)]
-      [(</> <c-struct> <c-union>)
-       (let1 ctype (cadr (c-struct-field t selector))
-         (%handle-set! ctype handle offset val))]
-      [else (error "Unsupported native aggregate type:" t)])))
+       (%handle-ref (%array-dereference-type t indices) handle offset)]
+      [<c-pointer>
+       (%handle-ref (~ t 'pointee-type) handle offset)])))
+
+(define (%native-aref-set! handle indices type val)
+  (assume-type handle <native-handle>)
+  (assume-type indices (</> <fixnum> (<List> <fixnum>)))
+  (let* ([t (%handle-type handle type)]
+         [offset (native-type-offset t indices)])
+    (etypecase t
+      [<c-array>
+       (%handle-set! (%array-dereference-type t indices) handle offset val)]
+      [<c-pointer>
+       (%handle-set! (~ t'pointee-type) handle offset val)])))
+(set! (setter native-aref)
+      (case-lambda
+        [(handle indices type val) (%native-aref-set! handle indices type val)]
+        [(handle indices val) (%native-aref-set! handle indices #f val)]))
+
+
+;; Struct/union direct field access
+(define (native. handle slot :optional (type #f))
+  (assume-type handle <native-handle>)
+  (assume-type slot <symbol>)
+  (let* ([t (%handle-type handle type)])
+    (assume-type t (</> <c-struct> <c-union>))
+    (let* ([field (c-struct-field t slot)]
+           [ctype (cadr field)]
+           [offset (caddr field)])
+      (%handle-ref ctype handle offset))))
+
+(define (%native.-set! handle slot type val)
+  (assume-type handle <native-handle>)
+  (assume-type slot <symbol>)
+  (let* ([t (%handle-type handle type)])
+    (assume-type t (</> <c-struct> <c-union>))
+    (let* ([field (c-struct-field t slot)]
+           [ctype (cadr field)]
+           [offset (caddr field)])
+      (%handle-set! ctype handle offset val))))
+(set! (setter native.)
+      (case-lambda
+        [(handle slot type val) (%native.-set! handle slot type val)]
+        [(handle slot val) (%native.-set! handle slot #f val)]))
+
+;; Struct/union indirect field access
+(define (native-> handle slot :optional (type #f))
+  (assume-type handle <native-handle>)
+  (assume-type slot <symbol>)
+  (let* ([t (%handle-type handle type)])
+    (assume-type t <c-pointer>)
+    (let* ([pt (~ t'pointee-type)])
+      (assume-type pt (</> <c-struct> <c-union>))
+      (let* ([field (c-struct-field pt slot)]
+             [ctype (cadr field)]
+             [offset (caddr field)])
+        (%handle-ref ctype handle offset)))))
+
+(define (%native->-set! handle slot type val)
+  (assume-type handle <native-handle>)
+  (assume-type slot <symbol>)
+  (let* ([t (%handle-type handle type)])
+    (assume-type t <c-pointer>)
+    (let* ([pt (~ t'pointee-type)])
+      (assume-type pt (</> <c-struct> <c-union>))
+      (let* ([field (c-struct-field pt slot)]
+             [ctype (cadr field)]
+             [offset (caddr field)])
+        (%handle-set! ctype handle offset val)))))
+
+(set! (setter native->)
+      (case-lambda
+        [(handle slot type val) (%native->-set! handle slot type val)]
+        [(handle slot val) (%native->-set! handle slot #f val)]))
 
 ;;;
 ;;;  Convert type signatures to native-type instance
