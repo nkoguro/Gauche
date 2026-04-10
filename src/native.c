@@ -143,7 +143,7 @@ typedef union {
 } pun_t;
 
 static inline void patch1(void *dst, ScmSmallInt pos,
-                         uint8_t *src, ScmSmallInt size, void *lim)
+                          uint8_t *src, ScmSmallInt size, void *lim)
 {
     if (dst + pos + size > lim) {
         Scm_Error("filler position out of range: %ld", pos);
@@ -171,8 +171,9 @@ static inline void patch1(void *dst, ScmSmallInt pos,
  *    <type> - a <native-type> object or <top>:
  *        <top>      : ScmObj.  <value>'s ScmObj is used as is.
  *        <c-pointer ...> or <c-array ...>
- *                   : pointer. <value> is <native-handle>
- *        <intptr_t> : integer (intptr_t).  <value> must be an integral type.
+ *                   : pointer. <value> is <native-handle> or <dlptr>
+ *        integral types
+ *                   : values must be appropriate integer.
  *                     Its integer value is used.
  *        <uint8>    : byte.    <value> must be an integer [0..255].
  *        <int16>    : 16bit integer.  <value> must be an integral type.
@@ -261,23 +262,41 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                     SCM_TYPE_ERROR(val, "native-handle or dlptr");
                 }
                 patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, Scm_NativeIntptrtType)) {
-                pun.n = Scm_IntegerToIntptr(val);
-                patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_EQ(type, Scm_NativeUint8Type)) {
-                if (!SCM_INTP(val)) SCM_TYPE_ERROR(val, "fixnum");
-                uint8_t byte = SCM_INT_VALUE(val);
-                patch1(codepad, pos, &byte, 1, limit);
-            } else if (SCM_EQ(type, Scm_NativeInt16Type)) {
-                if (!SCM_INTP(val)) SCM_TYPE_ERROR(val, "fixnum");
-                pun.i16 = SCM_INT_VALUE(val);
-                patch1(codepad, pos, pun.bi16, 2, limit);
-            } else if (SCM_EQ(type, Scm_NativeInt32Type)) {
-                pun.i32 = Scm_GetInteger32(val);
-                patch1(codepad, pos, pun.bi32, 4, limit);
-            } else if (SCM_EQ(type, Scm_NativeInt64Type)) {
-                pun.i64 = Scm_GetInteger64(val);
-                patch1(codepad, pos, pun.bi64, 8, limit);
+            } else if (Scm_NativeTypeIntegralP(SCM_NATIVE_TYPE(type))) {
+                ScmNativeType *nt = SCM_NATIVE_TYPE(type);
+                int unsignedp = Scm_NativeTypeUnsignedP(nt);
+                switch (nt->size) {
+                case 1:
+                    pun.i64 = unsignedp
+                        ? (int64_t)Scm_GetIntegerU8(val)
+                        : (int64_t)Scm_GetInteger8(val);
+                    patch1(codepad, pos, pun.bi64, 1, limit);
+                    break;
+                case 2:
+                    pun.i64 = unsignedp
+                        ? (int64_t)Scm_GetIntegerU16(val)
+                        : Scm_GetInteger16(val);
+                    patch1(codepad, pos, pun.bi16, 2, limit);
+                    break;
+                case 4:
+                    pun.i64 = unsignedp
+                        ? (int64_t)Scm_GetIntegerU32(val)
+                        : Scm_GetInteger32(val);
+                    patch1(codepad, pos, pun.bi32, 4, limit);
+                    break;
+                case 8:
+                    pun.i64 = unsignedp
+                        ? (int64_t)Scm_GetIntegerU64(val)
+                        : Scm_GetInteger64(val);
+                    patch1(codepad, pos, pun.bi64, 8, limit);
+                    break;
+                default:
+                    pun.i64 = unsignedp
+                        ? (int64_t)Scm_GetIntegerU64(val)
+                        : Scm_GetInteger64(val);
+                    patch1(codepad, pos, pun.bi64, nt->size, limit);
+                    break;
+                }
             } else if (SCM_EQ(type, Scm_NativeDoubleType)) {
                 pun.d = Scm_GetDouble(val);
                 patch1(codepad, pos, pun.bd, SIZEOF_DOUBLE, limit);

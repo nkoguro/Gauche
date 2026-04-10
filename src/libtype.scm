@@ -270,6 +270,16 @@
   (unless (slot-bound? c 'supertype?)
     (slot-set! c 'supertype? (^[type sub] #f))))
 
+;; Returns true if the native type's super is SCM_CLASS_INTEGER
+(inline-stub
+ (define-cfn Scm_NativeTypeIntegralP (np::ScmNativeType*) ::int
+   (return (SCM_EQ (-> np super) (SCM_OBJ SCM_CLASS_INTEGER))))
+
+ ;; Returns true if the native type is an unsigned integral type
+ (define-cfn Scm_NativeTypeUnsignedP (np::ScmNativeType*) ::int
+   (return (-> np unsigned-p)))
+ )
+
 ;; Returns a class that's the basis of the native type
 (inline-stub
  (define-cfn Scm_NativeTypeBaseClass (np::ScmNativeType*)
@@ -876,7 +886,8 @@
           c-set::(.function (type::ScmNativeType* ptr::void* obj)::void *)
           c-typecheck-name::(const char *)
           c-boxer-name::(const char*)
-          c-unboxer-name::(const char*))
+          c-unboxer-name::(const char*)
+          unsigned-p::int)
    :static
    (let* ([z::ScmNativeType*
            (SCM_NEW_INSTANCE ScmNativeType (& Scm_NativeTypeClass))])
@@ -891,6 +902,7 @@
      (set! (-> z c-typecheck-name) c-typecheck-name)
      (set! (-> z c-boxer-name) c-boxer-name)
      (set! (-> z c-unboxer-name) c-unboxer-name)
+     (set! (-> z unsigned-p) unsigned-p)
      (return (SCM_OBJ z))))
 
  ;; Primitive native type name -> native type instance
@@ -915,7 +927,7 @@
  ;;   UNBOX - C function ScmObj -> ctype for unboxing
 
  (define-cise-stmt define-native-type
-   [(_ name cvar super ctype pred box unbox)
+   [(_ name cvar super ctype pred box unbox unsignedp)
     (define c-of-type-name (symbol-append name '-c-of-type))
     (define c-ref-name (symbol-append name '-ptr-ref))
     (define c-set-name (symbol-append name '-ptr-set))
@@ -954,7 +966,8 @@
                                  ,c-set-name
                                  ,(x->string pred)
                                  ,(x->string box)
-                                 ,(x->string unbox))])
+                                 ,(x->string unbox)
+                                 ,unsignedp)])
        (set! ,cvar z)
        (Scm_HashTableSet (SCM_HASH_TABLE builtin-native-types)
                          ',ctype (SCM_OBJ z) 0)
@@ -979,68 +992,68 @@
 
  (initcode
   (define-native-type <fixnum>  Scm_NativeFixnumType  SCM_CLASS_INTEGER ScmSmallInt
-    SCM_INTP SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTP SCM_MAKE_INT SCM_INT_VALUE FALSE)
   (define-native-type <ufixnum>  Scm_NativeUfixnumType  SCM_CLASS_INTEGER ScmSmallInt
-    SCM_UINTP SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_UINTP SCM_MAKE_INT SCM_INT_VALUE TRUE)
   (define-native-type <short>   Scm_NativeShortType   SCM_CLASS_INTEGER short
-    SCM_INTEGER_FITS_SHORT_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_SHORT_P SCM_MAKE_INT SCM_INT_VALUE FALSE)
   (define-native-type <ushort>  Scm_NativeUshortType  SCM_CLASS_INTEGER u_short
-    SCM_INTEGER_FITS_USHORT_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_USHORT_P SCM_MAKE_INT SCM_INT_VALUE TRUE)
   (define-native-type <int>     Scm_NativeIntType     SCM_CLASS_INTEGER int
-    SCM_INTEGER_FITS_INT_P Scm_MakeInteger Scm_GetInteger)
+    SCM_INTEGER_FITS_INT_P Scm_MakeInteger Scm_GetInteger FALSE)
   (define-native-type <uint>    Scm_NativeUintType    SCM_CLASS_INTEGER u_int
-    SCM_INTEGER_FITS_UINT_P Scm_MakeIntegerU Scm_GetIntegerU)
+    SCM_INTEGER_FITS_UINT_P Scm_MakeIntegerU Scm_GetIntegerU TRUE)
   (define-native-type <long>    Scm_NativeLongType    SCM_CLASS_INTEGER long
-    SCM_INTEGER_FITS_LONG_P Scm_MakeInteger Scm_GetInteger)
+    SCM_INTEGER_FITS_LONG_P Scm_MakeInteger Scm_GetInteger FALSE)
   (define-native-type <ulong>   Scm_NativeUlongType   SCM_CLASS_INTEGER u_long
-    SCM_INTEGER_FITS_ULONG_P Scm_MakeIntegerU Scm_GetIntegerU)
+    SCM_INTEGER_FITS_ULONG_P Scm_MakeIntegerU Scm_GetIntegerU TRUE)
   (define-native-type <int8>    Scm_NativeInt8Type    SCM_CLASS_INTEGER int8_t
-    SCM_INTEGER_FITS_INT8_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_INT8_P SCM_MAKE_INT SCM_INT_VALUE FALSE)
   (define-native-type <uint8>   Scm_NativeUint8Type   SCM_CLASS_INTEGER uint8_t
-    SCM_INTEGER_FITS_UINT8_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_UINT8_P SCM_MAKE_INT SCM_INT_VALUE TRUE)
   (define-native-type <int16>   Scm_NativeInt16Type   SCM_CLASS_INTEGER int16_t
-    SCM_INTEGER_FITS_INT16_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_INT16_P SCM_MAKE_INT SCM_INT_VALUE FALSE)
   (define-native-type <uint16>  Scm_NativeUint16Type  SCM_CLASS_INTEGER uint16_t
-    SCM_INTEGER_FITS_UINT16_P SCM_MAKE_INT SCM_INT_VALUE)
+    SCM_INTEGER_FITS_UINT16_P SCM_MAKE_INT SCM_INT_VALUE TRUE)
   (define-native-type <int32>   Scm_NativeInt32Type   SCM_CLASS_INTEGER int32_t
-    SCM_INTEGER_FITS_INT32_P Scm_MakeInteger Scm_GetInteger)
+    SCM_INTEGER_FITS_INT32_P Scm_MakeInteger Scm_GetInteger FALSE)
   (define-native-type <uint32>  Scm_NativeUint32Type  SCM_CLASS_INTEGER uint32_t
-    SCM_INTEGER_FITS_UINT32_P Scm_MakeIntegerU Scm_GetIntegerU)
+    SCM_INTEGER_FITS_UINT32_P Scm_MakeIntegerU Scm_GetIntegerU TRUE)
   (define-native-type <int64>   Scm_NativeInt64Type   SCM_CLASS_INTEGER int64_t
-    SCM_INTEGER_FITS_INT64_P Scm_MakeInteger64 Scm_GetInteger64)
+    SCM_INTEGER_FITS_INT64_P Scm_MakeInteger64 Scm_GetInteger64 FALSE)
   (define-native-type <uint64>  Scm_NativeUint64Type  SCM_CLASS_INTEGER uint64_t
-    SCM_INTEGER_FITS_UINT64_P Scm_MakeIntegerU64 Scm_GetIntegerU64)
+    SCM_INTEGER_FITS_UINT64_P Scm_MakeIntegerU64 Scm_GetIntegerU64 TRUE)
 
   (define-native-type <size_t>    Scm_NativeSizetType    SCM_CLASS_INTEGER size_t
-    Scm_IntegerFitsSizeP Scm_SizeToInteger Scm_IntegerToSize)
+    Scm_IntegerFitsSizeP Scm_SizeToInteger Scm_IntegerToSize TRUE)
   (define-native-type <ssize_t>   Scm_NativeSsizetType   SCM_CLASS_INTEGER ssize_t
-    Scm_IntegerFitsSsizeP Scm_SsizeToInteger Scm_IntegerToSsize)
+    Scm_IntegerFitsSsizeP Scm_SsizeToInteger Scm_IntegerToSsize FALSE)
   (define-native-type <ptrdiff_t> Scm_NativePtrdifftType SCM_CLASS_INTEGER ptrdiff_t
-    Scm_IntegerFitsPtrdiffP Scm_PtrdiffToInteger Scm_IntegerToPtrdiff)
+    Scm_IntegerFitsPtrdiffP Scm_PtrdiffToInteger Scm_IntegerToPtrdiff FALSE)
   (define-native-type <off_t>     Scm_NativeOfftType     SCM_CLASS_INTEGER off_t
-    Scm_IntegerFitsOffsetP Scm_OffsetToInteger Scm_IntegerToOffset)
+    Scm_IntegerFitsOffsetP Scm_OffsetToInteger Scm_IntegerToOffset FALSE)
   (define-native-type <intptr_t>  Scm_NativeIntptrtType  SCM_CLASS_INTEGER intptr_t
-    Scm_IntegerFitsIntptrP Scm_IntptrToInteger Scm_IntegerToIntptr)
+    Scm_IntegerFitsIntptrP Scm_IntptrToInteger Scm_IntegerToIntptr FALSE)
   (define-native-type <uintptr_t> Scm_NativeUintptrtType SCM_CLASS_INTEGER uintptr_t
-    Scm_IntegerFitsUintptrP Scm_UintptrToInteger Scm_IntegerToUintptr)
+    Scm_IntegerFitsUintptrP Scm_UintptrToInteger Scm_IntegerToUintptr TRUE)
 
   (define-native-type <float>   Scm_NativeFloatType   SCM_CLASS_REAL float
-    SCM_REALP Scm_MakeFlonum Scm_GetDouble)
+    SCM_REALP Scm_MakeFlonum Scm_GetDouble FALSE)
   (define-native-type <double>  Scm_NativeDoubleType  SCM_CLASS_REAL double
-    SCM_REALP Scm_MakeFlonum Scm_GetDouble)
+    SCM_REALP Scm_MakeFlonum Scm_GetDouble FALSE)
 
   ;; We map C char to our character in 8-bit range.  If you want to use
   ;; char as a one-byte integer, use <c-int8> or <c-uint8>.
   (define-native-type <c-char>   Scm_NativeCCharType   SCM_CLASS_INTEGER char
-    SCM_CHAR_FITS_LATIN1_P SCM_MAKE_CHAR SCM_CHAR_VALUE)
+    SCM_CHAR_FITS_LATIN1_P SCM_MAKE_CHAR SCM_CHAR_VALUE FALSE)
   ;; A special case of NUL-terminated string.
   (define-native-type <c-string> Scm_NativeCStringType SCM_CLASS_STRING "const char*"
-    SCM_STRINGP SCM_MAKE_STR_COPYING SCM_STRING_CONST_CSTRING)
+    SCM_STRINGP SCM_MAKE_STR_COPYING SCM_STRING_CONST_CSTRING FALSE)
 
   ;; <void> needs special care, as it doesn't have a real C type.
   (let* ([z (make_native_type "<void>" (SCM_OBJ SCM_CLASS_TOP) "void"
                               0 1 native_voidP NULL NULL
-                              "" "SCM_VOID_RETURN_VALUE" "")])
+                              "" "SCM_VOID_RETURN_VALUE" "" FALSE)])
     (set! Scm_NativeVoidType z)
     (Scm_HashTableSet (SCM_HASH_TABLE builtin-native-types)
                       'void z 0)

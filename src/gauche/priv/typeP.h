@@ -65,6 +65,7 @@ typedef struct ScmNativeTypeRec {
     const char *c_unboxer_name;
     size_t   size;
     size_t   alignment;
+    int      unsigned_p;
 } ScmNativeType;
 
 SCM_CLASS_DECL(Scm_NativeTypeClass);
@@ -73,6 +74,8 @@ SCM_CLASS_DECL(Scm_NativeTypeClass);
 #define SCM_NATIVE_TYPE_P(obj)   (SCM_ISA(obj, SCM_CLASS_NATIVE_TYPE))
 
 SCM_EXTERN int Scm_NativeTypeEqualP(ScmNativeType *a, ScmNativeType *b);
+SCM_EXTERN int Scm_NativeTypeIntegralP(ScmNativeType *np);
+SCM_EXTERN int Scm_NativeTypeUnsignedP(ScmNativeType *np);
 
 /* Primitive native type singletons, set up during initialization */
 SCM_EXTERN ScmObj Scm_NativeFixnumType;
