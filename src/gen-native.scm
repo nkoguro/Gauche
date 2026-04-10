@@ -126,6 +126,22 @@
           :controls (make-write-controls :pretty #t :width 75
                                          :base 16 :radix #t))
 
+  (pprint
+   `(define (%iarg-type? t)
+      (or (eq? t <top>)
+          (eq? t <intptr_t>)
+          (eq? t <c-string>)
+          (is-a? t <c-pointer>)
+          (is-a? t <c-array>)
+          (is-a? t <c-function>)))
+   :port port)
+
+  (pprint
+   `(define (%farg-type? t)
+      (or (eq? t <double>)
+          (eq? t <float>)))
+   :port port)
+
   ;; (call-amd64 <dlptr> args rettype)
   ;;  args : ((type value) ...)
   ;; NB: In the final form, we won't expose this function to the user; it's
@@ -135,13 +151,8 @@
   (pprint
    `(define call-amd64
       (^[ptr args rettype]
-        (let* ([num-iargs (count (^p (let ([t (car p)])
-                                       (or (eq? t <top>) (eq? t <void*>)
-                                           (eq? t <intptr_t>) (eq? t <c-string>))))
-                                 args)]
-               [num-fargs (count (^p (or (eq? (car p) <double>)
-                                         (eq? (car p) <float>)))
-                                 args)]
+        (let* ([num-iargs (count (^p (%iarg-type? (car p))) args)]
+               [num-fargs (count (^p (%farg-type? (car p))) args)]
                [num-spills (+ (max 0 (- num-iargs 6))
                               (max 0 (- num-fargs 8)))])
           (if (zero? num-spills)
@@ -164,15 +175,13 @@
                  [patcher
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
-                          [(let ([t (caar args)])
-                             (or (eq? t <top>) (eq? t <void*>)
-                                 (eq? t <intptr_t>) (eq? t <c-string>)))
+                          [(%iarg-type? (caar args))
                            (loop (cdr args) (+ icount 1) fcount
                                  ;; +2 is offset of immediate field
                                  (cons `(,(+ (~ entry-offsets (+ 1 icount)) 2)
                                          ,@(car args))
                                        r))]
-                          [(or (eq? (caar args) <double>) (eq? (caar args) <float>))
+                          [(%farg-type? (caar args))
                            (loop (cdr args) icount (+ fcount 1)
                                  (cons `(,(~ farg-offsets fcount) ,@(car args))
                                        r))]
@@ -203,9 +212,7 @@
                   (let loop ([args args] [icount 0] [fcount 0] [scount 0]
                              [r '()])
                     (cond [(null? args) r]
-                          [(let ([t (caar args)])
-                             (or (eq? t <top>) (eq? t <void*>)
-                                 (eq? t <intptr_t>) (eq? t <c-string>)))
+                          [(%iarg-type? (caar args))
                            (if (< icount 6)
                              (loop (cdr args) (+ icount 1) fcount scount
                                    ;; +2 is offset of immediate field
@@ -216,7 +223,7 @@
                                    (+ scount 1)
                                    (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
                                          r)))]
-                          [(eq? (caar args) <double>)
+                          [(%farg-type? (caar args))
                            (if (< fcount 8)
                              (loop (cdr args) icount (+ fcount 1) scount
                                    (cons `(,(~ farg-offsets fcount) ,@(car args))
@@ -294,13 +301,8 @@
   (pprint
    `(define call-winx64
       (^[ptr args rettype]
-        (let* ([num-iargs (count (^p (let ([t (car p)])
-                                       (or (eq? t <top>) (eq? t <void*>)
-                                           (eq? t <intptr_t>) (eq? t <c-string>))))
-                                 args)]
-               [num-fargs (count (^p (or (eq? (car p) <double>)
-                                         (eq? (car p) <float>)))
-                                 args)]
+        (let* ([num-iargs (count (^p (%iarg-type? (car p))) args)]
+               [num-fargs (count (^p (%farg-type? (car p))) args)]
                [num-spills (+ (max 0 (- num-iargs 4))
                               (max 0 (- num-fargs 4)))])
           (if (zero? num-spills)
@@ -320,15 +322,13 @@
                  [patcher
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
-                          [(let ([t (caar args)])
-                             (or (eq? t <top>) (eq? t <void*>)
-                                 (eq? t <intptr_t>) (eq? t <c-string>)))
+                          [(%iarg-type? t)
                            (loop (cdr args) (+ icount 1) fcount
                                  ;; +2 is offset of immediate field
                                  (cons `(,(+ (~ entry-offsets (+ 1 icount)) 2)
                                          ,@(car args))
                                        r))]
-                          [(or (eq? (caar args) <double>) (eq? (caar args) <float>))
+                          [(%farg-type? t)
                            (loop (cdr args) icount (+ fcount 1)
                                  (cons `(,(~ farg-offsets fcount) ,@(car args))
                                        r))]

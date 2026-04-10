@@ -1066,7 +1066,7 @@
     (syntax-rules ()
       [(_ opts)
        (begin
-         (test* "with-ffi (stubgen)" 'ok
+         (test* #"with-ffi ~'opts" 'ok
                 (begin
                   (eval
                    `(with-ffi
@@ -1109,6 +1109,13 @@
          (test* "ff_d_d" 1.2 (ff-d-d 0.6))
          (test* "fiii" 43 (fiii))
 
+         (let* ([p (uvector->native-handle
+                    (make-u8vector (~ foo'size))
+                    foo*)])
+           (set! (native-> p 'c) #\a)
+           (test* "struct c" #\b
+                  (let ([r (f-pstruct-c-pstruct p #\b)])
+                    (native-> r 'c))))
          )]))
 
   (do-test ())                          ;default

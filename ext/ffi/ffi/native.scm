@@ -89,7 +89,7 @@
   (cond
     [(or (is-a? type <c-pointer>)
          (is-a? type <c-array>)
-         (is-a? type <c-function>))  <void*>]
+         (is-a? type <c-function>)) type]
     [(or (is-a? type <c-struct>)
          (is-a? type <c-union>))
      (error "Directly passing struct or union isn't supported yet")]
@@ -117,7 +117,11 @@
   (let* ([ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
          [ret-type   (~ cfn'return-type)]
          [arg-types  (~ cfn'arg-types)]
-         [ret-canon  (native-type->call-canon ret-type)]
+         ;; For pointer return types, pass the actual pointer type so that
+         ;; call-amd64 creates a native handle with the correct type.
+         ;; Argument types still use the canonical <void*> since the
+         ;; amd64 arg-dispatch only recognizes <void*> for pointer args.
+         [ret-canon (native-type->call-canon ret-type)]
          [arg-canons (map native-type->call-canon arg-types)]
          [arg-coerce (map native-type->arg-coerce arg-types)]
          [ret-coerce (native-type->return-coerce ret-type)])
