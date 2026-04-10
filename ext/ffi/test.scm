@@ -1059,7 +1059,7 @@
 
   (define foo (native-type
                '(.struct foo (c::char i::int s::short
-                                      l::long f::float d::double))))
+                              l::long f::float d::double))))
   (define foo* (make-c-pointer-type foo))
 
   (define-syntax do-test
@@ -1115,7 +1115,27 @@
            (set! (native-> p 'c) #\a)
            (test* "struct c" #\b
                   (let ([r (f-pstruct-c-pstruct p #\b)])
-                    (native-> r 'c))))
+                    (native-> r 'c)))
+           (set! (native-> p 's) 12345)
+           (test* "struct s" -23456
+                  (let ([r (f-pstruct-s-pstruct p -23456)])
+                    (native-> r 's)))
+           (set! (native-> p 'i) 123456789)
+           (test* "struct i" -987654321
+                  (let ([r (f-pstruct-i-pstruct p -987654321)])
+                    (native-> r 'i)))
+           (set! (native-> p 'l) 123456789012)
+           (test* "struct l" -987654321098
+                  (let ([r (f-pstruct-l-pstruct p -987654321098)])
+                    (native-> r 'l)))
+           (set! (native-> p 'f) 0.5)
+           (test* "struct f" -0.25
+                  (let ([r (f-pstruct-f-pstruct p -0.25)])
+                    (native-> r 'f)))
+           (set! (native-> p 'd) 0.5)
+           (test* "struct d" -0.25
+                  (let ([r (f-pstruct-d-pstruct p -0.25)])
+                    (native-> r 'd))))
          )]))
 
   (do-test ())                          ;default
