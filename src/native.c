@@ -332,6 +332,9 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         } else if (SCM_EQ(rettype, Scm_NativeUint8Type)) {
             uint8_t r = ((uint8_t (*)())entryPtr)();
             result = SCM_MAKE_INT(r);
+        } else if (SCM_C_POINTER_P(rettype) || SCM_C_ARRAY_P(rettype)) {
+            void *r = ((void *(*)())entryPtr)();
+            result = Scm_MakeNativeHandleSimple(r, rettype);
         } else if (SCM_EQ(rettype, SCM_OBJ(SCM_CLASS_TOP))) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = SCM_OBJ(r);      /* trust the caller */
