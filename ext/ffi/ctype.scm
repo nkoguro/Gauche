@@ -158,7 +158,8 @@
          [c-set::(.function (t::ScmNativeType*  p::void* v::ScmObj)::void *)
                  (-> element-type c-set)])
     (unless (c-of-type element-type val)
-      (Scm_Error "Invalid object to set to %S: %S" handle val))
+      (Scm_Error "Invalid object to set to %S (%S): %S"
+                 handle element-type val))
     (when (== c-set NULL)
       (Scm_Error "Cannot set value of type %S" element-type))
     (when (and (!= (-> handle region-max) NULL)

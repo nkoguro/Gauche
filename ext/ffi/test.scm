@@ -1131,10 +1131,17 @@
            (test* "struct i" -987654321
                   (let ([r (f-pstruct-i-pstruct p -987654321)])
                     (native-> r 'i)))
-           (set! (native-> p 'l) 123456789012)
-           (test* "struct l" -987654321098
-                  (let ([r (f-pstruct-l-pstruct p -987654321098)])
-                    (native-> r 'l)))
+           (cond
+            [(>= (~ <long>'size) 8)
+             (set! (native-> p 'l) 123456789012)
+             (test* "struct l" -987654321098
+                    (let ([r (f-pstruct-l-pstruct p -987654321098)])
+                      (native-> r 'l)))]
+            [else
+             (set! (native-> p 'l) 123456789)
+             (test* "struct l" -987654321
+                    (let ([r (f-pstruct-l-pstruct p -987654321)])
+                      (native-> r 'l)))])
            (set! (native-> p 'f) 0.5)
            (test* "struct f" -0.25
                   (let ([r (f-pstruct-f-pstruct p -0.25)])
