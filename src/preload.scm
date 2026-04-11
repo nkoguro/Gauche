@@ -9,6 +9,7 @@
 ;;  gosh -l./preload -I./src -I./lib ....
 ;;
 
+(use gauche.bitvector)
 (use gauche.collection)
 (use gauche.charconv)
 (use gauche.sequence)
