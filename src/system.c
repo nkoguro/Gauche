@@ -3326,32 +3326,29 @@ void Scm_FinishDeferredUnlink(void)
 {
 #ifdef GAUCHE_WINDOWS
     SCM_INTERNAL_MUTEX_LOCK(deferred_unlink_mutex);
-    ScmObj list = deferred_unlink_list;
+    volatile ScmObj list = deferred_unlink_list;
     deferred_unlink_list = SCM_NIL;
     SCM_INTERNAL_MUTEX_UNLOCK(deferred_unlink_mutex);
 
     ScmObj cp;
     SCM_FOR_EACH(cp, list) {
-        ScmObj entry = SCM_CAR(cp);
+        volatile ScmObj entry = SCM_CAR(cp);
         ScmObj handle = SCM_CAR(entry);
-        const char *pathname = Scm_GetStringConst(SCM_STRING(SCM_CDR(entry)));
 
         /* Close the handle if not already closed. */
-        if (SCM_PORTP(handle)) {
-            if (!SCM_PORT_CLOSED_P(handle)) {
-                SCM_UNWIND_PROTECT {
+        SCM_UNWIND_PROTECT {
+            if (SCM_PORTP(handle)) {
+                if (!SCM_PORT_CLOSED_P(handle)) {
                     Scm_ClosePort(SCM_PORT(handle));
-                } SCM_WHEN_ERROR {
-                    /* ignore */
-                } SCM_END_PROTECT;
-            }
-        } else { /* SCM_DLOBJP(handle) */
-            SCM_UNWIND_PROTECT {
+                }
+            } else { /* SCM_DLOBJP(handle) */
                 Scm_CloseDLO(SCM_DLOBJ(handle));
-            } SCM_WHEN_ERROR {
-                /* ignore */
-            } SCM_END_PROTECT;
-        }
+            }
+        } SCM_WHEN_ERROR {
+            /* ignore */
+        } SCM_END_PROTECT;
+
+        const char *pathname = Scm_GetStringConst(SCM_STRING(SCM_CDR(entry)));
 
         /* Remove the file. */
         SCM_UNWIND_PROTECT {
