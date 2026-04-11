@@ -1063,7 +1063,7 @@
   (define foo* (make-c-pointer-type foo))
 
   (define-syntax do-test
-    (syntax-rules ()
+    (syntax-rules ::: ()
       [(_ opts)
        (begin
          (test* #"with-ffi ~'opts" 'ok
@@ -1087,6 +1087,10 @@
                      ;; using native-type instance
                      (define-c-function ff-d-d `(,<double>) <double>)
 
+                     ;; varargs
+                     (define-c-function f-ivar '(int ...) 'int)
+                     (define-c-function f-dvar '(int ...) 'double)
+
                      ;; struct pointer passing
                      (define-c-function f-pstruct-c-pstruct `(,foo* char) foo*)
                      (define-c-function f-pstruct-s-pstruct `(,foo* short) foo*)
@@ -1108,6 +1112,9 @@
          (test* "f_d_d" 1.2 (f-d-d 0.6))
          (test* "ff_d_d" 1.2 (ff-d-d 0.6))
          (test* "fiii" 43 (fiii))
+
+         (test* "f-iver" 45 (f-ivar 9 1 2 3 4 5 6 7 8 9))
+         (test* "f-dver" 4.5 (f-dvar 9 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9))
 
          (let* ([p (uvector->native-handle
                     (make-u8vector (~ foo'size))

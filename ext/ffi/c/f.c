@@ -1,5 +1,7 @@
 #include <inttypes.h>
+#include <stdarg.h>
 #include "f.h"
+
 
 char f_c(void)
 {
@@ -74,4 +76,32 @@ struct foo *f_pstruct_d_pstruct(struct foo *st, double d)
 {
     st->d = d;
     return st;
+}
+
+int f_ivar(int cnt, ...)
+{
+    int r = 0;
+    va_list ap;
+    va_start(ap, cnt);
+
+    while (cnt-- > 0) {
+        int v = va_arg(ap, int);
+        r += v;
+    }
+    va_end(ap);
+    return r;
+}
+
+double f_dvar(int cnt, ...)
+{
+    double r = 0;
+    va_list ap;
+    va_start(ap, cnt);
+
+    while (cnt-- > 0) {
+        double v = va_arg(ap, double);
+        r += v;
+    }
+    va_end(ap);
+    return r;
 }

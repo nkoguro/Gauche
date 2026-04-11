@@ -88,8 +88,10 @@
 (define-class <foreign-c-function> ()
   ((scheme-name  :init-keyword :scheme-name)  ; symbol
    (c-name       :init-keyword :c-name)       ; string, C-safe function name
-   (arg-types    :init-keyword :arg-types)    ; list of <native-type>
+   (arg-types    :init-keyword :arg-types)    ; list of <native-type> (fixed args only)
    (return-type  :init-keyword :return-type)  ; <native-type>
+   (variadic?    :init-keyword :variadic?     ; #t when arg-types ends with '...
+                 :init-value #f)
    ))
 
 ;; Resolve a typespec to a <native-type> instance at runtime.
@@ -100,6 +102,16 @@
   (if (is-a? spec <native-type>)
     spec
     (native-type spec)))
+
+;; Parse a define-c-function arg-types list.  The list may end with the
+;; symbol '... to designate a variadic C function (the same convention as
+;; make-c-function-type).  Returns two values:
+;;   1. list of fixed arg type specs (for map %resolve-typespec)
+;;   2. boolean: #t if variadic
+(define (%parse-ffi-arg-types specs)
+  (if (and (pair? specs) (eq? (last specs) '...))
+    (values (drop-right specs 1) #t)
+    (values specs #f)))
 
 ;;;
 ;;; Syntax
@@ -134,15 +146,21 @@
            body))
         ;; For each define-c-function form, build a runtime
         ;; (make <foreign-c-function> ...) expression.
+        ;; define-c-function arg-types may end with '... to mark a variadic
+        ;; C function (same convention as make-c-function-type).
+        ;; Example: (define-c-function printf '(c-string ...) 'int)
         (define (make-cfn-expr cfn-form)
           (match cfn-form
             [(_ name arg-types-expr rettype-expr)
              (quasirename r
-               `(make <foreign-c-function>
-                  :scheme-name ',name
-                  :c-name ,(cgen-safe-name-friendly (x->string name))
-                  :arg-types (map %resolve-typespec ,arg-types-expr)
-                  :return-type (%resolve-typespec ,rettype-expr)))]))
+               `(receive (arg-types* variadic?*)
+                    (%parse-ffi-arg-types ,arg-types-expr)
+                  (make <foreign-c-function>
+                    :scheme-name ',name
+                    :c-name ,(cgen-safe-name-friendly (x->string name))
+                    :arg-types (map %resolve-typespec arg-types*)
+                    :return-type (%resolve-typespec ,rettype-expr)
+                    :variadic? variadic?*)))]))
         ;; cfn-specs is ((name . cfn-expr) ...), where name is a symbol
         ;; name of cfn, and cfn-expr is (make <foreivn-c-function> ...)
         ;; constructed above.  The subsystem macro should rearrange

@@ -25,3 +25,6 @@ extern struct foo *f_pstrct_i_pstruct(struct foo*, int);
 extern struct foo *f_pstrct_l_pstruct(struct foo*, long);
 extern struct foo *f_pstrct_f_pstruct(struct foo*, float);
 extern struct foo *f_pstrct_d_pstruct(struct foo*, double);
+
+extern int f_ivar(int cnt, ...);
+extern double f_dvar(int cnt, ...);

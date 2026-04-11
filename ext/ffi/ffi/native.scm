@@ -117,21 +117,40 @@
   (let* ([ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
          [ret-type   (~ cfn'return-type)]
          [arg-types  (~ cfn'arg-types)]
-         ;; For pointer return types, pass the actual pointer type so that
-         ;; call-amd64 creates a native handle with the correct type.
-         ;; Argument types still use the canonical <void*> since the
-         ;; amd64 arg-dispatch only recognizes <void*> for pointer args.
-         [ret-canon (native-type->call-canon ret-type)]
+         [variadic?  (~ cfn'variadic?)]
+         [nfixed     (length arg-types)]
+         [ret-canon  (native-type->call-canon ret-type)]
          [arg-canons (map native-type->call-canon arg-types)]
          [arg-coerce (map native-type->arg-coerce arg-types)]
          [ret-coerce (native-type->return-coerce ret-type)])
     (unless ptr
       (error "FFI (native): cannot find function in library:"
              (~ cfn'scheme-name)))
-    (^ args
-       (ret-coerce
-        ((with-module gauche.internal call-amd64)
-         ptr
-         (map (^[canon coerce val] (list canon (coerce val)))
-              arg-canons arg-coerce args)
-         ret-canon)))))
+    (if variadic?
+      ;; For variadic functions, map fixed args with known types, then infer
+      ;; types for the remaining variadic args from their runtime values.
+      ;; NB: For now, we just distinguish flonum values form the rest in
+      ;; the varargs list.  Eventually we want to check if all the varargs
+      ;; can be convertable to C objects.
+      (^ args
+         (let* ([fixed-args (take args nfixed)]
+                [var-args   (drop args nfixed)]
+                [fixed-pairs (map (^[canon coerce val] (list canon (coerce val)))
+                                  arg-canons arg-coerce fixed-args)]
+                [var-pairs   (map (^[val]
+                                    `(,(if (flonum? val) <double> <intptr_t>)
+                                      ,val))
+                                  var-args)])
+           (ret-coerce
+            ((with-module gauche.internal call-amd64)
+             ptr
+             (append fixed-pairs var-pairs)
+             ret-canon))))
+      ;; Non-variadic: map all args with their declared types.
+      (^ args
+         (ret-coerce
+          ((with-module gauche.internal call-amd64)
+           ptr
+           (map (^[canon coerce val] (list canon (coerce val)))
+                arg-canons arg-coerce args)
+           ret-canon))))))
