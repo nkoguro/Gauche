@@ -3355,7 +3355,7 @@ void Scm_FinishDeferredUnlink(void)
                     Scm_ClosePort(SCM_PORT(handle));
                 }
             } else { /* SCM_DLOBJP(handle) */
-                Scm_CloseDLO(SCM_DLOBJ(handle));
+                Scm_CloseDLO(SCM_DLOBJ(handle), TRUE);
             }
         } SCM_WHEN_ERROR {
             /* ignore */

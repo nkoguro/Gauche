@@ -1,3 +1,12 @@
+2026-04-11  Shiro Kawai  <shiro@acm.org>
+
+	* src/load.c (Scm_CloseDLO): Change API to take 'force' flag.
+	  If TRUE, we close DLO even if it is initialized---some Scheme
+	  object may retain reference that would become stale by closing,
+	  but it is safe if we close it right before exitting the process.
+	  This is compatibility breaking change, but we assume nobody
+	  really call this API directly.
+
 2026-04-10  Shiro Kawai  <shiro@acm.org>
 
 	* src/system.c (Scm_UnlinkEventually),

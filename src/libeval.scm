@@ -286,7 +286,7 @@
 
 ;; API
 (define-cproc close-dynamic-loadable-object (dlo::<dlobj>)
-  (return (Scm_CloseDLO dlo)))
+  (return (Scm_CloseDLO dlo FALSE)))
 
 ;; API (experimental)
 ;; returns #<dlptr>

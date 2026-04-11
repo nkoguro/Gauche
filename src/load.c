@@ -759,17 +759,23 @@ ScmObj Scm_DynLoad(ScmString *dsoname, ScmObj initfn, u_long flags SCM_UNUSED)
 }
 #endif // GAUCHE_API_VERSION < 1000
 
-ScmObj Scm_CloseDLO(ScmDLObj *dlo)
+ScmObj Scm_CloseDLO(ScmDLObj *dlo, int force)
 {
     volatile _Bool cannot_close = FALSE;
 
     lock_dlobj(dlo);
-    switch (dlo->state) {
+    int state = dlo->state;
+    if (force && state > DLOBJ_LOADED) {
+        state = DLOBJ_LOADED;
+    }
+    switch (state) {
     case DLOBJ_NEW: break;           /* nothing to do */
     case DLOBJ_LOADED:
         SCM_UNWIND_PROTECT {
-            dl_close(dlo);
-            dlo->handle = NULL;
+            if (dlo->handle) {
+                dl_close(dlo->handle);
+                dlo->handle = NULL;
+            }
             dlo->state = DLOBJ_NEW;
         }
         SCM_WHEN_ERROR {
