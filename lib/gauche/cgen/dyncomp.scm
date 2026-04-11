@@ -66,25 +66,7 @@
 
     (let1 dlo (dynamic-load (path-sans-extension so-file)
                             :init-function (cgen-unit-init-name unit))
-
       ;; Arrange cleanup
-      ;;   - Remove the C and object files plus the work directory immediately.
-      ;;   - On unix, we can safely sys-unlink the DSO while it is still
-      ;;     mapped; the kernel keeps the file alive until the last reference
-      ;;     is dropped.
-      ;;   - On windows, the DSO cannot be deleted while loaded, so we
-      ;;     register an exit handler that closes the DSO and removes it.
       (sys-unlink c-file)
       (sys-unlink o-file)
-      (cond-expand
-        [gauche.os.windows
-         (let1 old-handler (exit-handler)
-           (exit-handler (^[code fmt args]
-                           (guard (e [#t #f])
-                             (close-dynamic-loadable-object dlo)
-                             (sys-unlink so-file)
-                             (sys-rmdir workdir))
-                           (when old-handler (old-handler code fmt args)))))]
-        [else
-         (sys-unlink so-file)
-         (sys-rmdir workdir)]))))
+      (sys-unlink-eventually dlo so-file 1))))
