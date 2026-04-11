@@ -3307,15 +3307,28 @@ static ScmObj deferred_unlink_list = SCM_NIL;
 static ScmInternalMutex deferred_unlink_mutex = SCM_INTERNAL_MUTEX_INITIALIZER;
 #endif /* GAUCHE_WINDOWS */
 
-void Scm_UnlinkEventually(ScmObj handle, const char *path)
+static void unlink_with_dirs(ScmString *path, int unlink_empty_dirs)
+{
+    (void)remove(Scm_GetStringConst(path));
+    path = SCM_STRING(Scm_DirName(path));
+    while (unlink_empty_dirs-- > 0) {
+        ScmSmallInt nentries = Scm_Length(Scm_ReadDirectory(path));
+        if (nentries > 2) break; /* it has other than "." and ".." */
+        (void)rmdir(Scm_GetStringConst(path));
+        path = SCM_STRING(Scm_DirName(path));
+    }
+}
+
+void Scm_UnlinkEventually(ScmObj handle, ScmString *path, int unlink_empty_dirs)
 {
     if (!SCM_PORTP(handle) && !SCM_DLOBJP(handle)) {
         Scm_Error("port or dlobj required, but got: %S", handle);
     }
 #if !defined(GAUCHE_WINDOWS)
-    (void)unlink(path);
+    unlink_with_dirs(path, unlink_empty_dirs);
 #else  /* GAUCHE_WINDOWS */
-    ScmObj entry = Scm_Cons(handle, SCM_MAKE_STR_COPYING(path));
+    ScmObj entry = SCM_LIST3(handle, SCM_OBJ(path),
+                             SCM_MAKE_INT(unlink_empty_dirs));
     SCM_INTERNAL_MUTEX_LOCK(deferred_unlink_mutex);
     deferred_unlink_list = Scm_Cons(entry, deferred_unlink_list);
     SCM_INTERNAL_MUTEX_UNLOCK(deferred_unlink_mutex);
@@ -3348,11 +3361,12 @@ void Scm_FinishDeferredUnlink(void)
             /* ignore */
         } SCM_END_PROTECT;
 
-        const char *pathname = Scm_GetStringConst(SCM_STRING(SCM_CDR(entry)));
+        ScmString *path = SCM_STRING(SCM_CADR(entry));
+        int unlink_empty_dirs = SCM_INT_VALUE(SCM_CAR(SCM_CDDR(entry)));
 
         /* Remove the file. */
         SCM_UNWIND_PROTECT {
-            (void)remove(pathname);
+            unlink_with_dirs(path, unlink_empty_dirs);
         } SCM_WHEN_ERROR {
             /* ignore */
         } SCM_END_PROTECT;
