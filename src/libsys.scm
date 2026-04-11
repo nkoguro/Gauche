@@ -1301,6 +1301,10 @@
         (return '#f))
       (return '#t))))
 
+(define-cproc sys-unlink-eventually (handle pathname::<const-cstring>)
+  ::<void>
+  (Scm_UnlinkEventually handle pathname))
+
 (define-cproc sys-isatty (port_or_fd) ::<boolean>
   (let* ([fd::int (Scm_GetPortFd port_or_fd FALSE)])
     (return (and (>= fd 0) (isatty fd)))))

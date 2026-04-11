@@ -287,6 +287,10 @@ typedef struct ScmHeaderRec ScmSysFdset;
 SCM_EXTERN int    Scm_Mkstemp(char *tmpl);
 SCM_EXTERN ScmObj Scm_SysMkstemp(ScmString *tmpl);
 SCM_EXTERN ScmObj Scm_SysMkdtemp(ScmString *tmpl);
+
+SCM_EXTERN void   Scm_UnlinkEventually(ScmObj handle, const char *path);
+SCM_EXTERN void   Scm_FinishDeferredUnlink(void);
+
 SCM_EXTERN ScmObj Scm_Environ(void);
 SCM_EXTERN const char *Scm_GetEnv(const char *name);
 SCM_EXTERN void Scm_SetEnv(const char *name, const char *value, int overwrite);

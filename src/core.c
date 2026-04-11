@@ -517,6 +517,7 @@ void Scm_Cleanup(void)
 
     /* Flush Scheme ports. */
     Scm_FlushAllPorts(TRUE);
+    Scm_FinishDeferredUnlink();
 }
 
 int Scm_ObjToExitCode(ScmObj obj)

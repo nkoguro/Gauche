@@ -3299,6 +3299,71 @@ void Scm__WinThreadExit()
 #endif /* GAUCHE_WINDOWS */
 
 /*===============================================================
+ * Deferred unlink
+ */
+
+#ifdef GAUCHE_WINDOWS
+static ScmObj deferred_unlink_list = SCM_NIL;
+static ScmInternalMutex deferred_unlink_mutex = SCM_INTERNAL_MUTEX_INITIALIZER;
+#endif /* GAUCHE_WINDOWS */
+
+void Scm_UnlinkEventually(ScmObj handle, const char *path)
+{
+    if (!SCM_PORTP(handle) && !SCM_DLOBJP(handle)) {
+        Scm_Error("port or dlobj required, but got: %S", handle);
+    }
+#if !defined(GAUCHE_WINDOWS)
+    (void)unlink(path);
+#else  /* GAUCHE_WINDOWS */
+    ScmObj entry = Scm_Cons(handle, SCM_MAKE_STR_COPYING(path));
+    SCM_INTERNAL_MUTEX_LOCK(deferred_unlink_mutex);
+    deferred_unlink_list = Scm_Cons(entry, deferred_unlink_list);
+    SCM_INTERNAL_MUTEX_UNLOCK(deferred_unlink_mutex);
+#endif /* GAUCHE_WINDOWS */
+}
+
+void Scm_FinishDeferredUnlink(void)
+{
+#ifdef GAUCHE_WINDOWS
+    SCM_INTERNAL_MUTEX_LOCK(deferred_unlink_mutex);
+    ScmObj list = deferred_unlink_list;
+    deferred_unlink_list = SCM_NIL;
+    SCM_INTERNAL_MUTEX_UNLOCK(deferred_unlink_mutex);
+
+    ScmObj cp;
+    SCM_FOR_EACH(cp, list) {
+        ScmObj entry = SCM_CAR(cp);
+        ScmObj handle = SCM_CAR(entry);
+        const char *pathname = Scm_GetStringConst(SCM_STRING(SCM_CDR(entry)));
+
+        /* Close the handle if not already closed. */
+        if (SCM_PORTP(handle)) {
+            if (!SCM_PORT_CLOSED_P(handle)) {
+                SCM_UNWIND_PROTECT {
+                    Scm_ClosePort(SCM_PORT(handle));
+                } SCM_WHEN_ERROR {
+                    /* ignore */
+                } SCM_END_PROTECT;
+            }
+        } else { /* SCM_DLOBJP(handle) */
+            SCM_UNWIND_PROTECT {
+                Scm_CloseDLO(SCM_DLOBJ(handle));
+            } SCM_WHEN_ERROR {
+                /* ignore */
+            } SCM_END_PROTECT;
+        }
+
+        /* Remove the file. */
+        SCM_UNWIND_PROTECT {
+            (void)remove(pathname);
+        } SCM_WHEN_ERROR {
+            /* ignore */
+        } SCM_END_PROTECT;
+    }
+#endif /* GAUCHE_WINDOWS */
+}
+
+/*===============================================================
  * Initialization
  */
 void Scm__InitSystem(void)
@@ -3323,6 +3388,7 @@ void Scm__InitSystem(void)
 #ifdef GAUCHE_WINDOWS
     init_winsock();
     SCM_INTERNAL_MUTEX_INIT(process_mgr.mutex);
+    SCM_INTERNAL_MUTEX_INIT(deferred_unlink_mutex);
     Scm_AddCleanupHandler(fini_winsock, NULL);
     Scm_AddCleanupHandler(win_process_cleanup, NULL);
 #endif
