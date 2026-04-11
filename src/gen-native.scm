@@ -103,6 +103,10 @@
   (define (farg-offsets labels)    ;; farg# -> offset
     (map (cut assq-ref labels <>)
          '(farg0: farg1: farg2: farg3: farg4: farg5: farg6: farg7:)))
+  (define (movsX-offsets labels)   ;; farg# -> prefix instruction offset
+    (map (cut assq-ref labels <>)
+         '(entry6f0: entry6f1: entry6f2: entry6f3:
+           entry6f4: entry6f5: entry6f6: entry6f7)))
   (define (end-addr labels) (assq-ref labels 'end:))
   (display ";; Register-only calling" port)
   (display ";; label    offset\n" port)
@@ -142,6 +146,9 @@
           (eq? t <float>)))
    :port port)
 
+  (pprint '(define-constant movss-prefix #xf3)  ; movss opcode prefix (vs movsd's #xf2)
+          :port port)
+
   ;; (call-amd64 <dlptr> args rettype)
   ;;  args : ((type value) ...)
   ;; NB: In the final form, we won't expose this function to the user; it's
@@ -166,7 +173,8 @@
    `(define call-amd64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (entry-offsets ',(entry-offsets reg-labels))
-            (farg-offsets ',(farg-offsets reg-labels)))
+            (farg-offsets ',(farg-offsets reg-labels))
+            (movsX-offsets ',(movsX-offsets reg-labels)))
         (^[ptr args num-iargs num-fargs rettype]
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
@@ -183,8 +191,11 @@
                                        r))]
                           [(%farg-type? (caar args))
                            (loop (cdr args) icount (+ fcount 1)
-                                 (cons `(,(~ farg-offsets fcount) ,@(car args))
-                                       r))]
+                                 (cond-list
+                                  [#t `(,(~ farg-offsets fcount) ,@(car args))]
+                                  [(eq? (caar args) <float>)
+                                   `(,(~ movsX-offsets fcount) ,<uint8> ,movss-prefix)]
+                                  [#t @ r]))]
                           [else (error "bad arg entry:" (car args))]))])
             (%%call-native entry 0
                            *amd64-call-reg-code*
@@ -201,6 +212,7 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (entry-offsets ',(entry-offsets spill-labels))
             (farg-offsets ',(farg-offsets spill-labels))
+            (movsX-offsets ',(movsX-offsets spill-labels))
             (spill-offset (^n (+ ,(assq-ref spill-labels 'spill:)
                                  (* n 8)))))
         (^[ptr args num-iargs num-fargs num-spills rettype]
@@ -226,8 +238,11 @@
                           [(%farg-type? (caar args))
                            (if (< fcount 8)
                              (loop (cdr args) icount (+ fcount 1) scount
-                                   (cons `(,(~ farg-offsets fcount) ,@(car args))
-                                         r))
+                                   (cond-list
+                                    [#t `(,(~ farg-offsets fcount) ,@(car args))]
+                                    [(eq? (caar args) <float>)
+                                     `(,(~ movsX-offsets fcount) ,<uint8> ,movss-prefix)]
+                                    [#t @ r]))
                              (loop (cdr args) icount (+ fcount 1)
                                    (+ scount 1)
                                    (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
@@ -283,10 +298,11 @@
            farg1:   (.dataq 0)
            farg2:   (.dataq 0)
            farg3:   (.dataq 0)
-           entry:   (movsd (farg3:) %xmm3)
-                    (movsd (farg2:) %xmm2)
-                    (movsd (farg1:) %xmm1)
-                    (movsd (farg0:) %xmm0)
+           entry:
+           entry4f3:(movsd (farg3:) %xmm3)
+           entry4f2:(movsd (farg2:) %xmm2)
+           entry4f1:(movsd (farg1:) %xmm1)
+           entry4f0:(movsd (farg0:) %xmm0)
            init:    (movq #x01234567 %rax)    ; imm32 to be patched
                     (leaq (spill: %rip) %rsi)
            loop:    (movq (%rsi) %rdi)
@@ -313,6 +329,9 @@
   (define (farg-offsets labels)    ;; farg# -> offset
     (map (cut assq-ref labels <>)
          '(farg0: farg1: farg2: farg3:)))
+  (define (movsX-offsets labels)   ;; farg# -> prefix instruction offset
+    (map (cut assq-ref labels <>)
+         '(entry4f0: entry4f1: entry4f2: entry4f3:)))
   (define (end-addr labels) (assq-ref labels 'end:))
   (display ";; Register-only calling" port)
   (display ";; label    offset\n" port)
@@ -356,7 +375,8 @@
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (entry-offsets ',(entry-offsets reg-labels))
-            (farg-offsets ',(farg-offsets reg-labels)))
+            (farg-offsets ',(farg-offsets reg-labels))
+            (movsX-offsets ',(movsX-offsets reg-labels)))
         (^[ptr args num-args num-fargs rettype]
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-args
@@ -375,10 +395,12 @@
                            ;; We load both integer regs and flonum regs.
                            ;; It matters for variadic function call.
                            (loop (cdr args) (+ count 1)
-                                 (list* `(,(~ farg-offsets count) ,@(car args))
-                                        `(,(+ (~ entry-offsets (+ 1 count)) 2)
-                                          ,@(car args))
-                                        r))]
+                                 (cond-list
+                                  [#t `(,(~ farg-offsets count) ,@(car args))]
+                                  [#t `(,(+ (~ entry-offsets (+ 1 count)) 2) ,@(car args))]
+                                  [(eq? (caar args) <float>)
+                                   `(,(~ movsX-offsets count) ,<uint8> ,movss-prefix)]
+                                  [#t @ r]))]
                           [else (error "bad arg entry:" (car args))]))])
             (%%call-native entry 0
                            *winx64-call-reg-code*
@@ -394,6 +416,7 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (entry-offsets ',(entry-offsets spill-labels))
             (farg-offsets ',(farg-offsets spill-labels))
+            (movsX-offsets ',(movsX-offsets spill-labels))
             (entry-addr ,(assq-ref spill-labels 'entry:))
             (spill-offset (^n (+ ,(assq-ref spill-labels 'spill:)
                                  (* n 8)))))
@@ -417,10 +440,12 @@
                            ;; It matters for variadic function call.
                            (if (< count 4)
                              (loop (cdr args) (+ count 1) scount
-                                   (list* `(,(~ farg-offsets count) ,@(car args))
-                                          `(,(+ (~ entry-offsets (+ 1 count)) 2)
-                                            ,@(car args))
-                                          r))
+                                   (cond-list
+                                    [#t `(,(~ farg-offsets count) ,@(car args))]
+                                    [#t `(,(+ (~ entry-offsets (+ 1 count)) 2) ,@(car args))]
+                                    [(eq? (caar args) <float>)
+                                     `(,(~ movsX-offsets count) ,<uint8> ,movss-prefix)]
+                                    [#t @ r]))
                              (loop (cdr args) (+ count 1)
                                    (+ scount 1)
                                    (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
