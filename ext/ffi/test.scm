@@ -1080,7 +1080,11 @@
                      (define-c-function f-v () 'void)
                      (define-c-function f-i-i '(int) 'int)
                      (define-c-function f-f-f '(float) 'float)
+                     (define-c-function f-f-fff '(float float float) 'float)
                      (define-c-function f-d-d '(double) 'double)
+                     (define-c-function f-d-ddd '(double double double) 'double)
+                     (define-c-function f-d-ifd '(int float double) 'double)
+                     (define-c-function f-d-idf '(int double float) 'double)
                      ;; mixing normal form
                      (define (fiii) (f-i-i (f-i)))
 
@@ -1109,7 +1113,11 @@
          (test* "f_v" (undefined) (f-v))
          (test* "f_i_i" 101 (f-i-i 100))
          (test* "f_f_f" 0.125 (f-f-f 0.25))
+         (test* "f_f_fff" 0.875 (f-f-fff 0.5 0.25 0.125))
          (test* "f_d_d" 1.2 (f-d-d 0.6))
+         (test* "f_d_ddd" 3.5 (f-d-ddd 0.5 1.0 2.0))
+         (test* "f_d_ifd" -24.0 (f-d-ifd 32 -0.5 -0.25))
+         (test* "f_d_idf" -8.0 (f-d-idf 32 -0.5 -0.25))
          (test* "ff_d_d" 1.2 (ff-d-d 0.6))
          (test* "fiii" 43 (fiii))
 
@@ -1153,7 +1161,7 @@
          )]))
 
   (do-test ())                          ;default
-  (when (#/^x86_64.*linux-gnu$/ (gauche-architecture))
+  (when (#/^x86_64-.*linux-gnu$/ (gauche-architecture))
     (do-test (:subsystem :native)))
   )
 

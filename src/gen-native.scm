@@ -86,7 +86,7 @@
                      (addq 8 %rsi)
                      (subq 8 %rax)
                      (jnz loop:)
-           entry2:   (movq #x0123456789 %rsi)  ; ditto
+           entry2:   (movq #x0123456789 %rsi)  ; imm64 to be patched
            entry1:   (movq #x0123456789 %rdi)  ; ditto
            entry0:   (movb 0 %al)              ; imm8 to be patched
                      (call (func:))
@@ -129,7 +129,7 @@
   (pprint
    `(define (%iarg-type? t)
       (or (eq? t <top>)
-          (eq? t <intptr_t>)
+          (subtype? t <integer>)
           (eq? t <c-string>)
           (is-a? t <c-pointer>)
           (is-a? t <c-array>)
@@ -257,7 +257,7 @@
 ;;; https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-160
 
 (define (gen-stub-winx64 port)
-  (define-values (reg-code reg-labels)
+  (define-values [reg-code reg-labels]
     (asm '(func:    (.dataq 0)
            farg0:   (.dataq 0)
            farg1:   (.dataq 0)
@@ -271,11 +271,40 @@
            entry3:  (movq #x0123456789 %r8) ; ditto
            entry2:  (movq #x0123456789 %rdx) ; ditto
            entry1:  (movq #x0123456789 %rcx) ; ditto
-           entry0:  (addq 32 %rsp)           ; %rcx-%r9 save area
+           entry0:  (addq -32 %rsp)           ; %rcx-%r9 save area
                     (call (func:))
-                    (addq -32 %rsp)
+                    (addq 32 %rsp)
                     (ret)
            end:)))
+  ;; Spill case.
+  (define-values [spill-code spill-labels]
+    (asm '(func:    (.dataq 0)
+           farg0:   (.dataq 0)
+           farg1:   (.dataq 0)
+           farg2:   (.dataq 0)
+           farg3:   (.dataq 0)
+           entry:   (movsd (farg3:) %xmm3)
+                    (movsd (farg2:) %xmm2)
+                    (movsd (farg1:) %xmm1)
+                    (movsd (farg0:) %xmm0)
+           init:    (movq #x01234567 %rax)    ; imm32 to be patched
+                    (leaq (spill: %rip) %rsi)
+           loop:    (movq (%rsi) %rdi)
+                    (push %rdi)
+                    (addq 8 %rsi)
+                    (subq 8 %rax)
+                    (jnz loop:)
+           entry4:  (movq #x0123456789 %r9) ; imm64 to be patched
+           entry3:  (movq #x0123456789 %r8) ; ditto
+           entry2:  (movq #x0123456789 %rdx) ; ditto
+           entry1:  (movq #x0123456789 %rcx) ; ditto
+           entry0:  (addq -32 %rsp)           ; %rcx-%r9 save area
+                    (call (func:))
+                    (addq 32 %rsp)
+           epilogue:(addq #x01234567 %rsp)    ; imm32 to be patched
+                    (ret)
+                    (.align 8)
+           spill:   (.dataq 0))))
 
   (define (entry-offsets labels)  ;; numargs -> code vector offset
     (map (cut assq-ref labels <>)
@@ -295,43 +324,61 @@
           ;; TRANSIENT: :radix -> :radix-prefix after the new release
           :controls (make-write-controls :pretty #t :width 75
                                          :base 16 :radix #t))
+  (display ";; Spill-to-stack case" port)
+  (display ";; label    offset\n" port)
+  (dolist [p spill-labels]
+    (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
+  (pprint `(define *winx64-call-spill-code*
+             ',(list->u8vector spill-code))
+          :port port
+          ;; TRANSIENT: :radix -> :radix-prefix after the new release
+          :controls (make-write-controls :pretty #t :width 75
+                                         :base 16 :radix #t))
 
   ;; (call-winx64 <dlptr> args rettype)
   ;;  args : ((type value) ...)
   (pprint
    `(define call-winx64
       (^[ptr args rettype]
-        (let* ([num-iargs (count (^p (%iarg-type? (car p))) args)]
+        ;; Windows x64 ABI uses shared argument count---even though
+        ;; integer args and flonum args use different registers, each args
+        ;; up to 4 consumes the shared slot count, and either one of
+        ;; the registers is used depending on the argument type.
+        ;; We still need to count fargs to determine the entry address.
+        (let* ([num-args (length args)]
                [num-fargs (count (^p (%farg-type? (car p))) args)]
-               [num-spills (+ (max 0 (- num-iargs 4))
-                              (max 0 (- num-fargs 4)))])
+               [num-spills (max 0 (- num-args 4))])
           (if (zero? num-spills)
-            (call-amd64-regs  ptr args num-iargs num-fargs rettype)
-            (error "too many arguments (for now)")))))
+            (call-winx64-regs ptr args num-args num-fargs rettype)
+            (call-winx64-spill ptr args num-args num-fargs num-spills rettype)))))
    :port port)
   (pprint
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (entry-offsets ',(entry-offsets reg-labels))
             (farg-offsets ',(farg-offsets reg-labels)))
-        (^[ptr args num-iargs num-fargs rettype]
+        (^[ptr args num-args num-fargs rettype]
           (let* ([effective-nargs (if (zero? num-fargs)
-                                    num-iargs
+                                    num-args
                                     (+ 4 num-fargs))]
                  [entry (~ entry-offsets effective-nargs)]
                  [patcher
-                  (let loop ([args args] [icount 0] [fcount 0] [r '()])
+                  (let loop ([args args] [count 0] [r '()])
                     (cond [(null? args) r]
-                          [(%iarg-type? t)
-                           (loop (cdr args) (+ icount 1) fcount
+                          [(%iarg-type? (caar args))
+                           (loop (cdr args) (+ count 1)
                                  ;; +2 is offset of immediate field
-                                 (cons `(,(+ (~ entry-offsets (+ 1 icount)) 2)
+                                 (cons `(,(+ (~ entry-offsets (+ 1 count)) 2)
                                          ,@(car args))
                                        r))]
-                          [(%farg-type? t)
-                           (loop (cdr args) icount (+ fcount 1)
-                                 (cons `(,(~ farg-offsets fcount) ,@(car args))
-                                       r))]
+                          [(%farg-type? (caar args))
+                           ;; We load both integer regs and flonum regs.
+                           ;; It matters for variadic function call.
+                           (loop (cdr args) (+ count 1)
+                                 (list* `(,(~ farg-offsets count) ,@(car args))
+                                        `(,(+ (~ entry-offsets (+ 1 count)) 2)
+                                          ,@(car args))
+                                        r))]
                           [else (error "bad arg entry:" (car args))]))])
             (%%call-native entry 0
                            *winx64-call-reg-code*
@@ -339,7 +386,60 @@
                            ,(end-addr reg-labels)
                            entry
                            (list* `(0 ,<void*> ,ptr)
-                                  `(,(+ (~ entry-offsets 0) 1) ,<uint8> ,num-fargs)
+                                  patcher)
+                           rettype)))))
+   :port port)
+  (pprint
+   `(define call-winx64-spill
+      (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
+            (entry-offsets ',(entry-offsets spill-labels))
+            (farg-offsets ',(farg-offsets spill-labels))
+            (entry-addr ,(assq-ref spill-labels 'entry:))
+            (spill-offset (^n (+ ,(assq-ref spill-labels 'spill:)
+                                 (* n 8)))))
+        (^[ptr args num-args num-fargs num-spills rettype]
+          (let* ([patcher
+                  (let loop ([args args] [count 0] [scount 0] [r '()])
+                    (cond [(null? args) r]
+                          [(%iarg-type? (caar args))
+                           (if (< count 4)
+                             (loop (cdr args) (+ count 1) scount
+                                   ;; +2 is offset of immediate field
+                                   (cons `(,(+ (~ entry-offsets (+ count 1)) 2)
+                                           ,@(car args))
+                                         r))
+                             (loop (cdr args) (+ count 1)
+                                   (+ scount 1)
+                                   (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
+                                         r)))]
+                          [(%farg-type? (caar args))
+                           ;; We load both integer regs and flonum regs.
+                           ;; It matters for variadic function call.
+                           (if (< count 4)
+                             (loop (cdr args) (+ count 1) scount
+                                   (list* `(,(~ farg-offsets count) ,@(car args))
+                                          `(,(+ (~ entry-offsets (+ 1 count)) 2)
+                                            ,@(car args))
+                                          r))
+                             (loop (cdr args) (+ count 1)
+                                   (+ scount 1)
+                                   (cons `(,(spill-offset (- num-spills scount 1)) ,@(car args))
+                                         r)))]
+                          [else (error "bad arg entry:" (car args))]))])
+            (%%call-native entry-addr
+                           (+ ,(assq-ref spill-labels 'spill:)
+                              (* num-spills 8))
+                           *winx64-call-spill-code*
+                           entry-addr
+                           ,(assq-ref spill-labels 'spill:)
+                           entry-addr
+                           (list* `(0 ,<void*> ,ptr)
+                                  ;; +3 for movq imm32 offset
+                                  `(,',(+ (assq-ref spill-labels 'init:) 3)
+                                    ,<int32> ,(* 8 num-spills))
+                                  ;; +3 for addq imm32 offset
+                                  `(,',(+ (assq-ref spill-labels 'epilogue:) 3)
+                                    ,<int32> ,(* 8 num-spills))
                                   patcher)
                            rettype)))))
    :port port)

@@ -114,7 +114,16 @@
 ;; call-amd64.  Called at load time from the set! forms emitted by
 ;; with-native-ffi.
 (define (make-native-ffi-proc dlo cfn)
-  (let* ([ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
+  (let* ([native-call (cond-expand
+                       [x86_64
+                        (cond-expand
+                         [gauche.os.windows
+                          (with-module gauche.internal call-winx64)]
+                         [else
+                          (with-module gauche.internal call-amd64)])]
+                       [else
+                        (error "Native FFI is not supported on this platform")])]
+         [ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
          [ret-type   (~ cfn'return-type)]
          [arg-types  (~ cfn'arg-types)]
          [variadic?  (~ cfn'variadic?)]
@@ -142,14 +151,14 @@
                                       ,val))
                                   var-args)])
            (ret-coerce
-            ((with-module gauche.internal call-amd64)
+            (native-call
              ptr
              (append fixed-pairs var-pairs)
              ret-canon))))
       ;; Non-variadic: map all args with their declared types.
       (^ args
          (ret-coerce
-          ((with-module gauche.internal call-amd64)
+          (native-call
            ptr
            (map (^[canon coerce val] (list canon (coerce val)))
                 arg-canons arg-coerce args)

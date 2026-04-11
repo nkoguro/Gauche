@@ -37,9 +37,29 @@ float f_f_f(float x)
     return x/2;
 }
 
+float f_f_fff(float x, float y, float z)
+{
+    return x+y+z;
+}
+
 double f_d_d(double d)
 {
     return d*2;
+}
+
+double f_d_ddd(double x, double y, double z)
+{
+    return x+y+z;
+}
+
+double f_d_ifd(int x, float y, double z)
+{
+    return x*y + x*z;
+}
+
+double f_d_idf(int x, double y, float z)
+{
+    return x*y - x*z;
 }
 
 struct foo *f_pstruct_c_pstruct(struct foo *st, char c)
