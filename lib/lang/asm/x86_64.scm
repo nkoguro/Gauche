@@ -123,9 +123,18 @@
          [patches (asm-template-patches tmpl)])
     ;; Apply each patch whose keyword appears in PARAMS.
     (for-each (match-lambda
+                ;; Integer patch: write value as little-endian bytes.
                 [(kw offset width)
                  (and-let1 val (assq kw params)
-                   (patch-bytes! bytes offset width (cdr val)))])
+                   (patch-bytes! bytes offset width (cdr val)))]
+                ;; movs_ patch: translate symbol movsd->#xf2, movss->#xf3.
+                [(kw offset 1 'movs_)
+                 (let* ([v   (assq-ref params kw 'movsd)]
+                        [pfx (case v
+                               [(movsd) #xf2]
+                               [(movss) #xf3]
+                               [else (error "movs_ value must be movsd or movss:" v)])])
+                   (u8vector-set! bytes offset pfx))])
               patches)
     (values bytes labels)))
 
@@ -300,6 +309,15 @@
     [`(movsd (mem . ,x) (sse ,dst)) (! (opc'(#xf2 #x0f #x10)) (reg dst) (mem x))]
     [`(movsd (sse ,src) (mem . ,x)) (! (opc'(#xf2 #x0f #x11)) (reg src) (mem x))]
 
+    ;; movs_ -- switchable movsd/movss: prefix byte (#xf2/#xf3) is patchable.
+    ;; Default encoding uses movsd (#xf2); asm-instantiate flips to #xf3 for movss.
+    [`((movs_ ,kw) (sse ,src) (sse ,dst))
+     (op-movs_ kw (! (opc '(#xf2 #x0f #x10)) (reg dst) (r/m-reg dst)))]
+    [`((movs_ ,kw) (mem . ,x) (sse ,dst))
+     (op-movs_ kw (! (opc '(#xf2 #x0f #x10)) (reg dst) (mem x)))]
+    [`((movs_ ,kw) (sse ,src) (mem . ,x))
+     (op-movs_ kw (! (opc '(#xf2 #x0f #x11)) (reg src) (mem x)))]
+
     ;; calculations
     [('addq _ _)                   (op-add pinsn 0)]
     [('orq _ _)                    (op-add pinsn 1)]
@@ -363,6 +381,20 @@
                Consider using leaq label(%rip) instead.\n")
         ((! w (rex.b dst) (opc+rq #xb8 dst) (imm64 laddr)) 0 0))
       ((! w (rex.b dst) (opc+rq #xb8 dst) (imm64 0)) 0 0)))) ;; dummy
+
+;; op-movs_ :: keyword, closure -> closure
+;;   Wraps an inner expand-spec closure for a movsd instruction.  In pass 2,
+;;   records a patch of kind 'movs_ at the prefix byte (offset 0 within the
+;;   instruction, i.e. addr - length(bytes)).
+;;   asm-instantiate translates movsd->#xf2, movss->#xf3 when applying it.
+(define (op-movs_ kw inner)
+  (^[a t]
+    (let1 bytes (inner a t)
+      (when (and t (patch-collector))
+        (let1 acc (patch-collector)
+          (set-car! acc (cons (list kw (- a (length bytes)) 1 'movs_)
+                              (car acc)))))
+      bytes)))
 
 ;; addq family
 ;;  opcode variations are derived from a single number, regc.

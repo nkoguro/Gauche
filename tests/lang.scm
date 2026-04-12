@@ -331,7 +331,7 @@
              #f
              (eq? b1 b2)))))
 
-;; --- Stage 2: immediate-value placeholders ---
+;; --- immediate-value placeholders ---
 
 ;; imm64 placeholder: movq (imm64 :val), %rax
 ;; Encoding: REX.W(48) B8 <8 bytes immediate>  -- 10 bytes total
@@ -421,7 +421,7 @@
            '((start . 0))
            labels)))
 
-;; --- Stage 3: data-directive placeholders ---
+;; --- data-directive placeholders ---
 
 ;; .dataq placeholder: 8-byte hole
 (let ()
@@ -477,6 +477,74 @@
   (receive (b _) (asm-instantiate tmpl '())
     (test* ".dataq literal unchanged"
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
+           (u8vector->list b))))
+
+;; --- movs_ instruction-variant placeholder ---
+
+;; ((movs_ :op) %xmm0 %xmm1)  -- sse->sse form
+;; Default encoding: F2 0F 10 ModRM
+;; ModRM: mod=3(reg-reg), reg=1(xmm1/dst), r/m=1(xmm1/dst) -> 0b11_001_001 = #xc9
+(let ()
+  (define tmpl (asm-template '(((movs_ :op) %xmm0 %xmm1))))
+  ;; Default is movsd
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "movs_ sse->sse default (movsd)"
+           '(#xf2 #x0f #x10 #xc9)
+           (u8vector->list b)))
+  ;; Explicit movsd
+  (receive (b _) (asm-instantiate tmpl '((:op . movsd)))
+    (test* "movs_ sse->sse explicit movsd"
+           '(#xf2 #x0f #x10 #xc9)
+           (u8vector->list b)))
+  ;; Switch to movss
+  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+    (test* "movs_ sse->sse switched to movss"
+           '(#xf3 #x0f #x10 #xc9)
+           (u8vector->list b)))
+  ;; Re-instantiate as movsd again (template not mutated)
+  (receive (b _) (asm-instantiate tmpl '((:op . movsd)))
+    (test* "movs_ sse->sse back to movsd"
+           '(#xf2 #x0f #x10 #xc9)
+           (u8vector->list b))))
+
+;; ((movs_ :op) (%rax) %xmm1)  -- mem->sse form
+;; Default encoding: F2 0F 10 ModRM
+;; ModRM: mod=0, reg=1(xmm1/dst), r/m=0(%rax) -> 0b00_001_000 = #x08
+(let ()
+  (define tmpl (asm-template '(((movs_ :op) (%rax) %xmm1))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "movs_ mem->sse default (movsd)"
+           '(#xf2 #x0f #x10 #x08)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+    (test* "movs_ mem->sse switched to movss"
+           '(#xf3 #x0f #x10 #x08)
+           (u8vector->list b))))
+
+;; ((movs_ :op) %xmm0 (%rax))  -- sse->mem form
+;; Default encoding: F2 0F 11 ModRM
+;; ModRM: mod=0, reg=0(xmm0/src), r/m=0(%rax) -> #x00
+(let ()
+  (define tmpl (asm-template '(((movs_ :op) %xmm0 (%rax)))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "movs_ sse->mem default (movsd)"
+           '(#xf2 #x0f #x11 #x00)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+    (test* "movs_ sse->mem switched to movss"
+           '(#xf3 #x0f #x11 #x00)
+           (u8vector->list b))))
+
+;; movs_ combined with other placeholders in a sequence
+(let ()
+  (define tmpl (asm-template '((.dataq :fn-ptr)
+                                ((movs_ :variant) (%rax) %xmm0)
+                                (ret))))
+  (receive (b _) (asm-instantiate tmpl `((:fn-ptr . #xdeadbeef) (:variant . movss)))
+    (test* "movs_ combined with .dataq placeholder"
+           (append '(#xef #xbe #xad #xde 0 0 0 0) ; .dataq :fn-ptr
+                   '(#xf3 #x0f #x10 #x00)          ; movss (%rax),%xmm0
+                   '(#xc3))                         ; ret
            (u8vector->list b))))
 
 ;;----------------------------------------------------------------------
