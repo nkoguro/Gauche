@@ -1,5 +1,9 @@
 2026-04-11  Shiro Kawai  <shiro@acm.org>
 
+	* lib/lang/asm/x86_64.scm: Split asm to two stages, template
+	  creation and instantiation.  Also make asm return u8vector
+	  instead of list of bytes.
+
 	* src/load.c (Scm_CloseDLO): Change API to take 'force' flag.
 	  If TRUE, we close DLO even if it is initialized---some Scheme
 	  object may retain reference that would become stale by closing,

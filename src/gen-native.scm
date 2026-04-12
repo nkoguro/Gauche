@@ -112,8 +112,7 @@
   (display ";; label    offset\n" port)
   (dolist [p reg-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *amd64-call-reg-code*
-             ',(list->u8vector reg-code))
+  (pprint `(define *amd64-call-reg-code* ',reg-code)
           :port port
           ;; TRANSIENT: :radix -> :radix-prefix after the new release
           :controls (make-write-controls :pretty #t :width 75
@@ -123,8 +122,7 @@
   (display ";; label    offset\n" port)
   (dolist [p spill-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *amd64-call-spill-code*
-             ',(list->u8vector spill-code))
+  (pprint `(define *amd64-call-spill-code* ',spill-code)
           :port port
           ;; TRANSIENT: :radix -> :radix-prefix after the new release
           :controls (make-write-controls :pretty #t :width 75
@@ -337,8 +335,7 @@
   (display ";; label    offset\n" port)
   (dolist [p reg-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *winx64-call-reg-code*
-             ',(list->u8vector reg-code))
+  (pprint `(define *winx64-call-reg-code* ',reg-code)
           :port port
           ;; TRANSIENT: :radix -> :radix-prefix after the new release
           :controls (make-write-controls :pretty #t :width 75
@@ -347,8 +344,7 @@
   (display ";; label    offset\n" port)
   (dolist [p spill-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *winx64-call-spill-code*
-             ',(list->u8vector spill-code))
+  (pprint `(define *winx64-call-spill-code* ',spill-code)
           :port port
           ;; TRANSIENT: :radix -> :radix-prefix after the new release
           :controls (make-write-controls :pretty #t :width 75
