@@ -1161,7 +1161,7 @@
          )]))
 
   (do-test ())                          ;default
-  (when (#/^x86_64-.*linux-gnu$/ (gauche-architecture))
+  (when (#/^x86_64-/ (gauche-architecture))
     (do-test (:subsystem :native)))
   )
 

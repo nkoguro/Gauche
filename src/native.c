@@ -267,10 +267,10 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                 int unsignedp = Scm_NativeTypeUnsignedP(nt);
                 switch (nt->size) {
                 case 1:
-                    pun.i64 = unsignedp
-                        ? (int64_t)Scm_GetIntegerU8(val)
-                        : (int64_t)Scm_GetInteger8(val);
-                    patch1(codepad, pos, pun.bi64, 1, limit);
+                    pun.bn[0] = unsignedp
+                        ? Scm_GetIntegerU8(val)
+                        : (uint8_t)Scm_GetInteger8(val);
+                    patch1(codepad, pos, pun.bn, 1, limit);
                     break;
                 case 2:
                     pun.i64 = unsignedp

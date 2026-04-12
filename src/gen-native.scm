@@ -378,9 +378,13 @@
             (farg-offsets ',(farg-offsets reg-labels))
             (movsX-offsets ',(movsX-offsets reg-labels)))
         (^[ptr args num-args num-fargs rettype]
-          (let* ([effective-nargs (if (zero? num-fargs)
+          (let* (;; for effective-nargs calculation, we need to consider
+                 ;; unused xmm regs for preceding integral args.
+                 ;; e.g. if args are int, int, double, we need up to entry4f2
+                 ;; even we only have 1 fargs.
+                 [effective-nargs (if (zero? num-fargs)
                                     num-args
-                                    (+ 4 num-fargs))]
+                                    (+ 4 num-args))]
                  [entry (~ entry-offsets effective-nargs)]
                  [patcher
                   (let loop ([args args] [count 0] [r '()])
