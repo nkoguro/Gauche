@@ -46,7 +46,8 @@
   (use srfi.42)
   (use lang.asm.regset)
   (use util.match)
-  (export asm asm-template asm-template? asm-instantiate asm-dump <asm-template>)
+  (export asm asm-template asm-template? asm-instantiate asm-dump <asm-template>
+          asm-template-bytes asm-template-labels asm-template-patches)
   )
 (select-module lang.asm.x86_64)
 
