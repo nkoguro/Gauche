@@ -38,6 +38,7 @@
 ;; to lang.asm.  The API will very likely change then.
 
 (define-module lang.asm.x86_64
+  (use gauche.record)
   (use gauche.uvector)
   (use gauche.sequence)
   (use scheme.list)
@@ -45,9 +46,14 @@
   (use srfi.42)
   (use lang.asm.regset)
   (use util.match)
-  (export asm asm-dump)
+  (export asm asm-template asm-template? asm-instantiate asm-dump <asm-template>)
   )
 (select-module lang.asm.x86_64)
+
+;; When non-#f, holds a mutable cell (a one-element list) into which
+;; hole annotations are cons'd during pass 2.  Bound via parameterize
+;; inside asm-template; #f outside (so non-template assembly collects nothing).
+(define patch-collector (make-parameter #f))
 
 ;; Instruction notation
 ;;   (<opcode>)
@@ -81,15 +87,60 @@
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
-;; asm  :: [Insn] -> [Byte], [(label . addr)]
-;;   Main entry.  Takes a sequence of assembly (in S-expr), and returns
-;;   two values: sequence of machine code bytes, and an alist of label to
-;;   relative address mapping.
+;; Template record.
+;;   bytes   - u8vector of assembled machine code (zeros at placeholder holes)
+;;   labels  - alist of (symbol . byte-offset)
+;;   patches - list of (keyword byte-offset byte-width) describing holes
+;;             (empty until placeholder support is added in later stages)
+(define-record-type <asm-template>
+  (make-asm-template bytes labels patches)
+  asm-template?
+  (bytes   asm-template-bytes)
+  (labels  asm-template-labels)
+  (patches asm-template-patches))
+
+;; asm-template :: [Insn] -> <asm-template>
+;;   First stage of assembly.  Builds the full byte sequence with zeros at
+;;   placeholder holes, and records where each hole is.
+(define (asm-template insns)
+  (let* ([a-map   (run-pass1 insns)]
+         [acc     (list '())]           ; mutable cell: (list <patch-list>)
+         [bss     (parameterize ([patch-collector acc])
+                    (run-pass2 a-map))]
+         [bytes   (list->u8vector (concatenate bss))]
+         [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
+         [patches (car acc)])
+    (make-asm-template bytes labels patches)))
+
+;; asm-instantiate :: <asm-template>, AList -> u8vector, AList
+;;   Second stage.  Applies patches from PARAMS (an alist of keyword->value)
+;;   and returns the finalised byte vector and label alist.
+;;   The template record is never mutated; a fresh u8vector is returned.
+(define (asm-instantiate tmpl params)
+  (let* ([src     (asm-template-bytes tmpl)]
+         [bytes   (u8vector-copy src)]
+         [labels  (asm-template-labels tmpl)]
+         [patches (asm-template-patches tmpl)])
+    ;; Apply each patch whose keyword appears in PARAMS.
+    (for-each (match-lambda
+                [(kw offset width)
+                 (and-let1 val (assq kw params)
+                   (patch-bytes! bytes offset width (cdr val)))])
+              patches)
+    (values bytes labels)))
+
+;; patch-bytes! :: u8vector, int, int, int -> ()
+;;   Write VALUE into BYTES starting at OFFSET in little-endian, WIDTH bytes.
+(define (patch-bytes! bytes offset width value)
+  (let loop ([i 0] [v value])
+    (when (< i width)
+      (u8vector-set! bytes (+ offset i) (logand v #xff))
+      (loop (+ i 1) (ash v -8)))))
+
+;; asm  :: [Insn] -> u8vector, [(label . addr)]
+;;   Main entry (backward-compatible wrapper).
 (define (asm insns)
-  (let* ([a-map (run-pass1 insns)]
-         [bss   (run-pass2 a-map)])
-    (values (concatenate bss) ; instructions
-            (filter-map (^p (and (symbol? (car p)) p)) a-map))))
+  (asm-instantiate (asm-template insns) '()))
 
 ;; run-pass1 :: [Insn] -> [(p, addr)]
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
@@ -100,9 +151,9 @@
   (values-ref
    (map-accum (match-lambda*
                 [((? symbol? label) addr) (values (cons label addr) addr)]
-                [(insn addr) (let* ((p (asm1 (parse-insn insn)))
-                                    (dummy (p addr #f))
-                                    (naddr (+ addr (length dummy))))
+                [(insn addr) (let* ([p (asm1 (parse-insn insn))]
+                                    [dummy (p addr #f)]
+                                    [naddr (+ addr (length dummy))])
                                (values (cons p naddr) naddr))])
               0 insns)
    0))
@@ -121,9 +172,10 @@
 ;; asm-dump :: [Insn] -> ()
 ;;   For debugging.  Show the assembly results in human-readable way.
 (define (asm-dump insns)
-  (let* ([a-map (run-pass1 insns)]
-         [bss   (run-pass2 a-map)])
-    (let loop ((insns insns) (a-map a-map) (bss bss))
+  (let* ([tmpl   (asm-template insns)]
+         [a-map  (run-pass1 insns)]
+         [bss    (run-pass2 a-map)])
+    (let loop ([insns insns] [a-map a-map] [bss bss])
       (unless (null? insns)
         (match-let1 (_ . addr) (car a-map)
           (if (symbol? (car insns))     ;label
@@ -271,7 +323,11 @@
     [('incq _)                     (op-inc pinsn 0)]
     [('decq _)                     (op-inc pinsn 1)]
 
-    ;; embedded data
+    ;; embedded data -- placeholder forms (single keyword argument)
+    [`(.datab (hole ,kw))          (data-hole kw 1)]
+    [`(.datal (hole ,kw))          (data-hole kw 4)]
+    [`(.dataq (hole ,kw))          (data-hole kw 8)]
+    ;; embedded data -- literal forms
     [`(.datab ,(_ i) ...)          (^(a t) (append-map int8 i))]
     [`(.datal ,(_ i) ...)          (^(a t) (append-map int32 i))]
     [`(.dataq ,(_ i) ...)          (^(a t) (append-map int64 i))]
@@ -349,6 +405,16 @@
     [`(,_ (mem . ,x))           (! w (opc #xff) (reg regc) (mem x))]
     ))
 
+;; data-hole :: keyword, int -> closure
+;;   Returns a closure for a data-directive placeholder.  Emits WIDTH zero
+;;   bytes and (in pass 2) records a patch annotation into patch-collector.
+(define (data-hole kw width)
+  (^[a t]
+    (when (and t (patch-collector))
+      (let1 acc (patch-collector)
+        (set-car! acc (cons (list kw (- a width) width) (car acc)))))
+    (make-list width 0)))
+
 ;; for align
 (define (round-up addr modu)
   (* (quotient (+ addr modu -1) modu) modu))
@@ -367,6 +433,7 @@
     [(? reg64?)                     `(reg ,(regnum opr))]
     [(? regsse?)                    `(sse ,(ssenum opr))]
     [(? reg8?)                      `(reg8 ,(regnum8 opr))]
+    [(? keyword? kw)                `(hole ,kw)]
     [(? symbol?)                    `(label ,opr)]
     [(? string?)                    `(str ,opr)] ; C string literal
     [(? imm8?)                      `(imm8 ,opr)]
@@ -536,9 +603,30 @@
       ,@(if (zero? disp) '() `(:displacement ,(int8/32 disp)))
       ,@s)))
 
-(define (imm8 i)   (^[s a t] `(:immediate ,(int8 i) ,@s)))
-(define (imm32 i)  (^[s a t] `(:immediate ,(int32 i) ,@s)))
-(define (imm64 i)  (^[s a t] `(:immediate ,(int64 i) ,@s)))
+;; imm8, imm32, imm64 -- immediate-value modifiers.
+;;   When I is a keyword (:name), it is a placeholder: emit zeros of the
+;;   appropriate width and record a patch annotation in patch-collector.
+;;   The patch is recorded only in pass 2 (T is non-#f there).
+(define (imm8 i)
+  (^[s a t]
+    (when (and (keyword? i) t (patch-collector))
+      (let1 acc (patch-collector)
+        (set-car! acc (cons (list i (- a 1) 1) (car acc)))))
+    `(:immediate ,(if (keyword? i) '(0) (int8 i)) ,@s)))
+
+(define (imm32 i)
+  (^[s a t]
+    (when (and (keyword? i) t (patch-collector))
+      (let1 acc (patch-collector)
+        (set-car! acc (cons (list i (- a 4) 4) (car acc)))))
+    `(:immediate ,(if (keyword? i) '(0 0 0 0) (int32 i)) ,@s)))
+
+(define (imm64 i)
+  (^[s a t]
+    (when (and (keyword? i) t (patch-collector))
+      (let1 acc (patch-collector)
+        (set-car! acc (cons (list i (- a 8) 8) (car acc)))))
+    `(:immediate ,(if (keyword? i) '(0 0 0 0 0 0 0 0) (int64 i)) ,@s)))
 
 
 (define *regs8*  '(%al %cl %dl %bl %ah %ch %dh %bh))

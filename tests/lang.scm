@@ -6,6 +6,7 @@
 ;;;
 
 (use gauche.test)
+(use gauche.uvector)
 (test-start "lang.*")
 (use util.match)
 
@@ -22,11 +23,13 @@
 
 ;; Helper: assemble and return (bytes . label-alist) for comparison.
 ;; Label alist is sorted by address for deterministic comparison.
+;; bytes is compared as a list for readability.
 (define (t-asm name insns expected-bytes expected-labels)
   (test* name
          (cons expected-bytes expected-labels)
          (receive (bytes labels) (asm insns)
-           (cons bytes (sort labels (^[a b] (< (cdr a) (cdr b))))))))
+           (cons (u8vector->list bytes)
+                 (sort labels (^[a b] (< (cdr a) (cdr b))))))))
 
 ;; --- Trivial single-byte instructions ---
 
@@ -224,11 +227,11 @@
 ;; layout: loop[0] incq(3) jmp[3](2) end[5]
 ;; jmp offset = 0 - 5 = -5 = #xfb
 (t-asm "backward jmp"
-       '(loop
+       '(loop:
          (incq %rax)    ; 3 bytes  [addr 0..2]
-         (jmp loop))    ; 2 bytes  [addr 3..4], end addr=5
+         (jmp loop:))   ; 2 bytes  [addr 3..4], end addr=5
        '(#x48 #xff #xc0 #xeb #xfb)
-       '((loop . 0)))
+       '((loop: . 0)))
 
 ;; --- Labels: forward reference ---
 
@@ -236,11 +239,11 @@
 ;; layout: jne[0](2) movq[2](3) skip[5]
 ;; jne offset = 5 - 2 = 3
 (t-asm "forward jne"
-       '((jne skip)       ; 2 bytes  [addr 0..1], end addr=2
+       '((jne skip:)      ; 2 bytes  [addr 0..1], end addr=2
          (movq %rax %rax) ; 3 bytes  [addr 2..4], end addr=5
-         skip)
+         skip:)
        '(#x75 #x03 #x48 #x89 #xc0)
-       '((skip . 5)))
+       '((skip: . 5)))
 
 ;; --- Labels: long (32-bit) conditional jump ---
 
@@ -248,11 +251,11 @@
 ;; layout: jel[0](6) movq[6](3) far[9]
 ;; jel offset = 9 - 6 = 3
 (t-asm "forward jel (long je)"
-       '((jel far)        ; 6 bytes  [addr 0..5], end addr=6
+       '((jel far:)       ; 6 bytes  [addr 0..5], end addr=6
          (movq %rax %rax) ; 3 bytes  [addr 6..8], end addr=9
-         far)
+         far:)
        '(#x0f #x84 #x03 #x00 #x00 #x00 #x48 #x89 #xc0)
-       '((far . 9)))
+       '((far: . 9)))
 
 ;; --- Labels: long unconditional jump ---
 
@@ -260,11 +263,11 @@
 ;; layout: jmpl[0](5) movq[5](3) far[8]
 ;; offset = 8 - 5 = 3
 (t-asm "forward jmpl (long jmp)"
-       '((jmpl far)       ; 5 bytes  [addr 0..4], end addr=5
+       '((jmpl far:)      ; 5 bytes  [addr 0..4], end addr=5
          (movq %rax %rax) ; 3 bytes  [addr 5..7], end addr=8
-         far)
+         far:)
        '(#xe9 #x03 #x00 #x00 #x00 #x48 #x89 #xc0)
-       '((far . 8)))
+       '((far: . 8)))
 
 ;; --- Labels: multiple labels, backward and forward ---
 
@@ -272,16 +275,16 @@
 ;; entry[0] push(1) movq(3) loop[4] decq(3) jne(2) pop[9](1) ret[10](1)
 ;; jne loop: offset = 4 - 9 = -5 = #xfb
 (t-asm "multiple labels"
-       '(entry
+       '(entry:
          (push %rbp)       ; 1 byte   [addr 0], end=1
          (movq %rsp %rbp)  ; 3 bytes  [addr 1..3], end=4
-         loop
+         loop:
          (decq %rcx)       ; 3 bytes  [addr 4..6], end=7
-         (jne loop)        ; 2 bytes  [addr 7..8], end=9
+         (jne loop:)       ; 2 bytes  [addr 7..8], end=9
          (pop %rbp)        ; 1 byte   [addr 9], end=10
          (ret))            ; 1 byte   [addr 10], end=11
        '(#x55 #x48 #x89 #xe5 #x48 #xff #xc9 #x75 #xfb #x5d #xc3)
-       '((entry . 0) (loop . 4)))
+       '((entry: . 0) (loop: . 4)))
 
 ;; --- Labels: RIP-relative memory access ---
 
@@ -289,12 +292,192 @@
 ;; movq is 7 bytes [addr 0..6], end addr=7; data label at addr=7.
 ;; RIP-relative offset = 7 - 7 = 0  → disp32 = 0
 (t-asm "rip-relative load"
-       '((movq (data %rip) %rax) ; 7 bytes [addr 0..6], end=7
-         data
-         (.dataq (imm64 42)))    ; 8 bytes [addr 7..14]
+       '((movq (data: %rip) %rax) ; 7 bytes [addr 0..6], end=7
+         data:
+         (.dataq (imm64 42)))     ; 8 bytes [addr 7..14]
        '(#x48 #x8b #x05 #x00 #x00 #x00 #x00
          #x2a #x00 #x00 #x00 #x00 #x00 #x00 #x00)
-       '((data . 7)))
+       '((data: . 7)))
+
+;; --- asm-template / asm-instantiate round-trip (no placeholders) ---
+
+(let ()
+  (define tmpl (asm-template '((movq %rax %rcx))))
+  (test* "asm-template type" #t (asm-template? tmpl))
+  (receive (bytes labels) (asm-instantiate tmpl '())
+    (test* "asm-template round-trip bytes"  '(#x48 #x89 #xc1) (u8vector->list bytes))
+    (test* "asm-template round-trip labels" '() labels)))
+
+(let ()
+  (define tmpl (asm-template '(entry
+                                (push %rbp)
+                                (movq %rsp %rbp)
+                                (ret))))
+  (receive (bytes labels) (asm-instantiate tmpl '())
+    (test* "asm-template with labels bytes"
+           '(#x55 #x48 #x89 #xe5 #xc3)
+           (u8vector->list bytes))
+    (test* "asm-template with labels alist"
+           '((entry . 0))
+           labels)))
+
+;; Verify that asm-instantiate does not mutate the template's byte vector
+;; (same template can be instantiated multiple times).
+(let ()
+  (define tmpl (asm-template '((ret))))
+  (receive (b1 _) (asm-instantiate tmpl '())
+    (receive (b2 _) (asm-instantiate tmpl '())
+      (test* "asm-instantiate returns fresh vector"
+             #f
+             (eq? b1 b2)))))
+
+;; --- Stage 2: immediate-value placeholders ---
+
+;; imm64 placeholder: movq (imm64 :val), %rax
+;; Encoding: REX.W(48) B8 <8 bytes immediate>  -- 10 bytes total
+(let ()
+  (define tmpl (asm-template '((movq (imm64 :val) %rax))))
+  ;; Default instantiation (zero)
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "imm64 placeholder default"
+           '(#x48 #xb8 0 0 0 0 0 0 0 0)
+           (u8vector->list b)))
+  ;; Instantiate with a real 64-bit value
+  (receive (b _) (asm-instantiate tmpl `((:val . #x0102030405060708)))
+    (test* "imm64 placeholder filled"
+           '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
+           (u8vector->list b)))
+  ;; Re-instantiate with a different value to confirm immutability of template
+  (receive (b _) (asm-instantiate tmpl `((:val . 1)))
+    (test* "imm64 placeholder re-instantiate"
+           '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
+           (u8vector->list b))))
+
+;; imm64 placeholder into an extended register: movq (imm64 :v), %r10
+;; Encoding: REX.W+B(49) BA <8 bytes> -- 10 bytes
+(let ()
+  (define tmpl (asm-template '((movq (imm64 :v) %r10))))
+  (receive (b _) (asm-instantiate tmpl `((:v . #x0102030405060708)))
+    (test* "imm64 placeholder %r10"
+           '(#x49 #xba #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
+           (u8vector->list b))))
+
+;; imm32 placeholder: movq (imm32 :x), %rbx
+;; Encoding: REX.W(48) C7 /0 ModRM(C3) <4 bytes> -- 7 bytes total
+(let ()
+  (define tmpl (asm-template '((movq (imm32 :x) %rbx))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "imm32 placeholder default"
+           '(#x48 #xc7 #xc3 0 0 0 0)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl '((:x . 1000)))
+    (test* "imm32 placeholder filled"
+           '(#x48 #xc7 #xc3 #xe8 #x03 #x00 #x00)
+           (u8vector->list b))))
+
+;; imm8 placeholder: movb (imm8 :n), %al
+;; Encoding: B0 <1 byte> -- 2 bytes total
+(let ()
+  (define tmpl (asm-template '((movb (imm8 :n) %al))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* "imm8 placeholder default"
+           '(#xb0 0)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl '((:n . 42)))
+    (test* "imm8 placeholder filled"
+           '(#xb0 #x2a)
+           (u8vector->list b))))
+
+;; Multiple placeholders in one template, including a non-placeholder instruction
+(let ()
+  (define tmpl (asm-template '((movq (imm64 :fn) %rax)
+                               (movb (imm8  :nb) %cl)
+                               (ret))))
+  (receive (b _) (asm-instantiate tmpl `((:fn . #xdeadbeef00112233)
+                                         (:nb . 7)))
+    (test* "multiple placeholders"
+           (append '(#x48 #xb8 #x33 #x22 #x11 #x00 #xef #xbe #xad #xde)
+                   '(#xb1 #x07)
+                   '(#xc3))
+           (u8vector->list b)))
+  ;; Partial instantiation: only :fn supplied, :nb stays 0
+  (receive (b _) (asm-instantiate tmpl `((:fn . 1)))
+    (test* "partial instantiation"
+           (append '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
+                   '(#xb1 0)
+                   '(#xc3))
+           (u8vector->list b))))
+
+;; Placeholder in a template that also has labels
+(let ()
+  (define tmpl (asm-template '(start
+                               (movq (imm64 :ptr) %rax)
+                               (ret))))
+  (receive (b labels) (asm-instantiate tmpl `((:ptr . #xff)))
+    (test* "placeholder with label bytes"
+           '(#x48 #xb8 #xff 0 0 0 0 0 0 0 #xc3)
+           (u8vector->list b))
+    (test* "placeholder with label labels"
+           '((start . 0))
+           labels)))
+
+;; --- Stage 3: data-directive placeholders ---
+
+;; .dataq placeholder: 8-byte hole
+(let ()
+  (define tmpl (asm-template '((.dataq :addr))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* ".dataq placeholder default"
+           '(0 0 0 0 0 0 0 0)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl `((:addr . #x0102030405060708)))
+    (test* ".dataq placeholder filled"
+           '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
+           (u8vector->list b))))
+
+;; .datal placeholder: 4-byte hole
+(let ()
+  (define tmpl (asm-template '((.datal :v))))
+  (receive (b _) (asm-instantiate tmpl `((:v . #xdeadbeef)))
+    (test* ".datal placeholder filled"
+           '(#xef #xbe #xad #xde)
+           (u8vector->list b))))
+
+;; .datab placeholder: 1-byte hole
+(let ()
+  (define tmpl (asm-template '((.datab :b))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* ".datab placeholder default" '(0) (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl '((:b . #xa5)))
+    (test* ".datab placeholder filled" '(#xa5) (u8vector->list b))))
+
+;; Mix: placeholder data following a real instruction
+(let ()
+  (define tmpl (asm-template '((ret) (.datal :v))))
+  (receive (b _) (asm-instantiate tmpl '((:v . #xdeadbeef)))
+    (test* ".datal placeholder after ret"
+           '(#xc3 #xef #xbe #xad #xde)
+           (u8vector->list b))))
+
+;; Mix: instruction placeholder and data placeholder sharing one keyword
+(let ()
+  (define tmpl (asm-template '((.dataq :fn-ptr)
+                                (movq (imm64 :fn-ptr) %rax)
+                                (ret))))
+  (receive (b _) (asm-instantiate tmpl `((:fn-ptr . #x0102030405060708)))
+    (test* "data and imm64 placeholder same keyword"
+           (append '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; .dataq
+                   '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; movq
+                   '(#xc3))                                               ; ret
+           (u8vector->list b))))
+
+;; Existing literal data forms still work unchanged
+(let ()
+  (define tmpl (asm-template '((.dataq (imm64 #x0102030405060708)))))
+  (receive (b _) (asm-instantiate tmpl '())
+    (test* ".dataq literal unchanged"
+           '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
+           (u8vector->list b))))
 
 ;;----------------------------------------------------------------------
 (test-section "lang.c")
