@@ -69,4 +69,4 @@
       ;; Arrange cleanup
       (sys-unlink c-file)
       (sys-unlink o-file)
-      (sys-unlink-eventually dlo so-file 1))))
+      (sys-unlink-eventually dlo 1))))

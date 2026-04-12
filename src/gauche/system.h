@@ -288,8 +288,7 @@ SCM_EXTERN int    Scm_Mkstemp(char *tmpl);
 SCM_EXTERN ScmObj Scm_SysMkstemp(ScmString *tmpl);
 SCM_EXTERN ScmObj Scm_SysMkdtemp(ScmString *tmpl);
 
-SCM_EXTERN void   Scm_UnlinkEventually(ScmObj handle, ScmString *path,
-                                       int unlink_empty_dirs);
+SCM_EXTERN void   Scm_UnlinkEventually(ScmObj handle, int unlink_empty_dirs);
 SCM_EXTERN void   Scm_FinishDeferredUnlink(void);
 
 SCM_EXTERN ScmObj Scm_Environ(void);

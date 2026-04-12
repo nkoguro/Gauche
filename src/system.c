@@ -3319,10 +3319,23 @@ static void unlink_with_dirs(ScmString *path, int unlink_empty_dirs)
     }
 }
 
-void Scm_UnlinkEventually(ScmObj handle, ScmString *path, int unlink_empty_dirs)
+void Scm_UnlinkEventually(ScmObj handle, int unlink_empty_dirs)
 {
-    if (!SCM_PORTP(handle) && !SCM_DLOBJP(handle)) {
-        Scm_Error("port or dlobj required, but got: %S", handle);
+    ScmString *path = NULL;
+    if (SCM_PORTP(handle)) {
+        if (SCM_PORT_TYPE(handle) != SCM_PORT_FILE) {
+            Scm_Error("Non-file port can't be unlinked: %S", handle);
+        }
+        ScmObj n = Scm_PortName(SCM_PORT(handle));
+        if (!SCM_STRINGP(n)) {
+            Scm_Error("Can't get pathname of port to unlink: %S", handle);
+        }
+        path = SCM_STRING(n);
+    } else if (SCM_DLOBJP(handle)) {
+        path = SCM_STRING(Scm_DLObjPath(SCM_DLOBJ(handle)));
+    }
+    if (path == NULL) {
+        Scm_Error("port or dlobj required to unlink, but got: %S", handle);
     }
 #if !defined(GAUCHE_WINDOWS)
     unlink_with_dirs(path, unlink_empty_dirs);

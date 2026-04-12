@@ -812,11 +812,16 @@ ScmObj Scm_CallInitFunction(ScmDLObj *dlo, ScmString *initfn_name)
     return SCM_UNDEFINED;
 }
 
+ScmObj Scm_DLObjPath(ScmDLObj *dlo)
+{
+    return SCM_OBJ(SCM_DLOBJ(dlo)->path);
+}
+
 /* Expose dlobj to Scheme world */
 
 static ScmObj dlobj_path_get(ScmObj obj)
 {
-    return SCM_OBJ(SCM_DLOBJ(obj)->path);
+    return Scm_DLObjPath(SCM_DLOBJ(obj));
 }
 
 static ScmObj dlobj_loaded_get(ScmObj obj)

@@ -1301,10 +1301,10 @@
         (return '#f))
       (return '#t))))
 
-(define-cproc sys-unlink-eventually (handle pathname::<string>
+(define-cproc sys-unlink-eventually (handle
                                      :optional (unlink-empty-dirs::<int> 0))
   ::<void>
-  (Scm_UnlinkEventually handle pathname unlink-empty-dirs))
+  (Scm_UnlinkEventually handle unlink-empty-dirs))
 
 (define-cproc sys-isatty (port_or_fd) ::<boolean>
   (let* ([fd::int (Scm_GetPortFd port_or_fd FALSE)])
