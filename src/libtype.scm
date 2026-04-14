@@ -206,6 +206,7 @@
     (c-type-name :type <const-cstring>)
     (size :type <size_t>)
     (alignment :type <size_t>)
+    (unsigned? :type <boolean> :c-name "unsigned_p")
     (c-typecheck-name :type <const-cstring>)
     (c-boxer-name :type <const-cstring>)
     (c-unboxer-name :type <const-cstring>))
