@@ -451,6 +451,38 @@
   (receive (b _) (asm-instantiate tmpl `((:b ,<uint8> #xa5)))
     (test* ".datab placeholder filled" '(#xa5) (u8vector->list b))))
 
+;; .datal placeholder with <float>
+(let ()
+  (define tmpl (asm-template '((.datal :x))))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<float> 1.0)))
+    (test* ".datal <float> 1.0"
+           '(#x00 #x00 #x80 #x3f)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<float> -2.5)))
+    (test* ".datal <float> -2.5"
+           '(#x00 #x00 #x20 #xc0)
+           (u8vector->list b))))
+
+;; .dataq placeholder with <float> and <double>
+(let ()
+  (define tmpl (asm-template '((.dataq :x))))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<float> 1.0)))
+    (test* ".datal <float> 1.0"
+           '(#x00 #x00 #x80 #x3f 0 0 0 0)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<float> -2.5)))
+    (test* ".datal <float> -2.5"
+           '(#x00 #x00 #x20 #xc0 0 0 0 0)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<double> 1.0)))
+    (test* ".dataq <double> 1.0"
+           '(#x00 #x00 #x00 #x00 #x00 #x00 #xf0 #x3f)
+           (u8vector->list b)))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<double> 3.14)))
+    (test* ".dataq <double> 3.14"
+           '(#x1f #x85 #xeb #x51 #xb8 #x1e #x09 #x40)
+           (u8vector->list b))))
+
 ;; Mix: placeholder data following a real instruction
 (let ()
   (define tmpl (asm-template '((ret) (.datal :v))))
