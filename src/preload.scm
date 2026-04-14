@@ -23,6 +23,7 @@
 (use gauche.pputil)
 (use gauche.process)
 (use gauche.threads)
+(use binary.io)
 (use scheme.list)
 (use srfi.13)
 (use file.util)

@@ -41,6 +41,7 @@
   (use gauche.record)
   (use gauche.uvector)
   (use gauche.sequence)
+  (use binary.io)
   (use scheme.list)
   (use srfi.13)
   (use srfi.42)
@@ -113,39 +114,61 @@
          [patches (car acc)])
     (make-asm-template bytes labels patches)))
 
-;; asm-instantiate :: <asm-template>, AList -> u8vector, AList
-;;   Second stage.  Applies patches from PARAMS (an alist of keyword->value)
-;;   and returns the finalised byte vector and label alist.
+;; fill-native-value! :: u8vector, int, int, <native-type>, val -> ()
+;;   Fill BYTES from OFFSET spanning SIZE bytes with the binary representation
+;;   of VALUE according to NATIVE-TYPE (always little-endian).
+;;   The native type must fit in the given size (it is allowed to be smaller
+;;   than the given size).
+(define (fill-native-value! bytes offset size type value)
+  (define (bad)
+    (error "Unsupported natie type to use in asm-instantiate:" type))
+  (assume-type type <native-type>)
+  (unless (<= (~ type 'size) size)
+    (errorf "native type ~s doesn't fit in the patch size ~a" type size))
+  (cond
+   [(eq? (~ type'super) <integer>)
+    (if (~ type'unsigned?)
+      (case (~ type'size)
+        [(1) (put-u8!    bytes offset value)]
+        [(2) (put-u16le! bytes offset value)]
+        [(4) (put-u32le! bytes offset value)]
+        [(8) (put-u64le! bytes offset value)]
+        [else (bad)])
+      (case (~ type'size)
+        [(1) (put-s8!    bytes offset value)]
+        [(2) (put-s16le! bytes offset value)]
+        [(4) (put-s32le! bytes offset value)]
+        [(8) (put-s64le! bytes offset value)]
+        [else (bad)]))]
+   [(eq? type <float>)   (put-f32le! bytes offset value)]
+   [(eq? type <double>)  (put-f64le! bytes offset value)]
+   [else (bad)]))
+
+;; asm-instantiate :: <asm-template>, [(keyword, <native-type>, value)] -> u8vector, AList
+;;   Second stage.  Applies patches from PARAMS, a list of
+;;   (keyword native-type scheme-value) triples, and returns the finalised
+;;   byte vector and label alist.
 ;;   The template record is never mutated; a fresh u8vector is returned.
 (define (asm-instantiate tmpl params)
-  (let* ([src     (asm-template-bytes tmpl)]
-         [bytes   (u8vector-copy src)]
-         [labels  (asm-template-labels tmpl)]
-         [patches (asm-template-patches tmpl)])
-    ;; Apply each patch whose keyword appears in PARAMS.
-    (for-each (match-lambda
-                ;; Integer patch: write value as little-endian bytes.
-                [(kw offset width)
-                 (and-let1 val (assq kw params)
-                   (patch-bytes! bytes offset width (cdr val)))]
-                ;; movs_ patch: translate symbol movsd->#xf2, movss->#xf3.
-                [(kw offset 1 'movs_)
-                 (let* ([v   (assq-ref params kw 'movsd)]
-                        [pfx (case v
-                               [(movsd) #xf2]
-                               [(movss) #xf3]
-                               [else (error "movs_ value must be movsd or movss:" v)])])
-                   (u8vector-set! bytes offset pfx))])
-              patches)
-    (values bytes labels)))
-
-;; patch-bytes! :: u8vector, int, int, int -> ()
-;;   Write VALUE into BYTES starting at OFFSET in little-endian, WIDTH bytes.
-(define (patch-bytes! bytes offset width value)
-  (let loop ([i 0] [v value])
-    (when (< i width)
-      (u8vector-set! bytes (+ offset i) (logand v #xff))
-      (loop (+ i 1) (ash v -8)))))
+  (let1 bytes (u8vector-copy (asm-template-bytes tmpl))
+    (dolist [patch (asm-template-patches tmpl)]
+      (match patch
+        ;; Typed patch: encode value according to native-type.
+        [(kw offset width)
+         (and-let1 entry (assq kw params)
+           (match entry
+             [(_ native-type val)
+              (fill-native-value! bytes offset width native-type val)]))]
+        ;; movs_ patch: translate symbol movsd->#xf2, movss->#xf3.
+        [(kw offset 1 'movs_)
+         (let* ([entry (assq kw params)]
+                [v    (if entry (caddr entry) 'movsd)]
+                [pfx  (case v
+                        [(movsd) #xf2]
+                        [(movss) #xf3]
+                        [else (error "movs_ value must be movsd or movss:" v)])])
+           (u8vector-set! bytes offset pfx))]))
+    (values bytes (asm-template-labels tmpl))))
 
 ;; asm  :: [Insn] -> u8vector, [(label . addr)]
 ;;   Main entry (backward-compatible wrapper).

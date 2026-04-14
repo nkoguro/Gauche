@@ -343,12 +343,12 @@
            '(#x48 #xb8 0 0 0 0 0 0 0 0)
            (u8vector->list b)))
   ;; Instantiate with a real 64-bit value
-  (receive (b _) (asm-instantiate tmpl `((:val . #x0102030405060708)))
+  (receive (b _) (asm-instantiate tmpl `((:val ,<uint64> #x0102030405060708)))
     (test* "imm64 placeholder filled"
            '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b)))
   ;; Re-instantiate with a different value to confirm immutability of template
-  (receive (b _) (asm-instantiate tmpl `((:val . 1)))
+  (receive (b _) (asm-instantiate tmpl `((:val ,<uint64> 1)))
     (test* "imm64 placeholder re-instantiate"
            '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
            (u8vector->list b))))
@@ -357,7 +357,7 @@
 ;; Encoding: REX.W+B(49) BA <8 bytes> -- 10 bytes
 (let ()
   (define tmpl (asm-template '((movq (imm64 :v) %r10))))
-  (receive (b _) (asm-instantiate tmpl `((:v . #x0102030405060708)))
+  (receive (b _) (asm-instantiate tmpl `((:v ,<uint64> #x0102030405060708)))
     (test* "imm64 placeholder %r10"
            '(#x49 #xba #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
@@ -370,7 +370,7 @@
     (test* "imm32 placeholder default"
            '(#x48 #xc7 #xc3 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl '((:x . 1000)))
+  (receive (b _) (asm-instantiate tmpl `((:x ,<uint32> 1000)))
     (test* "imm32 placeholder filled"
            '(#x48 #xc7 #xc3 #xe8 #x03 #x00 #x00)
            (u8vector->list b))))
@@ -383,7 +383,7 @@
     (test* "imm8 placeholder default"
            '(#xb0 0)
            (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl '((:n . 42)))
+  (receive (b _) (asm-instantiate tmpl `((:n ,<uint8> 42)))
     (test* "imm8 placeholder filled"
            '(#xb0 #x2a)
            (u8vector->list b))))
@@ -393,15 +393,15 @@
   (define tmpl (asm-template '((movq (imm64 :fn) %rax)
                                (movb (imm8  :nb) %cl)
                                (ret))))
-  (receive (b _) (asm-instantiate tmpl `((:fn . #xdeadbeef00112233)
-                                         (:nb . 7)))
+  (receive (b _) (asm-instantiate tmpl `((:fn ,<uint64> #xdeadbeef00112233)
+                                         (:nb ,<uint8> 7)))
     (test* "multiple placeholders"
            (append '(#x48 #xb8 #x33 #x22 #x11 #x00 #xef #xbe #xad #xde)
                    '(#xb1 #x07)
                    '(#xc3))
            (u8vector->list b)))
   ;; Partial instantiation: only :fn supplied, :nb stays 0
-  (receive (b _) (asm-instantiate tmpl `((:fn . 1)))
+  (receive (b _) (asm-instantiate tmpl `((:fn ,<uint64> 1)))
     (test* "partial instantiation"
            (append '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
                    '(#xb1 0)
@@ -413,7 +413,7 @@
   (define tmpl (asm-template '(start
                                (movq (imm64 :ptr) %rax)
                                (ret))))
-  (receive (b labels) (asm-instantiate tmpl `((:ptr . #xff)))
+  (receive (b labels) (asm-instantiate tmpl `((:ptr ,<uint64> #xff)))
     (test* "placeholder with label bytes"
            '(#x48 #xb8 #xff 0 0 0 0 0 0 0 #xc3)
            (u8vector->list b))
@@ -430,7 +430,7 @@
     (test* ".dataq placeholder default"
            '(0 0 0 0 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl `((:addr . #x0102030405060708)))
+  (receive (b _) (asm-instantiate tmpl `((:addr ,<uint64> #x0102030405060708)))
     (test* ".dataq placeholder filled"
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
@@ -438,7 +438,7 @@
 ;; .datal placeholder: 4-byte hole
 (let ()
   (define tmpl (asm-template '((.datal :v))))
-  (receive (b _) (asm-instantiate tmpl `((:v . #xdeadbeef)))
+  (receive (b _) (asm-instantiate tmpl `((:v ,<uint32> #xdeadbeef)))
     (test* ".datal placeholder filled"
            '(#xef #xbe #xad #xde)
            (u8vector->list b))))
@@ -448,13 +448,13 @@
   (define tmpl (asm-template '((.datab :b))))
   (receive (b _) (asm-instantiate tmpl '())
     (test* ".datab placeholder default" '(0) (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl '((:b . #xa5)))
+  (receive (b _) (asm-instantiate tmpl `((:b ,<uint8> #xa5)))
     (test* ".datab placeholder filled" '(#xa5) (u8vector->list b))))
 
 ;; Mix: placeholder data following a real instruction
 (let ()
   (define tmpl (asm-template '((ret) (.datal :v))))
-  (receive (b _) (asm-instantiate tmpl '((:v . #xdeadbeef)))
+  (receive (b _) (asm-instantiate tmpl `((:v ,<uint32> #xdeadbeef)))
     (test* ".datal placeholder after ret"
            '(#xc3 #xef #xbe #xad #xde)
            (u8vector->list b))))
@@ -464,7 +464,7 @@
   (define tmpl (asm-template '((.dataq :fn-ptr)
                                 (movq (imm64 :fn-ptr) %rax)
                                 (ret))))
-  (receive (b _) (asm-instantiate tmpl `((:fn-ptr . #x0102030405060708)))
+  (receive (b _) (asm-instantiate tmpl `((:fn-ptr ,<uint64> #x0102030405060708)))
     (test* "data and imm64 placeholder same keyword"
            (append '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; .dataq
                    '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; movq
@@ -492,17 +492,17 @@
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Explicit movsd
-  (receive (b _) (asm-instantiate tmpl '((:op . movsd)))
+  (receive (b _) (asm-instantiate tmpl '((:op #f movsd)))
     (test* "movs_ sse->sse explicit movsd"
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Switch to movss
-  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+  (receive (b _) (asm-instantiate tmpl '((:op #f movss)))
     (test* "movs_ sse->sse switched to movss"
            '(#xf3 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Re-instantiate as movsd again (template not mutated)
-  (receive (b _) (asm-instantiate tmpl '((:op . movsd)))
+  (receive (b _) (asm-instantiate tmpl '((:op #f movsd)))
     (test* "movs_ sse->sse back to movsd"
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b))))
@@ -516,7 +516,7 @@
     (test* "movs_ mem->sse default (movsd)"
            '(#xf2 #x0f #x10 #x08)
            (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+  (receive (b _) (asm-instantiate tmpl '((:op #f movss)))
     (test* "movs_ mem->sse switched to movss"
            '(#xf3 #x0f #x10 #x08)
            (u8vector->list b))))
@@ -530,7 +530,7 @@
     (test* "movs_ sse->mem default (movsd)"
            '(#xf2 #x0f #x11 #x00)
            (u8vector->list b)))
-  (receive (b _) (asm-instantiate tmpl '((:op . movss)))
+  (receive (b _) (asm-instantiate tmpl '((:op #f movss)))
     (test* "movs_ sse->mem switched to movss"
            '(#xf3 #x0f #x11 #x00)
            (u8vector->list b))))
@@ -540,7 +540,7 @@
   (define tmpl (asm-template '((.dataq :fn-ptr)
                                 ((movs_ :variant) (%rax) %xmm0)
                                 (ret))))
-  (receive (b _) (asm-instantiate tmpl `((:fn-ptr . #xdeadbeef) (:variant . movss)))
+  (receive (b _) (asm-instantiate tmpl `((:fn-ptr ,<uint64> #xdeadbeef) (:variant #f movss)))
     (test* "movs_ combined with .dataq placeholder"
            (append '(#xef #xbe #xad #xde 0 0 0 0) ; .dataq :fn-ptr
                    '(#xf3 #x0f #x10 #x00)          ; movss (%rax),%xmm0
