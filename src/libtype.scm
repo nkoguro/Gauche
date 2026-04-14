@@ -1411,6 +1411,27 @@
   (make-c-struct/union-type tag fields #f))
 
 ;;;
+;;; Pointer fill gate
+;;;
+
+;; A parameter to restrict extent of native-ptr-fill! availability.  We
+;; don't want it to be called arbitrarily.
+(define native-ptr-fill-enabled? (make-parameter #f))
+
+;; native-ptr-fill! TARGET TSTART SIZE TYPE OBJ
+;;   Fill region [TSTART, TSTART+SIZE) of TARGET (a u8vector) with the
+;;   native pointer representation of OBJ according to TYPE.
+;;   TYPE must be <c-string>, a pointer/array/function native type, or <top>.
+;;   Only callable while native-ptr-fill-enabled? is #t.
+(define native-ptr-fill!
+  (let1 impl (module-binding-ref 'gauche.bootstrap '%%native-ptr-fill!)
+    (^[target tstart size type obj]
+      (unless (native-ptr-fill-enabled?)
+        (error "native-ptr-fill! called outside native dispatch context; \
+                set native-ptr-fill-enabled? to #t via parameterize"))
+      (impl target tstart size type obj))))
+
+;;;
 ;;; Make exported symbol visible from outside
 ;;;
 

@@ -46,9 +46,49 @@
            "gauche/priv/mmapP.h"
            "gauche/priv/nativeP.h"
            "gauche/priv/codeP.h"
+           "gauche/priv/typeP.h"
            "gauche/vminsn.h")
 
  ;; For FFI
+ (define-cproc %%native-ptr-fill! (target::<u8vector>
+                                   tstart::<fixnum>
+                                   size::<fixnum>
+                                   type
+                                   obj)
+   ::<void>
+   ;; Fill region [TSTART, TSTART+SIZE) of TARGET with the native pointer
+   ;; representation of OBJ according to TYPE.  TYPE must be <c-string>,
+   ;; a pointer/array/function native type, or <top>.
+   ;; This is called via native-ptr-fill! in libtype.scm.
+   (let* ([uvsize::ScmSmallInt (SCM_UVECTOR_SIZE target)]
+          [ptrsize::ScmSmallInt (cast ScmSmallInt (sizeof (.type void*)))])
+     (when (or (< tstart 0) (< size 0) (> (+ tstart size) uvsize))
+       (Scm_Error "native-ptr-fill!: out of bounds \
+                   (tstart=%ld, size=%ld, uvsize=%ld)"
+                  tstart size uvsize))
+     (when (< size ptrsize)
+       (Scm_Error "native-ptr-fill!: size %ld too small for pointer \
+                   (%ld bytes needed)"
+                  size ptrsize))
+     (let* ([ptr-val::intptr_t 0])
+       (cond
+        [(SCM_EQ type (SCM_OBJ SCM_CLASS_TOP))
+         (set! ptr-val (cast intptr_t obj))]
+        [(SCM_EQ type Scm_NativeCStringType)
+         (unless (SCM_STRINGP obj)
+           (Scm_Error "%%native-ptr-fill!: string required for <c-string>, \
+                       but got: %S" obj))
+         (set! ptr-val (cast intptr_t (Scm_GetStringConst (SCM_STRING obj))))]
+        [(or (SCM_C_POINTER_P type) (SCM_C_ARRAY_P type) (SCM_C_FUNCTION_P type))
+         (unless (SCM_NATIVE_HANDLE_P obj)
+           (Scm_Error "%%native-ptr-fill!: <native-handle> required for \
+                       pointer type, but got: %S" obj))
+         (set! ptr-val (cast intptr_t (Scm_NativeHandlePtr (SCM_NATIVE_HANDLE obj))))]
+        [else
+         (Scm_Error "%%native-ptr-fill!: unsupported type: %S" type)])
+       (let* ([dst::char* (+ (cast char* (SCM_UVECTOR_ELEMENTS target)) tstart)])
+         (memcpy dst (& ptr-val) (sizeof (.type intptr_t)))))))
+
  (define-cproc %%call-native (tstart::<fixnum>
                               tend::<fixnum>
                               code::<uvector>

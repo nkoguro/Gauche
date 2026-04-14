@@ -57,6 +57,13 @@
 ;; inside asm-template; #f outside (so non-template assembly collects nothing).
 (define patch-collector (make-parameter #f))
 
+;; TRANSIENT: cond-expand guard allows gen-native.scm to load this module
+;; with BUILD_GOSH 0.9.15, which lacks native-ptr-fill!.  Remove after 0.9.16.
+(define %native-ptr-fill!
+  (cond-expand
+    [gauche-0.9.15 (^ _ (error "native-ptr-fill! requires Gauche 0.9.16+"))]
+    [else (module-binding-ref 'gauche.typeutil 'native-ptr-fill!)]))
+
 ;; Instruction notation
 ;;   (<opcode>)
 ;;   (<opcode> <operand1>)
@@ -114,34 +121,48 @@
          [patches (car acc)])
     (make-asm-template bytes labels patches)))
 
-;; fill-native-value! :: u8vector, int, int, <native-type>, val -> ()
+;; fill-native-value! :: u8vector, int, int, <native-type>|<top>, val -> ()
 ;;   Fill BYTES from OFFSET spanning SIZE bytes with the binary representation
-;;   of VALUE according to NATIVE-TYPE (always little-endian).
-;;   The native type must fit in the given size (it is allowed to be smaller
-;;   than the given size).
+;;   of VALUE according to TYPE (always little-endian for numeric types).
+;;   For numeric <native-type>: the type must fit in the given size (it is
+;;   allowed to be smaller than the given size).
+;;   For pointer/object types (<c-pointer>, <c-array>, <c-function>,
+;;   <c-string>, <top>): delegates to %native-ptr-fill!, which requires
+;;   native-ptr-fill-enabled? to be #t.
 (define (fill-native-value! bytes offset size type value)
   (define (bad)
-    (error "Unsupported natie type to use in asm-instantiate:" type))
-  (assume-type type <native-type>)
-  (unless (<= (~ type 'size) size)
-    (errorf "native type ~s doesn't fit in the patch size ~a" type size))
+    (error "Unsupported type to use in asm-instantiate:" type))
   (cond
-   [(eq? (~ type'super) <integer>)
-    (if (~ type'unsigned?)
-      (case (~ type'size)
-        [(1) (put-u8!    bytes offset value)]
-        [(2) (put-u16le! bytes offset value)]
-        [(4) (put-u32le! bytes offset value)]
-        [(8) (put-u64le! bytes offset value)]
-        [else (bad)])
-      (case (~ type'size)
-        [(1) (put-s8!    bytes offset value)]
-        [(2) (put-s16le! bytes offset value)]
-        [(4) (put-s32le! bytes offset value)]
-        [(8) (put-s64le! bytes offset value)]
-        [else (bad)]))]
-   [(eq? type <float>)   (put-f32le! bytes offset value)]
-   [(eq? type <double>)  (put-f64le! bytes offset value)]
+   [(is-a? type <native-type>)
+    (unless (<= (~ type 'size) size)
+      (errorf "native type ~s doesn't fit in the patch size ~a" type size))
+    (cond
+     [(eq? (~ type'super) <integer>)
+      (if (~ type'unsigned?)
+        (case (~ type'size)
+          [(1) (put-u8!    bytes offset value)]
+          [(2) (put-u16le! bytes offset value)]
+          [(4) (put-u32le! bytes offset value)]
+          [(8) (put-u64le! bytes offset value)]
+          [else (bad)])
+        (case (~ type'size)
+          [(1) (put-s8!    bytes offset value)]
+          [(2) (put-s16le! bytes offset value)]
+          [(4) (put-s32le! bytes offset value)]
+          [(8) (put-s64le! bytes offset value)]
+          [else (bad)]))]
+     [(eq? type <float>)   (put-f32le! bytes offset value)]
+     [(eq? type <double>)  (put-f64le! bytes offset value)]
+     [(or (of-type? type <c-pointer>)
+          (of-type? type <c-array>)
+          (of-type? type <c-function>)
+          (eq? type <c-string>))
+      ;; Delegate to native-ptr-fill!
+      (%native-ptr-fill! bytes offset size type value)]
+     [else (bad)])]
+   [(eq? type <top>)
+    ;; Raw ScmObj value — delegate to native-ptr-fill!
+    (%native-ptr-fill! bytes offset size type value)]
    [else (bad)]))
 
 ;; asm-instantiate :: <asm-template>, [(keyword, <native-type>, value)] -> u8vector, AList
