@@ -354,7 +354,6 @@
    (%cclass <parameterization> "ScmParameterization*")
    (%cclass <continuation-mark-set> "ScmContinuationMarkSet*")
    (%cclass <dlobj> "ScmDLObj*")
-   (%cclass <dlptr> "ScmObj" "Scm_DLPtrP" "SCM_OBJ")
    (%cclass <sys-group> "ScmSysGroup*")
    (%cclass <sys-passwd> "ScmSysPasswd*")
    (%cclass <sys-sigset> "ScmSysSigset*")

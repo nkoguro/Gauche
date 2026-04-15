@@ -113,9 +113,6 @@ SCM_EXTERN ScmObj Scm_DLObjs(void);
 SCM_EXTERN ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name,
                                          ScmObj type);
 
-SCM_EXTERN int Scm_DLPtrP(ScmObj obj);
-SCM_EXTERN ScmObj Scm_DLPtrValue(ScmObj obj);
-
 /*=================================================================
  * Require & Provide
  */

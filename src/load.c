@@ -86,8 +86,6 @@ static struct {
                                      are already called by the application,
                                      but we may change this design in future.
                                   */
-    ScmClass *dlptr_class;        /* Foreign pointer class for the address
-                                     retrieved from dso. */
     ScmInternalMutex dso_mutex;
 } ldinfo;
 
@@ -892,21 +890,6 @@ ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
     return handle;
 }
 
-/* dlptr interface (we don't expose <dlptr> class pointer */
-int Scm_DLPtrP(ScmObj obj)
-{
-    return SCM_XTYPEP(obj, ldinfo.dlptr_class);
-}
-
-ScmObj Scm_DLPtrValue(ScmObj obj)
-{
-    if (!Scm_DLPtrP(obj)) {
-        SCM_TYPE_ERROR(obj, "dlptr");
-    }
-    intptr_t val = SCM_FOREIGN_POINTER_REF(intptr_t, obj);
-    return Scm_IntptrToInteger(val);
-}
-
 /*------------------------------------------------------------------
  * Require and provide
  */
@@ -1430,9 +1413,6 @@ void Scm__InitLoad(void)
                                     SCM_MAKE_STR("." SHLIB_SO_SUFFIX));
     ldinfo.dso_table = SCM_HASH_TABLE(Scm_MakeHashTableSimple(SCM_HASH_STRING,0));
     ldinfo.dso_prelinked = SCM_NIL;
-
-    ldinfo.dlptr_class = Scm_MakeForeignPointerClass(m, "<dlptr>",
-                                                     NULL, NULL, 0);
 
 #define PARAM_INIT(var, name, val) ldinfo.var = Scm_BindPrimitiveParameter(m, name, val, 0)
     PARAM_INIT(load_history, "current-load-history", SCM_NIL);

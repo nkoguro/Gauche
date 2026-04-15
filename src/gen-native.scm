@@ -146,7 +146,7 @@
    '(define-constant movss-prefix #xf3)  ; movss opcode prefix (vs movsd's #xf2)
    :port port)
 
-  ;; (call-amd64 <dlptr> args rettype)
+  ;; (call-amd64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
   ;; NB: In the final form, we won't expose this function to the user; it's
   ;; too error-prone.  You can wreck havoc just by passing a wrong type.
@@ -379,7 +379,7 @@
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
   (emit-tmpl-vars port "winx64-call-spill" spill-tmpl)
 
-  ;; (call-winx64 <dlptr> args rettype)
+  ;; (call-winx64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
   (pprint
    `(define call-winx64
