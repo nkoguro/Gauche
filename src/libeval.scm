@@ -289,8 +289,9 @@
   (return (Scm_CloseDLO dlo FALSE)))
 
 ;; API (experimental)
-;; returns #<dlptr>
-(define-cproc dlobj-get-entry-address (dlo::<dlobj> name::<string>)
+;; returns #<c-pointer TYPE>
+(define-cproc dlobj-get-entry-address (dlo::<dlobj> name::<string>
+                                                    :optional (type #f))
   Scm_DLOGetEntryAddress)
 
 ;; API

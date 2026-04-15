@@ -1,3 +1,9 @@
+2026-04-14  Shiro Kawai  <shiro@acm.org>
+
+	* src/load.c (DLOGetEntryAddress): Return #<native-handle> instead
+	  of #<dlptr>.  We'll drop #<dlptr> eventually.
+	  API change to receive teh type of the pointer.
+
 2026-04-11  Shiro Kawai  <shiro@acm.org>
 
 	* lib/lang/asm/x86_64.scm: Split asm to two stages, template

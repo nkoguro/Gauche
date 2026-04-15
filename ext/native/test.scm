@@ -28,7 +28,7 @@
 (let ((dlo (dynamic-load "gauche--ffitest" :init-function #f)))
   (test* "open dlo" #t (is-a? dlo <dlobj>))
   (let ((dle (dlobj-get-entry-address dlo "_f_v")))
-    (test* "get dlptr" #t (is-a? dle <dlptr>))
+    (test* "get native-handle" #t (is-a? dle <native-handle>))
     (test* "call f_o" (list (undefined) "it works")
            (let* ((r #f)
                   (s (with-output-to-string

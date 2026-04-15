@@ -1440,7 +1440,7 @@
         (find-module 'gauche)
         '(<type-constructor-meta>
           <descriptive-type>
-          <native-type> <c-pointer> <c-function>
+          <native-type> <native-handle> <c-pointer> <c-function>
           <c-array> <c-struct> <c-union>
           <^> </> <?> <Tuple> <List> <Vector> <Assortment>
           type? subtype? of-type?))

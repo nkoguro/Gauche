@@ -40,6 +40,7 @@
 #include "gauche/priv/portP.h"
 #include "gauche/priv/macroP.h"
 #include "gauche/priv/moduleP.h"
+#include "gauche/priv/typeP.h"
 
 #include <ctype.h>
 #include <fcntl.h>
@@ -559,26 +560,27 @@ static ScmObj find_entry(ScmDLObj *dlo, ScmString *name)
     else   return SCM_FALSE;
 }
 
-/* Register name => fptr entry in dlo.  Assuming the caller holding the
-   lock of DLO.  Returns a foreign pointer wrapping ptr. */
-static ScmObj add_entry(ScmDLObj *dlo, ScmString *name, void *ptr)
+/* Register name => native handle entry in dlo.  Assuming the caller holding
+   the lock of DLO.  Returns a <native-handle> wrapping ptr with TYPE. */
+static ScmObj add_entry(ScmDLObj *dlo, ScmString *name, void *ptr,
+                        ScmNativeType *type)
 {
-    ScmObj fptr = Scm_MakeForeignPointer(ldinfo.dlptr_class, ptr);
-    Scm_ForeignPointerAttrSet(SCM_FOREIGN_POINTER(fptr),
-                              SCM_SYM_NAME, SCM_OBJ(name));
+    ScmObj handle = Scm__MakeNativeHandle(ptr, type, SCM_OBJ(name),
+                                          NULL, NULL,
+                                          SCM_UNDEFINED, SCM_NIL, 0);
     ScmDictEntry *e = Scm_HashCoreSearch(&dlo->entries, (intptr_t)name,
                                          SCM_DICT_CREATE);
-    (void)SCM_DICT_SET_VALUE(e, fptr);
-    return fptr;
+    (void)SCM_DICT_SET_VALUE(e, handle);
+    return handle;
 }
 
 /* lookup the symbol within DLO.
    NAME must begin with '_'.   We look up both with and without '_'.
    Assuming the caller holding the lock of OBJ. */
-static ScmObj lookup_entry(ScmDLObj *dlo, ScmString *name)
+static ScmObj lookup_entry(ScmDLObj *dlo, ScmString *name, ScmNativeType *type)
 {
-    ScmObj fptr = find_entry(dlo, name);
-    if (SCM_FALSEP(fptr)) {
+    ScmObj handle = find_entry(dlo, name);
+    if (SCM_FALSEP(handle)) {
         /* locate the entry.  Name always has '_'.  Whether the actual
            symbol dl_sym returns has '_' or not depends on the platform,
            so we first try without '_', then '_'. */
@@ -590,9 +592,9 @@ static ScmObj lookup_entry(ScmDLObj *dlo, ScmString *name)
                 return SCM_FALSE; /* not found */
             }
         }
-        fptr = add_entry(dlo, name, ptr);
+        handle = add_entry(dlo, name, ptr, type);
     }
-    return fptr;
+    return handle;
 }
 
 /* Load the DSO.  The caller holds the lock of dlobj.
@@ -629,9 +631,10 @@ static ScmObj load_dlo(ScmDLObj *dlo)
    to release the lock even when this fn throws an error. */
 static void call_initfn(ScmDLObj *dlo, ScmString *name)
 {
-    ScmObj fptr = lookup_entry(dlo, name);
+    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType);
+    ScmObj handle = lookup_entry(dlo, name, voidptr);
 
-    if (!SCM_FOREIGN_POINTER_P(fptr)) {
+    if (!SCM_NATIVE_HANDLE_P(handle)) {
         /* Named initfn isn't found in DLObj.  DLObj is still usable
            (it may have other initfn functions, or can be used for FFI),
            so we leave the DLObj state as is.
@@ -641,9 +644,10 @@ static void call_initfn(ScmDLObj *dlo, ScmString *name)
                   dlo->path, name);
     }
 
-    if (!SCM_FALSEP(Scm_ForeignPointerAttrGet(SCM_FOREIGN_POINTER(fptr),
-                                              SCM_SYM_CALLED, SCM_FALSE))) {
-        /* initfn already called. */
+    ScmNativeHandle *h = SCM_NATIVE_HANDLE(handle);
+    /* Check if initfn already called via attrs alist. */
+    ScmObj p = Scm_Assq(SCM_SYM_CALLED, h->attrs);
+    if (SCM_PAIRP(p) && !SCM_FALSEP(SCM_CDR(p))) {
         return;
     }
 
@@ -656,13 +660,17 @@ static void call_initfn(ScmDLObj *dlo, ScmString *name)
        standard module structure, such circular dependency is detected
        by Scm_Load, so we don't worry about it here. */
 
-    ScmDynLoadEntry fn = SCM_FOREIGN_POINTER_REF(ScmDynLoadEntry, fptr);
+    ScmDynLoadEntry fn = (ScmDynLoadEntry)Scm_NativeHandlePtr(h);
 
     dlo->state = DLOBJ_INCOMPLETE; /* in case fn() raises an error  */
     fn();
     dlo->state = DLOBJ_BOUND;     /* things look ok. */
-    Scm_ForeignPointerAttrSet(SCM_FOREIGN_POINTER(fptr),
-                              SCM_SYM_CALLED, SCM_TRUE);
+    /* Mark initfn as called. */
+    if (SCM_PAIRP(p)) {
+        SCM_SET_CDR_UNCHECKED(p, SCM_TRUE);
+    } else {
+        h->attrs = Scm_Acons(SCM_SYM_CALLED, SCM_TRUE, h->attrs);
+    }
 }
 
 /* Experimental: Prelink feature---we allow the extension module to be
@@ -685,10 +693,11 @@ void Scm_RegisterPrelinked(ScmString *dsoname,
     ScmDLObj *dlo = find_dlobj(SCM_STRING(path));
     dlo->state = DLOBJ_LOADED;
 
+    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType);
     (void)SCM_INTERNAL_MUTEX_LOCK(ldinfo.dso_mutex);
     for (int i=0; initfns[i] && initfn_names[i]; i++) {
         add_entry(dlo, SCM_STRING(SCM_MAKE_STR_IMMUTABLE(initfn_names[i])),
-                  initfns[i]);
+                  initfns[i], voidptr);
     }
     ldinfo.dso_prelinked = Scm_Cons(SCM_OBJ(dsoname), ldinfo.dso_prelinked);
     (void)SCM_INTERNAL_MUTEX_UNLOCK(ldinfo.dso_mutex);
@@ -869,13 +878,18 @@ ScmObj Scm_DLObjs()
 }
 
 /* name should have '_' prefix.  We look for a symbol with and without it.
-   Returns a foreign pointer or #f. */
-ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name)
+   Returns a <native-handle> or #f. */
+ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
 {
+    if (SCM_FALSEP(type)) type = Scm_NativeVoidPointerType;
+    else if (!SCM_NATIVE_TYPE_P(type)) {
+        SCM_TYPE_ERROR(type, "native-type or #f");
+    }
+
     lock_dlobj(dlo);
-    ScmObj fptr = lookup_entry(dlo, name);
+    ScmObj handle = lookup_entry(dlo, name, SCM_NATIVE_TYPE(type));
     unlock_dlobj(dlo);
-    return fptr;
+    return handle;
 }
 
 /* dlptr interface (we don't expose <dlptr> class pointer */

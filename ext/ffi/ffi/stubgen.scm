@@ -516,14 +516,14 @@
   (let* ([scm-name  (~ cfn'scheme-name)]
          [c-name    (~ cfn'c-name)])
     (string-append
-     (format "    fptr = Scm_DLOGetEntryAddress(dlo, SCM_STRING(SCM_MAKE_STR(~a)));"
+     (format "    fptr = Scm_DLOGetEntryAddress(dlo, SCM_STRING(SCM_MAKE_STR(~a)), SCM_FALSE);"
              (cgen-safe-string c-name))
      "\n"
-     (format "    if (SCM_FALSEP(fptr))\
+     (format "    if (!SCM_NATIVE_HANDLE_P(fptr))\
             \n        Scm_Error(\"FFI setup: symbol ~a not found in library\");"
              c-name)
      "\n"
-     (format "    *(void**)&ffi_fn_~a = SCM_FOREIGN_POINTER_REF(void*, fptr);"
+     (format "    *(void**)&ffi_fn_~a = Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(fptr));"
              c-name))))
 
 ;; Return a string with the init code to bind one SUBR as a Scheme procedure.
