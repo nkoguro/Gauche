@@ -1,5 +1,9 @@
 2026-04-14  Shiro Kawai  <shiro@acm.org>
 
+	* src/gen-native.scm: Use asm-instantiate to patching the native
+	  call code pad.  This makes patchgin codde in Scm_VMCallNative
+	  unnecessary, but we keep it for a while just in case.
+
 	* src/load.c (DLOGetEntryAddress): Return #<native-handle> instead
 	  of #<dlptr>.  We'll drop #<dlptr> eventually.
 	  API change to receive teh type of the pointer.

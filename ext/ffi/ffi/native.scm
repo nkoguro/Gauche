@@ -116,6 +116,7 @@
 (define (make-native-ffi-proc dlo cfn)
   (let* ([native-call (cond-expand
                        [x86_64
+                        (use lang.asm.x86_64)
                         (cond-expand
                          [gauche.os.windows
                           (with-module gauche.internal call-winx64)]
@@ -150,16 +151,20 @@
                                     `(,(if (flonum? val) <double> <intptr_t>)
                                       ,val))
                                   var-args)])
-           (ret-coerce
-            (native-call
-             ptr
-             (append fixed-pairs var-pairs)
-             ret-canon))))
+           (parameterize
+               ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
+             (ret-coerce
+              (native-call
+               ptr
+               (append fixed-pairs var-pairs)
+               ret-canon)))))
       ;; Non-variadic: map all args with their declared types.
       (^ args
-         (ret-coerce
-          (native-call
-           ptr
-           (map (^[canon coerce val] (list canon (coerce val)))
-                arg-canons arg-coerce args)
-           ret-canon))))))
+        (parameterize
+            ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
+          (ret-coerce
+           (native-call
+            ptr
+            (map (^[canon coerce val] (list canon (coerce val)))
+                 arg-canons arg-coerce args)
+            ret-canon)))))))

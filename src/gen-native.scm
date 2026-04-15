@@ -2,16 +2,6 @@
 ;;; Generate native code vector for FFI
 ;;;
 
-;; TODO: Eventually we should be able to omit construction of patcher list
-;; as it's the task `asm-instantiate` should handle.  However, it would
-;; require filling a bytevector with binary represenation of appropriate
-;; native types.  Native type infrastructure should be able to handle it,
-;; but we can't depend on it here, as gen-native.scm needs to run with
-;; 0.9.15.   So we put off that modification after 0.9.16 release.
-;;
-;; The idea is that we let lang.asm.x86_64 handle patching instead of
-;; Scm_VMCallNative.
-
 (use scheme.list)
 (use util.match)
 (use gauche.uvector)
@@ -27,16 +17,20 @@
   (display ";; Generated automatically by gen-native.scm.  DO NOT EDIT.\n" port)
   (display "\n" port))
 
-;;; Helper: look up the byte offset of a placeholder keyword in a patches list.
-(define (patch-offset kw patches)
-  (let1 p (assq kw patches)
-    (if p (cadr p)
-        (error "patch not found:" kw))))
-
-;;; Helper: look up the byte offset, returning #f if not present.
-(define (patch-offset/maybe kw patches)
-  (let1 p (assq kw patches)
-    (and p (cadr p))))
+;;; Emit bytes, labels, and patches of TMPL as three top-level define forms.
+;;; PREFIX is a string; the variables become *<prefix>-bytes*,
+;;; *<prefix>-labels*, and *<prefix>-patches*.
+(define (emit-tmpl-vars port prefix tmpl)
+  (let ([bytes-var   (string->symbol #"*~|prefix|-bytes*")]
+        [labels-var  (string->symbol #"*~|prefix|-labels*")]
+        [patches-var (string->symbol #"*~|prefix|-patches*")])
+    (pprint `(define ,bytes-var ,(asm-template-bytes tmpl))
+            :port port
+            ;; TRANSIENT: :radix -> :radix-prefix after the new release
+            :controls (make-write-controls :pretty #t :width 75
+                                           :base 16 :radix #t))
+    (pprint `(define ,labels-var ',(asm-template-labels tmpl)) :port port)
+    (pprint `(define ,patches-var ',(asm-template-patches tmpl)) :port port)))
 
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
@@ -116,55 +110,21 @@
                    (.align 8)
        spill:)))
 
-  (define reg-labels  (asm-template-labels  reg-tmpl))
-  (define reg-patches (asm-template-patches reg-tmpl))
-  (define spill-labels  (asm-template-labels  spill-tmpl))
-  (define spill-patches (asm-template-patches spill-tmpl))
+  (define reg-labels   (asm-template-labels reg-tmpl))
+  (define spill-labels (asm-template-labels spill-tmpl))
 
-  ;; entry-offsets :: labels -> list-of-fixnum
-  ;;   entry0:..entry6: for int args, then entry6f0:..entry6f7: for float args.
-  (define (entry-offsets labels)
-    (map (cut assq-ref labels <>)
-         '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
-                   entry6f0: entry6f1: entry6f2: entry6f3:
-                   entry6f4: entry6f5: entry6f6: entry6f7:)))
-  ;; iarg-offsets :: patches -> list-of-fixnum
-  ;;   Byte offsets of the imm64 fields for iarg0..iarg5.
-  (define (iarg-offsets patches)
-    (map (cut patch-offset <> patches)
-         '(:iarg0 :iarg1 :iarg2 :iarg3 :iarg4 :iarg5)))
-  ;; farg-offsets :: patches -> list-of-fixnum
-  ;;   Byte offsets of the .dataq slots for farg0..farg7.
-  (define (farg-offsets patches)
-    (map (cut patch-offset <> patches)
-         '(:farg0 :farg1 :farg2 :farg3 :farg4 :farg5 :farg6 :farg7)))
-  ;; movsX-offsets :: patches -> list-of-fixnum-or-#f
-  ;;   Byte offsets of the movs_ prefix bytes for farg0-variant..farg7-variant.
-  (define (movsX-offsets patches)
-    (map (cut patch-offset/maybe <> patches)
-         '(:farg0-variant :farg1-variant :farg2-variant :farg3-variant
-           :farg4-variant :farg5-variant :farg6-variant :farg7-variant)))
-  (define (end-addr labels) (assq-ref labels 'end:))
-
+  ;; Print label/offset comments for reference.
   (display ";; Register-only calling" port)
   (display ";; label    offset\n" port)
   (dolist [p reg-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *amd64-call-reg-code* ,(asm-template-bytes reg-tmpl))
-          :port port
-          ;; TRANSIENT: :radix -> :radix-prefix after the new release
-          :controls (make-write-controls :pretty #t :width 75
-                                         :base 16 :radix #t))
+  (emit-tmpl-vars port "amd64-call-reg" reg-tmpl)
 
   (display ";; Spill-to-stack case" port)
   (display ";; label    offset\n" port)
   (dolist [p spill-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *amd64-call-spill-code* ,(asm-template-bytes spill-tmpl))
-          :port port
-          ;; TRANSIENT: :radix -> :radix-prefix after the new release
-          :controls (make-write-controls :pretty #t :width 75
-                                         :base 16 :radix #t))
+  (emit-tmpl-vars port "amd64-call-spill" spill-tmpl)
 
   (pprint
    `(define (%iarg-type? t)
@@ -182,8 +142,9 @@
           (eq? t <float>)))
    :port port)
 
-  (pprint '(define-constant movss-prefix #xf3)  ; movss opcode prefix (vs movsd's #xf2)
-          :port port)
+  (pprint
+   '(define-constant movss-prefix #xf3)  ; movss opcode prefix (vs movsd's #xf2)
+   :port port)
 
   ;; (call-amd64 <dlptr> args rettype)
   ;;  args : ((type value) ...)
@@ -205,106 +166,144 @@
                               (min num-fargs 8)
                               num-spills rettype)))))
    :port port)
+
+  ;; call-amd64-regs: uses asm-instantiate to apply all named patches; passes
+  ;; the fully-patched bytes to %%call-native with an empty patcher list.
   (pprint
    `(define call-amd64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (entry-offsets ',(entry-offsets reg-labels))
-            (iarg-offsets  ',(iarg-offsets reg-patches))
-            (farg-offsets  ',(farg-offsets reg-patches))
-            (movsX-offsets ',(movsX-offsets reg-patches))
-            (func-offset   ,(patch-offset :func reg-patches))
-            (nfargs-offset ,(patch-offset :num-fargs reg-patches)))
+            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
+        (define (init!)
+          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+                       *amd64-call-reg-bytes*
+                       *amd64-call-reg-labels*
+                       *amd64-call-reg-patches*))
+                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+            (set! tmpl t)
+            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! entry-offsets
+                  (map (^k (cdr (assq k lbs)))
+                       '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
+                         entry6f0: entry6f1: entry6f2: entry6f3:
+                         entry6f4: entry6f5: entry6f6: entry6f7:)))
+            (set! end-addr (cdr (assq 'end: lbs)))))
         (^[ptr args num-iargs num-fargs rettype]
+          (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
                  [entry (~ entry-offsets effective-nargs)]
-                 [patcher
+                 [params
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
                           [(%iarg-type? (caar args))
                            (loop (cdr args) (+ icount 1) fcount
-                                 (cons `(,(~ iarg-offsets icount)
+                                 (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3 :iarg4 :iarg5)
+                                             icount)
                                          ,@(car args))
                                        r))]
                           [(%farg-type? (caar args))
-                           (loop (cdr args) icount (+ fcount 1)
-                                 (cond-list
-                                  [#t `(,(~ farg-offsets fcount) ,@(car args))]
-                                  [(eq? (caar args) <float>)
-                                   `(,(~ movsX-offsets fcount) ,<uint8> ,movss-prefix)]
-                                  [#t @ r]))]
+                           (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3
+                                            :farg4 :farg5 :farg6 :farg7) fcount)]
+                                 [vkey (~ '(:farg0-variant :farg1-variant
+                                            :farg2-variant :farg3-variant
+                                            :farg4-variant :farg5-variant
+                                            :farg6-variant :farg7-variant) fcount)])
+                             (loop (cdr args) icount (+ fcount 1)
+                                   (if (eq? (caar args) <float>)
+                                     (list* `(,vkey ,<uint8> movss)
+                                            `(,fkey ,@(car args)) r)
+                                     (cons `(,fkey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (%%call-native entry 0
-                           *amd64-call-reg-code*
-                           entry
-                           ,(end-addr reg-labels)
-                           entry
-                           (list* `(,func-offset ,<void*> ,ptr)
-                                  `(,nfargs-offset ,<uint8> ,num-fargs)
-                                  patcher)
-                           rettype)))))
+            (let-values ([(bytes _)
+                          (asm-inst tmpl
+                                    (list* `(:func ,<void*> ,ptr)
+                                           `(:num-fargs ,<uint8> ,num-fargs)
+                                           params))])
+              (%%call-native 0 0 bytes 0 end-addr entry '() rettype))))))
    :port port)
+
+  ;; call-amd64-spill: named patches handled by asm-instantiate; only raw
+  ;; spill-slot offsets remain in the %%call-native patcher list.
   (pprint
    `(define call-amd64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (entry-offsets     ',(entry-offsets spill-labels))
-            (iarg-offsets      ',(iarg-offsets spill-patches))
-            (farg-offsets      ',(farg-offsets spill-patches))
-            (movsX-offsets     ',(movsX-offsets spill-patches))
-            (func-offset       ,(patch-offset :func spill-patches))
-            (nfargs-offset     ,(patch-offset :num-fargs spill-patches))
-            (spill-offset      (^n (+ ,(assq-ref spill-labels 'spill:)
-                                      (* n 8))))
-            (init-spill-offset    ,(patch-offset :init-spill-size spill-patches))
-            (epilogue-spill-offset ,(patch-offset :epilogue-spill-size spill-patches)))
+            (tmpl #f) (asm-inst #f) (entry-offsets #f) (spill-base #f))
+        (define (init!)
+          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+                       *amd64-call-spill-bytes*
+                       *amd64-call-spill-labels*
+                       *amd64-call-spill-patches*))
+                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+            (set! tmpl t)
+            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! entry-offsets
+                  (map (^k (cdr (assq k lbs)))
+                       '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
+                         entry6f0: entry6f1: entry6f2: entry6f3:
+                         entry6f4: entry6f5: entry6f6: entry6f7:)))
+            (set! spill-base (cdr (assq 'spill: lbs)))))
         (^[ptr args num-iargs num-fargs num-spills rettype]
+          (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
-                 [entry (~ entry-offsets effective-nargs)]
-                 [patcher
-                  (let loop ([args args] [icount 0] [fcount 0] [scount 0]
-                             [r '()])
-                    (cond [(null? args) r]
-                          [(%iarg-type? (caar args))
-                           (if (< icount 6)
-                             (loop (cdr args) (+ icount 1) fcount scount
-                                   (cons `(,(~ iarg-offsets icount)
-                                           ,@(car args))
-                                         r))
-                             (loop (cdr args) (+ icount 1) fcount
-                                   (+ scount 1)
-                                   (cons `(,(spill-offset (- num-spills scount 1))
-                                           ,@(car args))
-                                         r)))]
-                          [(%farg-type? (caar args))
-                           (if (< fcount 8)
-                             (loop (cdr args) icount (+ fcount 1) scount
-                                   (cond-list
-                                    [#t `(,(~ farg-offsets fcount) ,@(car args))]
-                                    [(eq? (caar args) <float>)
-                                     `(,(~ movsX-offsets fcount) ,<uint8> ,movss-prefix)]
-                                    [#t @ r]))
-                             (loop (cdr args) icount (+ fcount 1)
-                                   (+ scount 1)
-                                   (cons `(,(spill-offset (- num-spills scount 1))
-                                           ,@(car args))
-                                         r)))]
-                          [else (error "bad arg entry:" (car args))]))])
-            (%%call-native entry
-                           (+ ,(assq-ref spill-labels 'spill:)
-                              (* num-spills 8))
-                           *amd64-call-spill-code*
-                           entry
-                           ,(assq-ref spill-labels 'spill:)
-                           entry
-                           (list* `(,func-offset ,<void*> ,ptr)
-                                  `(,nfargs-offset ,<uint8> ,num-fargs)
-                                  `(,init-spill-offset ,<int32> ,(* 8 num-spills))
-                                  `(,epilogue-spill-offset ,<int32> ,(* 8 num-spills))
-                                  patcher)
-                           rettype)))))
+                 [entry (~ entry-offsets effective-nargs)])
+            (let loop ([args args] [icount 0] [fcount 0] [scount 0]
+                       [named '()] [spill '()])
+              (if (null? args)
+                (let-values ([(bytes _)
+                              (asm-inst tmpl
+                                        (list* `(:func ,<void*> ,ptr)
+                                               `(:num-fargs ,<uint8> ,num-fargs)
+                                               `(:init-spill-size ,<int32>
+                                                 ,(* 8 num-spills))
+                                               `(:epilogue-spill-size ,<int32>
+                                                 ,(* 8 num-spills))
+                                               named))])
+                  (%%call-native 0
+                                 (+ spill-base (* num-spills 8))
+                                 bytes
+                                 0
+                                 spill-base
+                                 entry
+                                 spill
+                                 rettype))
+                (cond [(%iarg-type? (caar args))
+                       (if (< icount 6)
+                         (loop (cdr args) (+ icount 1) fcount scount
+                               (cons `(,(~ '(:iarg0 :iarg1 :iarg2
+                                            :iarg3 :iarg4 :iarg5) icount)
+                                       ,@(car args))
+                                     named)
+                               spill)
+                         (loop (cdr args) (+ icount 1) fcount (+ scount 1)
+                               named
+                               (cons `(,(+ spill-base
+                                           (* (- num-spills scount 1) 8))
+                                       ,@(car args))
+                                     spill)))]
+                      [(%farg-type? (caar args))
+                       (if (< fcount 8)
+                         (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3
+                                         :farg4 :farg5 :farg6 :farg7) fcount)]
+                               [vkey (~ '(:farg0-variant :farg1-variant
+                                          :farg2-variant :farg3-variant
+                                          :farg4-variant :farg5-variant
+                                          :farg6-variant :farg7-variant) fcount)])
+                           (loop (cdr args) icount (+ fcount 1) scount
+                                 (if (eq? (caar args) <float>)
+                                   (list* `(,vkey ,<uint8> movss)
+                                          `(,fkey ,@(car args)) named)
+                                   (cons `(,fkey ,@(car args)) named))
+                                 spill))
+                         (loop (cdr args) icount (+ fcount 1) (+ scount 1)
+                               named
+                               (cons `(,(+ spill-base
+                                           (* (- num-spills scount 1) 8))
+                                       ,@(car args))
+                                     spill)))]
+                      [else (error "bad arg entry:" (car args))])))))))
    :port port)
   )
 
@@ -365,44 +364,20 @@
                 (.align 8)
        spill:   (.dataq 0))))
 
-  (define reg-labels  (asm-template-labels  reg-tmpl))
-  (define reg-patches (asm-template-patches reg-tmpl))
-  (define spill-labels  (asm-template-labels  spill-tmpl))
-  (define spill-patches (asm-template-patches spill-tmpl))
-
-  (define (entry-offsets labels)  ;; numargs -> code vector offset
-    (map (cut assq-ref labels <>)
-         '(entry0: entry1: entry2: entry3: entry4:
-                   entry4f0: entry4f1: entry4f2: entry4f3:)))
-  (define (iarg-offsets patches)   ;; iarg# -> immediate field offset
-    (map (cut patch-offset <> patches)
-         '(:iarg0 :iarg1 :iarg2 :iarg3)))
-  (define (farg-offsets patches)   ;; farg# -> data slot offset
-    (map (cut patch-offset <> patches)
-         '(:farg0 :farg1 :farg2 :farg3)))
-  (define (movsX-offsets patches)  ;; farg# -> movs_ prefix byte offset
-    (map (cut patch-offset/maybe <> patches)
-         '(:farg0-variant :farg1-variant :farg2-variant :farg3-variant)))
-  (define (end-addr labels) (assq-ref labels 'end:))
+  (define reg-labels   (asm-template-labels reg-tmpl))
+  (define spill-labels (asm-template-labels spill-tmpl))
 
   (display ";; Register-only calling" port)
   (display ";; label    offset\n" port)
   (dolist [p reg-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *winx64-call-reg-code* ,(asm-template-bytes reg-tmpl))
-          :port port
-          ;; TRANSIENT: :radix -> :radix-prefix after the new release
-          :controls (make-write-controls :pretty #t :width 75
-                                         :base 16 :radix #t))
+  (emit-tmpl-vars port "winx64-call-reg" reg-tmpl)
+
   (display ";; Spill-to-stack case" port)
   (display ";; label    offset\n" port)
   (dolist [p spill-labels]
     (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (pprint `(define *winx64-call-spill-code* ,(asm-template-bytes spill-tmpl))
-          :port port
-          ;; TRANSIENT: :radix -> :radix-prefix after the new release
-          :controls (make-write-controls :pretty #t :width 75
-                                         :base 16 :radix #t))
+  (emit-tmpl-vars port "winx64-call-spill" spill-tmpl)
 
   ;; (call-winx64 <dlptr> args rettype)
   ;;  args : ((type value) ...)
@@ -421,15 +396,26 @@
             (call-winx64-regs ptr args num-args num-fargs rettype)
             (call-winx64-spill ptr args num-args num-fargs num-spills rettype)))))
    :port port)
+
   (pprint
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (entry-offsets ',(entry-offsets reg-labels))
-            (iarg-offsets  ',(iarg-offsets reg-patches))
-            (farg-offsets  ',(farg-offsets reg-patches))
-            (movsX-offsets ',(movsX-offsets reg-patches))
-            (func-offset   ,(patch-offset :func reg-patches)))
+            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
+        (define (init!)
+          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+                       *winx64-call-reg-bytes*
+                       *winx64-call-reg-labels*
+                       *winx64-call-reg-patches*))
+                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+            (set! tmpl t)
+            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! entry-offsets
+                  (map (^k (cdr (assq k lbs)))
+                       '(entry0: entry1: entry2: entry3: entry4:
+                         entry4f0: entry4f1: entry4f2: entry4f3:)))
+            (set! end-addr (cdr (assq 'end: lbs)))))
         (^[ptr args num-args num-fargs rettype]
+          (when (not tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
                  ;; unused xmm regs for preceding integral args.
                  ;; e.g. if args are int, int, double, we need up to entry4f2
@@ -438,91 +424,106 @@
                                     num-args
                                     (+ 4 num-args))]
                  [entry (~ entry-offsets effective-nargs)]
-                 [patcher
+                 [params
                   (let loop ([args args] [count 0] [r '()])
                     (cond [(null? args) r]
                           [(%iarg-type? (caar args))
                            (loop (cdr args) (+ count 1)
-                                 (cons `(,(~ iarg-offsets count)
+                                 (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)
                                          ,@(car args))
                                        r))]
                           [(%farg-type? (caar args))
                            ;; We load both integer regs and flonum regs.
                            ;; It matters for variadic function call.
-                           (loop (cdr args) (+ count 1)
-                                 (cond-list
-                                  [#t `(,(~ farg-offsets count) ,@(car args))]
-                                  [#t `(,(~ iarg-offsets count) ,@(car args))]
-                                  [(eq? (caar args) <float>)
-                                   `(,(~ movsX-offsets count) ,<uint8> ,movss-prefix)]
-                                  [#t @ r]))]
+                           (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3) count)]
+                                 [ikey (~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)]
+                                 [vkey (~ '(:farg0-variant :farg1-variant
+                                            :farg2-variant :farg3-variant) count)])
+                             (loop (cdr args) (+ count 1)
+                                   (if (eq? (caar args) <float>)
+                                     (list* `(,vkey ,<uint8> movss)
+                                            `(,fkey ,@(car args))
+                                            `(,ikey ,@(car args)) r)
+                                     (list* `(,fkey ,@(car args))
+                                            `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (%%call-native entry 0
-                           *winx64-call-reg-code*
-                           entry
-                           ,(end-addr reg-labels)
-                           entry
-                           (list* `(,func-offset ,<void*> ,ptr)
-                                  patcher)
-                           rettype)))))
+            (let-values ([(bytes _)
+                          (asm-inst tmpl
+                                    (list* `(:func ,<void*> ,ptr)
+                                           params))])
+              (%%call-native 0 0 bytes 0 end-addr entry '() rettype))))))
    :port port)
+
   (pprint
    `(define call-winx64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (entry-offsets       ',(entry-offsets spill-labels))
-            (iarg-offsets        ',(iarg-offsets spill-patches))
-            (farg-offsets        ',(farg-offsets spill-patches))
-            (movsX-offsets       ',(movsX-offsets spill-patches))
-            (func-offset         ,(patch-offset :func spill-patches))
-            (entry-addr          ,(assq-ref spill-labels 'entry:))
-            (spill-offset        (^n (+ ,(assq-ref spill-labels 'spill:)
-                                        (* n 8))))
-            (init-spill-offset    ,(patch-offset :init-spill-size spill-patches))
-            (epilogue-spill-offset ,(patch-offset :epilogue-spill-size spill-patches)))
+            (tmpl #f) (asm-inst #f) (entry-addr #f) (spill-base #f))
+        (define (init!)
+          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+                       *winx64-call-spill-bytes*
+                       *winx64-call-spill-labels*
+                       *winx64-call-spill-patches*))
+                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+            (set! tmpl t)
+            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! entry-addr (cdr (assq 'entry: lbs)))
+            (set! spill-base (cdr (assq 'spill: lbs)))))
         (^[ptr args num-args num-fargs num-spills rettype]
-          (let* ([patcher
-                  (let loop ([args args] [count 0] [scount 0] [r '()])
-                    (cond [(null? args) r]
-                          [(%iarg-type? (caar args))
-                           (if (< count 4)
-                             (loop (cdr args) (+ count 1) scount
-                                   (cons `(,(~ iarg-offsets count)
-                                           ,@(car args))
-                                         r))
-                             (loop (cdr args) (+ count 1)
-                                   (+ scount 1)
-                                   (cons `(,(spill-offset (- num-spills scount 1))
-                                           ,@(car args))
-                                         r)))]
-                          [(%farg-type? (caar args))
-                           ;; We load both integer regs and flonum regs.
-                           ;; It matters for variadic function call.
-                           (if (< count 4)
-                             (loop (cdr args) (+ count 1) scount
-                                   (cond-list
-                                    [#t `(,(~ farg-offsets count) ,@(car args))]
-                                    [#t `(,(~ iarg-offsets count) ,@(car args))]
-                                    [(eq? (caar args) <float>)
-                                     `(,(~ movsX-offsets count) ,<uint8> ,movss-prefix)]
-                                    [#t @ r]))
-                             (loop (cdr args) (+ count 1)
-                                   (+ scount 1)
-                                   (cons `(,(spill-offset (- num-spills scount 1))
-                                           ,@(car args))
-                                         r)))]
-                          [else (error "bad arg entry:" (car args))]))])
-            (%%call-native entry-addr
-                           (+ ,(assq-ref spill-labels 'spill:)
-                              (* num-spills 8))
-                           *winx64-call-spill-code*
-                           entry-addr
-                           ,(assq-ref spill-labels 'spill:)
-                           entry-addr
-                           (list* `(,func-offset ,<void*> ,ptr)
-                                  `(,init-spill-offset ,<int32> ,(* 8 num-spills))
-                                  `(,epilogue-spill-offset ,<int32> ,(* 8 num-spills))
-                                  patcher)
-                           rettype)))))
+          (when (not tmpl) (init!))
+          (let loop ([args args] [count 0] [scount 0] [named '()] [spill '()])
+            (if (null? args)
+              (let-values ([(bytes _)
+                            (asm-inst tmpl
+                                      (list* `(:func ,<void*> ,ptr)
+                                             `(:init-spill-size ,<int32>
+                                               ,(* 8 num-spills))
+                                             `(:epilogue-spill-size ,<int32>
+                                               ,(* 8 num-spills))
+                                             named))])
+                (%%call-native 0
+                               (+ spill-base (* num-spills 8))
+                               bytes
+                               0
+                               spill-base
+                               entry-addr
+                               spill
+                               rettype))
+              (cond [(%iarg-type? (caar args))
+                     (if (< count 4)
+                       (loop (cdr args) (+ count 1) scount
+                             (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)
+                                     ,@(car args))
+                                   named)
+                             spill)
+                       (loop (cdr args) (+ count 1) (+ scount 1)
+                             named
+                             (cons `(,(+ spill-base
+                                         (* (- num-spills scount 1) 8))
+                                     ,@(car args))
+                                   spill)))]
+                    [(%farg-type? (caar args))
+                     ;; We load both integer regs and flonum regs.
+                     ;; It matters for variadic function call.
+                     (if (< count 4)
+                       (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3) count)]
+                             [ikey (~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)]
+                             [vkey (~ '(:farg0-variant :farg1-variant
+                                        :farg2-variant :farg3-variant) count)])
+                         (loop (cdr args) (+ count 1) scount
+                               (if (eq? (caar args) <float>)
+                                 (list* `(,vkey ,<uint8> movss)
+                                        `(,fkey ,@(car args))
+                                        `(,ikey ,@(car args)) named)
+                                 (list* `(,fkey ,@(car args))
+                                        `(,ikey ,@(car args)) named))
+                               spill))
+                       (loop (cdr args) (+ count 1) (+ scount 1)
+                             named
+                             (cons `(,(+ spill-base
+                                         (* (- num-spills scount 1) 8))
+                                     ,@(car args))
+                                   spill)))]
+                    [else (error "bad arg entry:" (car args))]))))))
    :port port)
   )
 

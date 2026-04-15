@@ -12,14 +12,16 @@
     (exit 0))])
 
 (test-start "ffitest")
+(use lang.asm.x86_64)
 
 ;;==========================================================================
 (test-section "raw call")
 
 (define (foreign-call dlo name args rettype)
-  ((with-module gauche.internal call-amd64)
-   (dlobj-get-entry-address dlo name)
-   args rettype))
+  (parameterize ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
+    ((with-module gauche.internal call-amd64)
+     (dlobj-get-entry-address dlo name)
+     args rettype)))
 
 (define (test-foreign-call dlo name expected args rettype)
   (test* #"call ~name" expected
@@ -33,8 +35,10 @@
            (let* ((r #f)
                   (s (with-output-to-string
                        (^[]
-                         (set! r ((with-module gauche.internal call-amd64)
-                                  dle '() <void>))))))
+                         (parameterize ([(with-module gauche.typeutil
+                                           native-ptr-fill-enabled?) #t])
+                           (set! r ((with-module gauche.internal call-amd64)
+                                    dle '() <void>)))))))
              (list r s))))
 
   (test-section "simple, register passing call (integral)")
