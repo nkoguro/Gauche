@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <gauche.h>
 
 struct foo {
     char c;
@@ -10,22 +9,29 @@ struct foo {
     double d;
 };
 
-extern char f_c(void);
-extern int f_i(void);
-extern float f_f(void);
-extern double f_d(void);
-extern void f_v(void);
+extern char F_c(void);
+extern int F_i(void);
+extern float F_f(void);
+extern double F_d(void);
+extern void F_v(void);
 
-extern int fi_i(int);
-extern float ff_f(float);
-extern double f_d_d(double);
+extern int Fi_i(int);
+extern float Ff_f(float);
+extern float Ffff_f(float, float, float);
+extern double Fd_d(double);
+extern double Gd_d(double);
+extern double Fddd_d(double, double, double);
+extern double Fifd_d(int, float, double);
+extern float Fifd_f(int, float, double);
+extern double Fidf_d(int, double, float);
+extern float Fidf_f(int, double, float);
 
-extern struct foo *f_pstrct_c_pstruct(struct foo*, char);
-extern struct foo *f_pstrct_s_pstruct(struct foo*, short);
-extern struct foo *f_pstrct_i_pstruct(struct foo*, int);
-extern struct foo *f_pstrct_l_pstruct(struct foo*, long);
-extern struct foo *f_pstrct_f_pstruct(struct foo*, float);
-extern struct foo *f_pstrct_d_pstruct(struct foo*, double);
+extern struct foo *F_pstruct_c_pstruct(struct foo*, char);
+extern struct foo *F_pstruct_s_pstruct(struct foo*, short);
+extern struct foo *F_pstruct_i_pstruct(struct foo*, int);
+extern struct foo *F_pstruct_l_pstruct(struct foo*, long);
+extern struct foo *F_pstruct_f_pstruct(struct foo*, float);
+extern struct foo *F_pstruct_d_pstruct(struct foo*, double);
 
-extern int f_ivar(int cnt, ...);
-extern double f_dvar(int cnt, ...);
+extern int Fivar(int cnt, ...);
+extern double Fdvar(int cnt, ...);

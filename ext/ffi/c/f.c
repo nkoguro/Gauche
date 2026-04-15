@@ -27,11 +27,6 @@ void F_v(void)
 {
 }
 
-ScmObj F_o(void)
-{
-    return SCM_INTERN("foo");
-}
-
 int Fi_i(int n)
 {
     return n+1;
@@ -40,11 +35,6 @@ int Fi_i(int n)
 float Ff_f(float x)
 {
     return x/2;
-}
-
-ScmObj Foo_o(ScmObj x, ScmObj y)
-{
-    return Scm_Cons(x, y);
 }
 
 float Ffff_f(float x, float y, float z)
