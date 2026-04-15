@@ -3,107 +3,127 @@
 #include "f.h"
 
 
-char f_c(void)
+char F_c(void)
 {
     return 9;
 }
 
-int f_i(void)
+int F_i(void)
 {
     return 42;
 }
 
-float f_f(void)
+float F_f(void)
 {
     return 1.25f;
 }
 
-double f_d(void)
+double F_d(void)
 {
     return 3.14;
 }
 
-void f_v(void)
+void F_v(void)
 {
 }
 
-ScmObj f_o(void)
+ScmObj F_o(void)
 {
     return SCM_INTERN("foo");
 }
 
-int f_i_i(int n)
+int Fi_i(int n)
 {
     return n+1;
 }
 
-float f_f_f(float x)
+float Ff_f(float x)
 {
     return x/2;
 }
 
-float f_f_fff(float x, float y, float z)
+ScmObj Foo_o(ScmObj x, ScmObj y)
+{
+    return Scm_Cons(x, y);
+}
+
+float Ffff_f(float x, float y, float z)
 {
     return x+y+z;
 }
 
-double f_d_d(double d)
+double Fd_d(double d)
 {
     return d*2;
 }
 
-double f_d_ddd(double x, double y, double z)
+double Gd_d(double d)
+{
+    return d*4;
+}
+
+double Fddd_d(double x, double y, double z)
 {
     return x+y+z;
 }
 
-double f_d_ifd(int x, float y, double z)
+double Fifd_d(int x, float y, double z)
 {
     return x*y + x*z;
 }
 
-double f_d_idf(int x, double y, float z)
+float Fifd_f(int x, float y, double z)
+{
+    return -(x*y + x*z);
+}
+
+double Fidf_d(int x, double y, float z)
 {
     return x*y - x*z;
 }
 
-struct foo *f_pstruct_c_pstruct(struct foo *st, char c)
+float Fidf_f(int x, double y, float z)
+{
+    return -(x*y - x*z);
+}
+
+struct foo *F_pstruct_c_pstruct(struct foo *st, char c)
 {
     st->c = c;
     return st;
 }
 
-struct foo *f_pstruct_s_pstruct(struct foo *st, short s)
+struct foo *F_pstruct_s_pstruct(struct foo *st, short s)
 {
     st->s = s;
     return st;
 }
 
-struct foo *f_pstruct_i_pstruct(struct foo *st, int i)
+struct foo *F_pstruct_i_pstruct(struct foo *st, int i)
 {
     st->i = i;
     return st;
 }
 
-struct foo *f_pstruct_l_pstruct(struct foo *st, long l)
+struct foo *F_pstruct_l_pstruct(struct foo *st, long l)
 {
     st->l = l;
     return st;
 }
 
-struct foo *f_pstruct_f_pstruct(struct foo *st, float f)
+struct foo *F_pstruct_f_pstruct(struct foo *st, float f)
 {
     st->f = f;
     return st;
 }
 
-struct foo *f_pstruct_d_pstruct(struct foo *st, double d)
+struct foo *F_pstruct_d_pstruct(struct foo *st, double d)
 {
     st->d = d;
     return st;
 }
 
-int f_ivar(int cnt, ...)
+int Fivar(int cnt, ...)
 {
     int r = 0;
     va_list ap;
@@ -117,7 +137,7 @@ int f_ivar(int cnt, ...)
     return r;
 }
 
-double f_dvar(int cnt, ...)
+double Fdvar(int cnt, ...)
 {
     double r = 0;
     va_list ap;

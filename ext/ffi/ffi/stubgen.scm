@@ -520,7 +520,7 @@
          [c-name    (~ cfn'c-name)])
     (string-append
      (format "    fptr = Scm_DLOGetEntryAddress(dlo, SCM_STRING(SCM_MAKE_STR(~a)), SCM_FALSE);"
-             (cgen-safe-string c-name))
+             (cgen-safe-string #"_~c-name"))
      "\n"
      (format "    if (!SCM_NATIVE_HANDLE_P(fptr))\
             \n        Scm_Error(\"FFI setup: symbol ~a not found in library\");"

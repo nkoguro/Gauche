@@ -127,7 +127,7 @@
                           (with-module gauche.internal call-amd64)])]
                        [else
                         (error "Native FFI is not supported on this platform")])]
-         [ptr        (dlobj-get-entry-address dlo (~ cfn'c-name))]
+         [ptr        (dlobj-get-entry-address dlo #"_~(~ cfn'c-name)")]
          [ret-type   (~ cfn'return-type)]
          [arg-types  (~ cfn'arg-types)]
          [variadic?  (~ cfn'variadic?)]

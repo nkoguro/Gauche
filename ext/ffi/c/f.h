@@ -16,8 +16,8 @@ extern float f_f(void);
 extern double f_d(void);
 extern void f_v(void);
 
-extern int f_i_i(int);
-extern float f_f_f(float);
+extern int fi_i(int);
+extern float ff_f(float);
 extern double f_d_d(double);
 
 extern struct foo *f_pstrct_c_pstruct(struct foo*, char);
