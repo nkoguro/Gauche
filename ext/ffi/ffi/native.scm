@@ -85,7 +85,6 @@
 ;;   <void*>    - raw pointer (native-handle or foreign-pointer)
 ;;   <intptr_t> - integer (all other integral types)
 (define (native-type->call-canon type)
-  (assume-type type <native-type>)
   (cond
     [(or (is-a? type <c-pointer>)
          (is-a? type <c-array>)
@@ -93,11 +92,15 @@
     [(or (is-a? type <c-struct>)
          (is-a? type <c-union>))
      (error "Directly passing struct or union isn't supported yet")]
-    [(eq? type <void>)               <void>]
-    [(eq? type <double>)             <double>]
-    [(eq? type <float>)              <float>]
-    [(eq? type <c-string>)           <c-string>]
-    [else                            <intptr_t>]))
+    [(is-a? type <native-type>)
+     (cond
+      [(eq? type <void>)             <void>]
+      [(eq? type <double>)           <double>]
+      [(eq? type <float>)            <float>]
+      [(eq? type <c-string>)         <c-string>]
+      [else                          <intptr_t>])]
+    [(eq? type <top>)                <top>]
+    [else (error "Invalid type for native call:" type)]))
 
 ;; <c-char> object needs to be passed as integer
 (define (native-type->arg-coerce type)

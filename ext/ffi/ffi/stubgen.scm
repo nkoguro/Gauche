@@ -147,10 +147,10 @@
          [ptr-ret?   (pointer-type? ret-type)]
          [ret-typevar (and ptr-ret? "ss_rettype_")]
          ;; C type of the variadic function pointer, used for the cast in the call
-         [ret-c      (native-type->c-type ret-type)]
+         [ret-c      (%type->c-type ret-type)]
          [fixed-c-str (if (null? fixed-arg-types)
                         "void"
-                        (join/comma (map native-type->c-type fixed-arg-types)))]
+                        (join/comma (map %type->c-type fixed-arg-types)))]
          [fn-cast    (format "(~a (*)(~a, ...))" ret-c fixed-c-str)]
          [unit-name  (format "ffi_substub_~x" key)]
          ;; Names for the setup function registered in gauche.ffi.stubgen
@@ -175,9 +175,9 @@
       (for-each-with-index
        (lambda (i type)
          (cgen-body (format "    ~a arg~a = ~a;"
-                            (native-type->c-type type)
+                            (%type->c-type type)
                             i
-                            (native-type->unbox-expr type (format "args[~a]" i)))))
+                            (%type->unbox-expr type (format "args[~a]" i)))))
        fixed-arg-types)
       ;; Unbox variadic arguments: double if float-mask bit set, else intptr_t
       (let loop ([i 0])
@@ -186,8 +186,8 @@
                  [c-type   (if is-float "double" "intptr_t")]
                  [unbox    (if is-float
                              (format "Scm_GetDouble(args[~a])" (+ nfixed i))
-                             (native-type->unbox-expr <intptr_t>
-                                                      (format "args[~a]" (+ nfixed i))))])
+                             (%type->unbox-expr <intptr_t>
+                                                (format "args[~a]" (+ nfixed i))))])
             (cgen-body (format "    ~a va~a = ~a;" c-type i unbox)))
           (loop (+ i 1))))
       ;; Build the call: cast data to the variadic fn ptr type and call it
@@ -196,7 +196,7 @@
                                 (map (^i (format "va~a"  i)) (iota nvargs))))]
              [call-expr (format "(~a data)(~a)" fn-cast all-args)])
         (cgen-body (format "    return ~a;"
-                           (native-type->box-expr ret-type call-expr ret-typevar))))
+                           (%type->box-expr ret-type call-expr ret-typevar))))
       (cgen-body "}")
       ;; Setup function: called by %generate-float-substub after dynamic loading.
       ;; args[0] = fn-ptr-scm (intptr_t encoded as Scheme integer)
@@ -267,53 +267,56 @@
   (format "ffi_substub_mutex_~a" (~ cfn'c-name)))
 
 ;; Convert a <native-type> to a C type string.
-(define (native-type->c-type type)
-  (assume-type type <native-type>)
-  (cond
-    [(is-a? type <c-pointer>)
-     (string-append (native-type->c-type (~ type'pointee-type)) "*")]
-    [(is-a? type <c-array>)
-     (string-append (native-type->c-type (~ type'element-type)) "*")]
-    [(is-a? type <c-struct>)
-     (if (~ type'tag) (format "struct ~a" (~ type'tag)) "struct /*anon*/")]
-    [(is-a? type <c-union>)
-     (if (~ type'tag) (format "union ~a" (~ type'tag)) "union /*anon*/")]
-    [(is-a? type <c-function>)
-     "void*"]                         ; function pointers used as opaque void*
-    [else
-     (~ type'c-type-name)]))
+(define (%type->c-type type)
+  (if (eq? type <top>)
+    "ScmObj"
+    (etypecase type
+      [<c-pointer>
+       (string-append (%type->c-type (~ type'pointee-type)) "*")]
+      [<c-array>
+       (string-append (%type->c-type (~ type'element-type)) "*")]
+      [<c-struct>
+       (if (~ type'tag) (format "struct ~a" (~ type'tag)) "struct /*anon*/")]
+      [<c-union>
+       (if (~ type'tag) (format "union ~a" (~ type'tag)) "union /*anon*/")]
+      [<c-function>
+       "void*"]                         ; function pointers used as opaque void*
+      [<native-type> (~ type'c-type-name)])))
 
 ;; Generate a C expression that unboxes a Scheme value to a C value.
 ;; arg-expr: C string expression yielding ScmObj.
 ;; For <c-pointer> types, extracts the raw pointer from the native handle.
-(define (native-type->unbox-expr type arg-expr)
-  (assume-type type <native-type>)
-  (if (pointer-type? type)
+(define (%type->unbox-expr type arg-expr)
+  (cond
+   [(eq? type <top>) arg-expr]
+   [(pointer-type? type)
     ;; Extract void* from the native handle and cast to the C pointer type.
     ;; Scm_NativeHandlePtr is the public accessor for the pointer field.
     (format "(~a)Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(~a))"
-            (native-type->c-type type) arg-expr)
+            (%type->c-type type) arg-expr)]
+   [else
     (let1 unboxer (~ type'c-unboxer-name)
       (if (or (not unboxer) (equal? unboxer ""))
         (errorf "No unboxer for type: ~s" type)
-        (format "~a(~a)" unboxer arg-expr)))))
+        (format "~a(~a)" unboxer arg-expr)))]))
 
 ;; Generate a C expression that boxes a C value back to a Scheme object.
 ;; val-expr: C string expression yielding the C value.
 ;; For <c-pointer> return types, type-var is the name of a static ScmObj
 ;; variable that holds the native type object (populated during ffisetup).
-(define (native-type->box-expr type val-expr :optional (type-var #f))
-  (assume-type type <native-type>)
-  (if (pointer-type? type)
-    (begin
-      (unless type-var
-        (errorf "type-var required for boxing <c-pointer> return type: ~s" type))
-      ;; Wrap the raw C pointer in a native handle using the stored type object.
-      (format "Scm_MakeNativeHandleSimple((void*)(~a), ~a)" val-expr type-var))
+(define (%type->box-expr type val-expr :optional (type-var #f))
+  (cond
+   [(eq? type <top>) (format "SCM_OBJ(~a)" val-expr)]
+   [(pointer-type? type)
+    (unless type-var
+      (errorf "type-var required for boxing <c-pointer> return type: ~s" type))
+    ;; Wrap the raw C pointer in a native handle using the stored type object.
+    (format "Scm_MakeNativeHandleSimple((void*)(~a), ~a)" val-expr type-var)]
+   [else
     (let1 boxer (~ type'c-boxer-name)
       (if (or (not boxer) (equal? boxer ""))
         (errorf "No boxer for type: ~s" type)
-        (format "~a(~a)" boxer val-expr)))))
+        (format "~a(~a)" boxer val-expr)))]))
 
 ;;;
 ;;; C code emitters
@@ -328,10 +331,10 @@
          [arg-types (~ cfn'arg-types)]
          [ret-type  (~ cfn'return-type)]
          [variadic? (~ cfn'variadic?)]
-         [ret-c     (native-type->c-type ret-type)]
+         [ret-c     (%type->c-type ret-type)]
          [arg-c-str (if (null? arg-types)
                       "void"
-                      (join/comma (map native-type->c-type arg-types)))])
+                      (join/comma (map %type->c-type arg-types)))])
     (cgen-decl (format "static ~a (*ffi_fn_~a)(~a~a) = NULL;"
                        ret-c c-name arg-c-str
                        (if variadic? ", ..." "")))))
@@ -363,8 +366,8 @@
     ;; Unbox each argument into a typed C local variable
     (for-each-with-index
      (lambda (i arg-type)
-       (let* ([c-type (native-type->c-type arg-type)]
-              [unbox  (native-type->unbox-expr arg-type (format "args[~a]" i))])
+       (let* ([c-type (%type->c-type arg-type)]
+              [unbox  (%type->unbox-expr arg-type (format "args[~a]" i))])
          (cgen-body (format "    ~a arg~a = ~a;" c-type i unbox))))
      arg-types)
     ;; Build the call expression and box the result
@@ -374,7 +377,7 @@
                 (join/comma (map (^i (format "arg~a" i))
                                  (iota (length arg-types)))))
       (cgen-body (format "    return ~a;"
-                         (native-type->box-expr ret-type call-expr ret-typevar))))
+                         (%type->box-expr ret-type call-expr ret-typevar))))
     (cgen-body "}")))
 
 ;; Emit the SUBR for a variadic FFI function.
@@ -404,7 +407,7 @@
          [ret-type    (~ cfn'return-type)]
          [nfixed      (length arg-types)]
          [ret-typevar (and (pointer-type? ret-type) (ffi-rettype-varname cfn))]
-         [va-unbox    (native-type->unbox-expr <intptr_t> "SCM_CAR(lst_)")]
+         [va-unbox    (%type->unbox-expr <intptr_t> "SCM_CAR(lst_)")]
          [table-var   (ffi-substub-table-varname cfn)]
          [mutex-var   (ffi-substub-mutex-varname cfn)]
          [argtypes-var (ffi-substub-argtypes-varname cfn)]
@@ -420,8 +423,8 @@
     ;; Unbox fixed arguments
     (for-each-with-index
      (^[i arg-type]
-       (let ([c-type (native-type->c-type arg-type)]
-             [unbox  (native-type->unbox-expr arg-type (format "args[~a]" i))])
+       (let ([c-type (%type->c-type arg-type)]
+             [unbox  (%type->unbox-expr arg-type (format "args[~a]" i))])
          (cgen-body (format "    ~a arg~a = ~a;" c-type i unbox))))
      arg-types)
     ;; args[nfixed] is the rest list of variadic Scheme arguments
@@ -459,8 +462,8 @@
              [all-args   (join/comma (append fixed-args var-args))]
              [call-expr  (format "ffi_fn_~a(~a)" c-name all-args)])
         (cgen-body (format "        case ~a: return ~a; break;"
-                           n (native-type->box-expr ret-type call-expr
-                                                    ret-typevar)))))
+                           n (%type->box-expr ret-type call-expr
+                                              ret-typevar)))))
     (cgen-body
      #"        default: Scm_Error(\"BUG: nvargs_ check above failed\"); return SCM_UNDEFINED;"
      #"        }")

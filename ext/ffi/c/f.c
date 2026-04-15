@@ -27,6 +27,11 @@ void f_v(void)
 {
 }
 
+ScmObj f_o(void)
+{
+    return SCM_INTERN("foo");
+}
+
 int f_i_i(int n)
 {
     return n+1;

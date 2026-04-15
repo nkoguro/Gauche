@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <gauche.h>
 
 struct foo {
     char c;

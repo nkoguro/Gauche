@@ -81,27 +81,29 @@
 ;;;
 ;;; <foreign-c-function> - parsed representation of a define-c-function form
 ;;;
-;;; Created by parse-define-c-function at macro-expansion time.
-;;; Backend macros receive a list of its instances.
-;;;
+
+;; Created by parse-define-c-function at macro-expansion time.
+;; Backend macros receive a list of its instances.
+;; 'Type' in arg-types and return-type should be either an instance
+;; of <native-type> or <top>.
 
 (define-class <foreign-c-function> ()
   ((scheme-name  :init-keyword :scheme-name)  ; symbol
    (c-name       :init-keyword :c-name)       ; string, C-safe function name
-   (arg-types    :init-keyword :arg-types)    ; list of <native-type> (fixed args only)
-   (return-type  :init-keyword :return-type)  ; <native-type>
+   (arg-types    :init-keyword :arg-types)    ; list of types (fixed args)
+   (return-type  :init-keyword :return-type)  ; type
    (variadic?    :init-keyword :variadic?     ; #t when arg-types ends with '...
                  :init-value #f)
    ))
 
-;; Resolve a typespec to a <native-type> instance at runtime.
+;; Resolve a typespec to a <native-type> instance or <top> at runtime.
 ;; Reference to this procedure is inserted by macro expander.
-;; A typespec is either a <native-type> instance (returned as-is) or a
-;; native-type signature.
+;; A typespec is either a <native-type> instance (returned as-is), <top>,
+;;  or a native-type signature.
 (define (%resolve-typespec spec)
-  (if (is-a? spec <native-type>)
-    spec
-    (native-type spec)))
+  (cond [(is-a? spec <native-type>) spec]
+        [(eq? spec <top>) spec]
+        [else (native-type spec)]))
 
 ;; Parse a define-c-function arg-types list.  The list may end with the
 ;; symbol '... to designate a variadic C function (the same convention as
