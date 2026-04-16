@@ -1,5 +1,6 @@
 #include <inttypes.h>
 #include <stdarg.h>
+#include <string.h>
 #include "f.h"
 
 
@@ -136,6 +137,60 @@ double Fdvar(int cnt, ...)
     while (cnt-- > 0) {
         double v = va_arg(ap, double);
         r += v;
+    }
+    va_end(ap);
+    return r;
+}
+
+/* Spill tests: more args than fit in registers.
+   SysV x86_64 ABU uses 6 integer arg regs and 8 float arg regs (xmm0-7).
+   Win64 ABI uses less regs, so we test for SysV spill case to cover both.
+*/
+
+/* 7 int args: 7th spills past the 6 integer registers */
+int Fiiiiiii_i(int a, int b, int c, int d, int e, int f, int g)
+{
+    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g;
+}
+
+/* 9 double args: 9th spills past the 8 xmm registers */
+double Fddddddddd_d(double a, double b, double c, double d,
+                    double e, double f, double g, double h, double i)
+{
+    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i;
+}
+
+/* 7 ints + 4 doubles: integer registers spill, floats stay in xmm */
+double Fiiiiiiidddd_d(int a, int b, int c, int d, int e, int f, int g,
+                      double h, double i, double j, double k)
+{
+    return a + b + c + d + e + f + g + h + i + j + k;
+}
+
+/* c-string: take a string arg, return its length */
+int Fs_i(const char *s)
+{
+    return (int)strlen(s);
+}
+
+/* c-string: take an int, return a static string */
+const char *Fi_s(int n)
+{
+    static const char *labels[] = {"zero", "one", "two", "three", "four"};
+    if (n >= 0 && n < 5) return labels[n];
+    return "";
+}
+
+/* Mixed varargs: cnt pairs of (int n, double x); returns sum of n*x */
+double Fidfvar(int cnt, ...)
+{
+    double r = 0;
+    va_list ap;
+    va_start(ap, cnt);
+    while (cnt-- > 0) {
+        int n = va_arg(ap, int);
+        double x = va_arg(ap, double);
+        r += n * x;
     }
     va_end(ap);
     return r;

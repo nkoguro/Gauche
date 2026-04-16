@@ -35,3 +35,10 @@ extern struct foo *F_pstruct_d_pstruct(struct foo*, double);
 
 extern int Fivar(int cnt, ...);
 extern double Fdvar(int cnt, ...);
+
+extern int Fiiiiiii_i(int, int, int, int, int, int, int);
+extern double Fddddddddd_d(double, double, double, double, double, double, double, double, double);
+extern double Fiiiiiiidddd_d(int, int, int, int, int, int, int, double, double, double, double);
+extern int Fs_i(const char *);
+extern const char *Fi_s(int);
+extern double Fidfvar(int cnt, ...);

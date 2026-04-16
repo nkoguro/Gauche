@@ -1098,6 +1098,16 @@
                      ;; varargs
                      (define-c-function Fivar '(int ...) 'int)
                      (define-c-function Fdvar '(int ...) 'double)
+                     (define-c-function Fidfvar '(int ...) 'double)
+
+                     ;; spill tests
+                     (define-c-function Fiiiiiii-i '(int int int int int int int) 'int)
+                     (define-c-function Fddddddddd-d '(double double double double double double double double double) 'double)
+                     (define-c-function Fiiiiiiidddd-d '(int int int int int int int double double double double) 'double)
+
+                     ;; c-string
+                     (define-c-function Fs-i '(c-string) 'int)
+                     (define-c-function Fi-s '(int) 'c-string)
 
                      ;; struct pointer passing
                      (define-c-function F-pstruct-c-pstruct `(,foo* char) foo*)
@@ -1131,6 +1141,22 @@
 
          (test* "Fivar" 45 (Fivar 9 1 2 3 4 5 6 7 8 9))
          (test* "Fdvar" 4.5 (Fdvar 9 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9))
+
+         ;; mixed varargs: cnt pairs of (int n, double x), returns sum of n*x
+         ;; 1*2.0 + 2*3.0 + 3*4.0 = 20.0
+         (test* "Fidfvar" 20.0 (Fidfvar 3 1 2.0 2 3.0 3 4.0))
+
+         ;; spill tests
+         ;; 7 int args: a + 2b + 3c + ... + 7g with (1..7) => 140
+         (test* "Fiiiiiii_i" 140 (Fiiiiiii-i 1 2 3 4 5 6 7))
+         ;; 9 double args: a + 2b + ... + 9i with (1.0..9.0) => 285.0
+         (test* "Fddddddddd_d" 285.0 (Fddddddddd-d 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0))
+         ;; 7 ints + 4 doubles, sum all: 28 + 10 = 38.0
+         (test* "Fiiiiiiidddd_d" 38.0 (Fiiiiiiidddd-d 1 2 3 4 5 6 7 1.0 2.0 3.0 4.0))
+
+         ;; c-string passing and returning
+         (test* "Fs_i" 5 (Fs-i "hello"))
+         (test* "Fi_s" "two" (Fi-s 2))
 
          (let* ([p (uvector->native-handle
                     (make-u8vector (~ foo'size))
