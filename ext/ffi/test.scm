@@ -1062,11 +1062,13 @@
                               l::long f::float d::double))))
   (define foo* (make-c-pointer-type foo))
 
-  (define-syntax do-test
+  (define-syntax do-test-f
     (syntax-rules ::: ()
       [(_ opts)
-       (begin
-         (test* #"with-ffi ~'opts" 'ok
+       (let-syntax ([t (syntax-rules ()
+                         [(_ expect expr)
+                          (test* #"f ~'opts ~'expr" expect expr)])])
+         (test* #"with-ffi f ~'opts" 'ok
                 (begin
                   (eval
                    `(with-ffi
@@ -1120,83 +1122,104 @@
                    (current-module))
                   'ok))
 
-         (test* "F_c" #\x09 (F-c))
-         (test* "F_i" 42 (F-i))
-         (test* "F_f" 1.25 (F-f))
-         (test* "F_d" 3.14 (F-d))
-         (test* "F_v" (undefined) (F-v))
+         (t #\x09 (F-c))
+         (t 42 (F-i))
+         (t 1.25 (F-f))
+         (t 3.14 (F-d))
+         (t (undefined) (F-v))
          ;(test* "F_o" 'foo (F-o))
-         (test* "Fi_i" 101 (Fi-i 100))
-         (test* "Ff_f" 0.125 (Ff-f 0.25))
+         (t 101 (Fi-i 100))
+         (t 0.125 (Ff-f 0.25))
          ;(test* "Foo_o" '(a . b) (Foo-o 'a 'b))
-         (test* "Ffff_f" 0.875 (Ffff-f 0.5 0.25 0.125))
-         (test* "Fd_d" 1.2 (Fd-d 0.6))
-         (test* "Fddd_d" 3.5 (Fddd-d 0.5 1.0 2.0))
-         (test* "Fifd_d" -24.0 (Fifd-d 32 -0.5 -0.25))
-         (test* "Fifd_f" 24.0 (Fifd-f 32 -0.5 -0.25))
-         (test* "Fidf_d" -8.0 (Fidf-d 32 -0.5 -0.25))
-         (test* "Fidf_f" 8.0 (Fidf-f 32 -0.5 -0.25))
-         (test* "Gd_d" 2.4 (Gd-d 0.6))
-         (test* "Fiii" 43 (Fiii))
+         (t 0.875 (Ffff-f 0.5 0.25 0.125))
+         (t 1.2 (Fd-d 0.6))
+         (t 3.5 (Fddd-d 0.5 1.0 2.0))
+         (t -24.0 (Fifd-d 32 -0.5 -0.25))
+         (t 24.0 (Fifd-f 32 -0.5 -0.25))
+         (t -8.0 (Fidf-d 32 -0.5 -0.25))
+         (t 8.0 (Fidf-f 32 -0.5 -0.25))
+         (t 2.4 (Gd-d 0.6))
+         (t 43 (Fiii))
 
-         (test* "Fivar" 45 (Fivar 9 1 2 3 4 5 6 7 8 9))
-         (test* "Fdvar" 4.5 (Fdvar 9 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9))
+         (t 45 (Fivar 9 1 2 3 4 5 6 7 8 9))
+         (t 4.5 (Fdvar 9 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9))
 
          ;; mixed varargs: cnt pairs of (int n, double x), returns sum of n*x
          ;; 1*2.0 + 2*3.0 + 3*4.0 = 20.0
-         (test* "Fidfvar" 20.0 (Fidfvar 3 1 2.0 2 3.0 3 4.0))
+         (t 20.0 (Fidfvar 3 1 2.0 2 3.0 3 4.0))
 
          ;; spill tests
          ;; 7 int args: a + 2b + 3c + ... + 7g with (1..7) => 140
-         (test* "Fiiiiiii_i" 140 (Fiiiiiii-i 1 2 3 4 5 6 7))
+         (t 140 (Fiiiiiii-i 1 2 3 4 5 6 7))
          ;; 9 double args: a + 2b + ... + 9i with (1.0..9.0) => 285.0
-         (test* "Fddddddddd_d" 285.0 (Fddddddddd-d 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0))
+         (t 285.0 (Fddddddddd-d 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0))
          ;; 7 ints + 4 doubles, sum all: 28 + 10 = 38.0
-         (test* "Fiiiiiiidddd_d" 38.0 (Fiiiiiiidddd-d 1 2 3 4 5 6 7 1.0 2.0 3.0 4.0))
+         (t 38.0 (Fiiiiiiidddd-d 1 2 3 4 5 6 7 1.0 2.0 3.0 4.0))
 
          ;; c-string passing and returning
-         (test* "Fs_i" 5 (Fs-i "hello"))
-         (test* "Fi_s" "two" (Fi-s 2))
+         (t 5 (Fs-i "hello"))
+         (t "two" (Fi-s 2))
 
          (let* ([p (uvector->native-handle
                     (make-u8vector (~ foo'size))
                     foo*)])
            (set! (native-> p 'c) #\a)
-           (test* "struct c" #\b
-                  (let ([r (F-pstruct-c-pstruct p #\b)])
+           (t #\b (let ([r (F-pstruct-c-pstruct p #\b)])
                     (native-> r 'c)))
            (set! (native-> p 's) 12345)
-           (test* "struct s" -23456
-                  (let ([r (F-pstruct-s-pstruct p -23456)])
-                    (native-> r 's)))
+           (t -23456 (let ([r (F-pstruct-s-pstruct p -23456)])
+                       (native-> r 's)))
            (set! (native-> p 'i) 123456789)
-           (test* "struct i" -987654321
-                  (let ([r (F-pstruct-i-pstruct p -987654321)])
-                    (native-> r 'i)))
+           (t -987654321 (let ([r (F-pstruct-i-pstruct p -987654321)])
+                           (native-> r 'i)))
            (cond
             [(>= (~ <long>'size) 8)
              (set! (native-> p 'l) 123456789012)
-             (test* "struct l" -987654321098
-                    (let ([r (F-pstruct-l-pstruct p -987654321098)])
-                      (native-> r 'l)))]
+             (t -987654321098
+                (let ([r (F-pstruct-l-pstruct p -987654321098)])
+                  (native-> r 'l)))]
             [else
              (set! (native-> p 'l) 123456789)
-             (test* "struct l" -987654321
-                    (let ([r (F-pstruct-l-pstruct p -987654321)])
-                      (native-> r 'l)))])
+             (t -987654321
+                (let ([r (F-pstruct-l-pstruct p -987654321)])
+                  (native-> r 'l)))])
            (set! (native-> p 'f) 0.5)
-           (test* "struct f" -0.25
-                  (let ([r (F-pstruct-f-pstruct p -0.25)])
-                    (native-> r 'f)))
+           (t -0.25
+              (let ([r (F-pstruct-f-pstruct p -0.25)])
+                (native-> r 'f)))
            (set! (native-> p 'd) 0.5)
-           (test* "struct d" -0.25
-                  (let ([r (F-pstruct-d-pstruct p -0.25)])
-                    (native-> r 'd))))
+           (t -0.25
+              (let ([r (F-pstruct-d-pstruct p -0.25)])
+                (native-> r 'd))))
          )]))
 
-  (do-test ())                          ;default
+  (define-syntax do-test-g
+    (syntax-rules ::: ()
+      [(_ opts)
+       (let-syntax ([t (syntax-rules ()
+                         [(_ expect expr)
+                          (test* #"g ~'opts ~'expr" expect expr)])])
+         (test* #"with-ffi g ~'opts" 'ok
+                (begin
+                  (eval
+                   `(with-ffi
+                     (dynamic-load "./g" :init-function #f)
+                     opts
+                     (define-c-function F-o '() <top>)
+                     (define-c-function Foo-o `(,<top> ,<top>) <top>)
+                     )
+                   (current-module))
+                  'ok))
+
+         (t 'foo (F-o))
+         (t  '(a . b) (Foo-o 'a 'b))
+         )]))
+
+  (do-test-f ())                          ;default
+  (do-test-g ())                          ;default
   (when (#/^x86_64-/ (gauche-architecture))
-    (do-test (:subsystem :native)))
+    (do-test-f (:subsystem :native))
+    (do-test-g (:subsystem :native)))
   )
 
 (test-end)

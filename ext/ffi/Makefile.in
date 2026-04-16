@@ -13,9 +13,11 @@ OBJECTS = $(gauche_ctype_OBJECTS)
 
 CONFIG_GENERATED = Makefile
 PREGENERATED =
-XCLEANFILES = gauche--ctype.c ctype.sci f.$(OBJEXT) f.$(SOEXT)
+XCLEANFILES = gauche--ctype.c ctype.sci \
+	      f.$(OBJEXT) f.$(SOEXT) \
+	      g.$(OBJEXT) g.$(SOEXT)
 
-all : $(LIBFILES) f.$(SOEXT)
+all : $(LIBFILES) f.$(SOEXT) g.$(SOEXT)
 
 gauche_ctype_OBJECTS = gauche--ctype.$(OBJEXT)
 
@@ -29,6 +31,9 @@ f.$(SOEXT): c/f.h c/f.c
 	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/f.c -o f.$(OBJEXT)
 	$(LINK) f.$(SOEXT) f.$(OBJEXT)
 
+g.$(SOEXT): c/g.c
+	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/g.c -o g.$(OBJEXT)
+	$(LINK) g.$(SOEXT) g.$(OBJEXT) $(EXT_LIBGAUCHE) $(LIBS)
 
 
 install : install-std
