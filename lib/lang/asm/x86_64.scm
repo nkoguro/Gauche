@@ -31,38 +31,43 @@
 ;;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 
-;; EXPERIMENTAL - At this moment, this module is mainly "to play with" x86_64
+;;
 ;; instructions.  This is not a full set assembler; we implement features
 ;; on demand.
 ;; TODO: Eventually we might want to split machine-independent front-end
 ;; to lang.asm.  The API will very likely change then.
 
 (define-module lang.asm.x86_64
-  (use gauche.record)
   (use gauche.uvector)
   (use gauche.sequence)
   (use binary.io)
   (use scheme.list)
   (use srfi.13)
   (use srfi.42)
+  (use lang.asm.object)
   (use lang.asm.regset)
   (use util.match)
-  (export asm asm-template asm-template? asm-instantiate asm-dump <asm-template>
-          asm-template-bytes asm-template-labels asm-template-patches)
+  (export asm asm-template asm-dump)
   )
 (select-module lang.asm.x86_64)
+
+;; Register the x86_64-movs_ patch handler.
+;; Handler translates a symbol (movsd/#f -> #xf2, movss -> #xf3) into a
+;; prefix byte at the given offset.
+(register-patch-handler!
+ 'x86_64-movs_
+ (^ [bytes offset entry]
+   (let* ([v   (if entry (caddr entry) 'movsd)]
+          [pfx (case v
+                 [(movsd) #xf2]
+                 [(movss) #xf3]
+                 [else (error "movs_ value must be movsd or movss:" v)])])
+     (u8vector-set! bytes offset pfx))))
 
 ;; When non-#f, holds a mutable cell (a one-element list) into which
 ;; hole annotations are cons'd during pass 2.  Bound via parameterize
 ;; inside asm-template; #f outside (so non-template assembly collects nothing).
 (define patch-collector (make-parameter #f))
-
-;; TRANSIENT: cond-expand guard allows gen-native.scm to load this module
-;; with BUILD_GOSH 0.9.15, which lacks native-ptr-fill!.  Remove after 0.9.16.
-(define %native-ptr-fill!
-  (cond-expand
-    [gauche-0.9.15 (^ _ (error "native-ptr-fill! requires Gauche 0.9.16+"))]
-    [else (module-binding-ref 'gauche.typeutil 'native-ptr-fill!)]))
 
 ;; Instruction notation
 ;;   (<opcode>)
@@ -96,19 +101,7 @@
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
-;; Template record.
-;;   bytes   - u8vector of assembled machine code (zeros at placeholder holes)
-;;   labels  - alist of (symbol . byte-offset)
-;;   patches - list of (keyword byte-offset byte-width) describing holes
-;;             (empty until placeholder support is added in later stages)
-(define-record-type <asm-template>
-  (make-asm-template bytes labels patches)
-  asm-template?
-  (bytes   asm-template-bytes)
-  (labels  asm-template-labels)
-  (patches asm-template-patches))
-
-;; asm-template :: [Insn] -> <asm-template>
+;; asm-template :: [Insn] -> <obj-template>
 ;;   First stage of assembly.  Builds the full byte sequence with zeros at
 ;;   placeholder holes, and records where each hole is.
 (define (asm-template insns)
@@ -119,82 +112,13 @@
          [bytes   (list->u8vector (concatenate bss))]
          [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
          [patches (car acc)])
-    (make-asm-template bytes labels patches)))
+    (make-obj-template bytes labels patches)))
 
-;; fill-native-value! :: u8vector, int, int, <native-type>|<top>, val -> ()
-;;   Fill BYTES from OFFSET spanning SIZE bytes with the binary representation
-;;   of VALUE according to TYPE (always little-endian for numeric types).
-;;   For numeric <native-type>: the type must fit in the given size (it is
-;;   allowed to be smaller than the given size).
-;;   For pointer/object types (<c-pointer>, <c-array>, <c-function>,
-;;   <c-string>, <top>): delegates to %native-ptr-fill!, which requires
-;;   native-ptr-fill-enabled? to be #t.
-(define (fill-native-value! bytes offset size type value)
-  (define (bad)
-    (error "Unsupported type to use in asm-instantiate:" type))
-  (cond
-   [(is-a? type <native-type>)
-    (unless (<= (~ type 'size) size)
-      (errorf "native type ~s doesn't fit in the patch size ~a" type size))
-    (cond
-     [(eq? (~ type'super) <integer>)
-      (if (~ type'unsigned?)
-        (case (~ type'size)
-          [(1) (put-u8!    bytes offset value)]
-          [(2) (put-u16le! bytes offset value)]
-          [(4) (put-u32le! bytes offset value)]
-          [(8) (put-u64le! bytes offset value)]
-          [else (bad)])
-        (case (~ type'size)
-          [(1) (put-s8!    bytes offset value)]
-          [(2) (put-s16le! bytes offset value)]
-          [(4) (put-s32le! bytes offset value)]
-          [(8) (put-s64le! bytes offset value)]
-          [else (bad)]))]
-     [(eq? type <float>)   (put-f32le! bytes offset value)]
-     [(eq? type <double>)  (put-f64le! bytes offset value)]
-     [(or (of-type? type <c-pointer>)
-          (of-type? type <c-array>)
-          (of-type? type <c-function>)
-          (eq? type <c-string>))
-      ;; Delegate to native-ptr-fill!
-      (%native-ptr-fill! bytes offset size type value)]
-     [else (bad)])]
-   [(eq? type <top>)
-    ;; Raw ScmObj value — delegate to native-ptr-fill!
-    (%native-ptr-fill! bytes offset size type value)]
-   [else (bad)]))
-
-;; asm-instantiate :: <asm-template>, [(keyword, <native-type>, value)] -> u8vector, AList
-;;   Second stage.  Applies patches from PARAMS, a list of
-;;   (keyword native-type scheme-value) triples, and returns the finalised
-;;   byte vector and label alist.
-;;   The template record is never mutated; a fresh u8vector is returned.
-(define (asm-instantiate tmpl params)
-  (let1 bytes (u8vector-copy (asm-template-bytes tmpl))
-    (dolist [patch (asm-template-patches tmpl)]
-      (match patch
-        ;; Typed patch: encode value according to native-type.
-        [(kw offset width)
-         (and-let1 entry (assq kw params)
-           (match entry
-             [(_ native-type val)
-              (fill-native-value! bytes offset width native-type val)]))]
-        ;; movs_ patch: translate symbol movsd->#xf2, movss->#xf3.
-        [(kw offset 1 'movs_)
-         (let* ([entry (assq kw params)]
-                [v    (if entry (caddr entry) 'movsd)]
-                [pfx  (case v
-                        [(movsd) #xf2]
-                        [(movss) #xf3]
-                        [else (error "movs_ value must be movsd or movss:" v)])])
-           (u8vector-set! bytes offset pfx))]))
-    (values bytes (asm-template-labels tmpl))))
 
 ;; asm  :: [Insn] -> u8vector, [(label . addr)]
 ;;   Main entry (backward-compatible wrapper).
 (define (asm insns)
-  (asm-instantiate (asm-template insns) '()))
+  (link-template (asm-template insns) '()))
 
 ;; run-pass1 :: [Insn] -> [(p, addr)]
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
@@ -355,7 +279,7 @@
     [`(movsd (sse ,src) (mem . ,x)) (! (opc'(#xf2 #x0f #x11)) (reg src) (mem x))]
 
     ;; movs_ -- switchable movsd/movss: prefix byte (#xf2/#xf3) is patchable.
-    ;; Default encoding uses movsd (#xf2); asm-instantiate flips to #xf3 for movss.
+    ;; Default encoding uses movsd (#xf2); link-template flips to #xf3 for movss.
     [`((movs_ ,kw) (sse ,src) (sse ,dst))
      (op-movs_ kw (! (opc '(#xf2 #x0f #x10)) (reg dst) (r/m-reg dst)))]
     [`((movs_ ,kw) (mem . ,x) (sse ,dst))
@@ -429,15 +353,14 @@
 
 ;; op-movs_ :: keyword, closure -> closure
 ;;   Wraps an inner expand-spec closure for a movsd instruction.  In pass 2,
-;;   records a patch of kind 'movs_ at the prefix byte (offset 0 within the
-;;   instruction, i.e. addr - length(bytes)).
-;;   asm-instantiate translates movsd->#xf2, movss->#xf3 when applying it.
+;;   records a patch for 'x86_64-movs_ at the prefix byte offset.
+;;   link-template dispatches to the registered x86_64-movs_ handler.
 (define (op-movs_ kw inner)
   (^[a t]
     (let1 bytes (inner a t)
       (when (and t (patch-collector))
         (let1 acc (patch-collector)
-          (set-car! acc (cons (list kw (- a (length bytes)) 1 'movs_)
+          (set-car! acc (cons (list kw (- a (length bytes)) 'x86_64-movs_)
                               (car acc)))))
       bytes)))
 

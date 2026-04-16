@@ -6,6 +6,7 @@
 (use util.match)
 (use gauche.uvector)
 (use file.util)
+(use lang.asm.object)
 (use lang.asm.x86_64)
 
 ;;;
@@ -24,13 +25,13 @@
   (let ([bytes-var   (string->symbol #"*~|prefix|-bytes*")]
         [labels-var  (string->symbol #"*~|prefix|-labels*")]
         [patches-var (string->symbol #"*~|prefix|-patches*")])
-    (pprint `(define ,bytes-var ,(asm-template-bytes tmpl))
+    (pprint `(define ,bytes-var ,(~ tmpl'bytes))
             :port port
             ;; TRANSIENT: :radix -> :radix-prefix after the new release
             :controls (make-write-controls :pretty #t :width 75
                                            :base 16 :radix #t))
-    (pprint `(define ,labels-var ',(asm-template-labels tmpl)) :port port)
-    (pprint `(define ,patches-var ',(asm-template-patches tmpl)) :port port)))
+    (pprint `(define ,labels-var ',(~ tmpl'labels)) :port port)
+    (pprint `(define ,patches-var ',(~ tmpl'patches)) :port port)))
 
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
@@ -110,8 +111,8 @@
                    (.align 8)
        spill:)))
 
-  (define reg-labels   (asm-template-labels reg-tmpl))
-  (define spill-labels (asm-template-labels spill-tmpl))
+  (define reg-labels   (~ reg-tmpl'labels))
+  (define spill-labels (~ spill-tmpl'labels))
 
   ;; Print label/offset comments for reference.
   (display ";; Register-only calling" port)
@@ -167,20 +168,20 @@
                               num-spills rettype)))))
    :port port)
 
-  ;; call-amd64-regs: uses asm-instantiate to apply all named patches; passes
+  ;; call-amd64-regs: uses link-template to apply all named patches; passes
   ;; the fully-patched bytes to %%call-native with an empty patcher list.
   (pprint
    `(define call-amd64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-reg-bytes*
                        *amd64-call-reg-labels*
                        *amd64-call-reg-patches*))
-                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+                 (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -223,20 +224,20 @@
               (%%call-native 0 0 bytes 0 end-addr entry '() rettype))))))
    :port port)
 
-  ;; call-amd64-spill: named patches handled by asm-instantiate; only raw
+  ;; call-amd64-spill: named patches handled by link-template; only raw
   ;; spill-slot offsets remain in the %%call-native patcher list.
   (pprint
    `(define call-amd64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (asm-inst #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-spill-bytes*
                        *amd64-call-spill-labels*
                        *amd64-call-spill-patches*))
-                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+                 (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -364,8 +365,8 @@
                 (.align 8)
        spill:   (.dataq 0))))
 
-  (define reg-labels   (asm-template-labels reg-tmpl))
-  (define spill-labels (asm-template-labels spill-tmpl))
+  (define reg-labels   (~ reg-tmpl'labels))
+  (define spill-labels (~ spill-tmpl'labels))
 
   (display ";; Register-only calling" port)
   (display ";; label    offset\n" port)
@@ -402,13 +403,13 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-reg-bytes*
                        *winx64-call-reg-labels*
                        *winx64-call-reg-patches*))
-                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+                 (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4:
@@ -459,13 +460,13 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (asm-inst #f) (entry-addr #f) (spill-base #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.x86_64 'make-asm-template)
+          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-spill-bytes*
                        *winx64-call-spill-labels*
                        *winx64-call-spill-patches*))
-                 (lbs ((module-binding-ref 'lang.asm.x86_64 'asm-template-labels) t)))
+                 (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.x86_64 'asm-instantiate))
+            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-addr (cdr (assq 'entry: lbs)))
             (set! spill-base (cdr (assq 'spill: lbs)))))
         (^[ptr args num-args num-fargs num-spills rettype]
