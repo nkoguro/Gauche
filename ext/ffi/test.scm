@@ -1230,9 +1230,10 @@
                   #t))
          )]))
 
-  (do-test-f ())                          ;default
-  (do-test-g ())                          ;default
-  (when (#/^x86_64-/ (gauche-architecture))
+  (parameterize ([current-ffi-subsystem :stubgen])
+    (do-test-f ())
+    (do-test-g ()))
+  (when (ffi-subsystem-available? :native)
     (do-test-f (:subsystem :native))
     (do-test-g (:subsystem :native)))
   )

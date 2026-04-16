@@ -36,6 +36,9 @@
   (use gauche.ctype)
   (use gauche.cgen.unit :only (cgen-safe-name-friendly))
   (export with-ffi
+          default-ffi-subsystem
+          current-ffi-subsystem
+          ffi-subsystem-available?
           define-c-function
           <foreign-c-function>)
   )
@@ -116,6 +119,24 @@
     (values specs #f)))
 
 ;;;
+;;; Susbsystem selection
+;;;
+
+(define (ffi-subsystem-available? kw)
+  (case kw
+    [(:stubgen) #t]
+    [(:native) (boolean (#/^x86_64-.*/ (gauche-architecture)))]
+    [else (error "Unrecognized FFI subsystem:" kw)]))
+
+(define default-ffi-subsystem
+  (if (ffi-subsystem-available? :native)
+    :native
+    :stubgen))
+
+(define current-ffi-subsystem (make-parameter default-ffi-subsystem))
+
+
+;;;
 ;;; Syntax
 ;;;
 
@@ -134,7 +155,8 @@
        [(_ dlo-expr options . body)
         (define cfns '())
         (define subsystem
-          (get-keyword :subsystem (unwrap-syntax options) :stubgen))
+          (get-keyword :subsystem (unwrap-syntax options)
+                       (current-ffi-subsystem)))
         (define forms
           (filter-map
            (^[form]
