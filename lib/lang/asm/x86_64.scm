@@ -51,19 +51,6 @@
   )
 (select-module lang.asm.x86_64)
 
-;; Register the x86_64-movs_ patch handler.
-;; Handler translates a symbol (movsd/#f -> #xf2, movss -> #xf3) into a
-;; prefix byte at the given offset.
-(register-patch-handler!
- 'x86_64-movs_
- (^ [bytes offset entry]
-   (let* ([v   (if entry (caddr entry) 'movsd)]
-          [pfx (case v
-                 [(movsd) #xf2]
-                 [(movss) #xf3]
-                 [else (error "movs_ value must be movsd or movss:" v)])])
-     (u8vector-set! bytes offset pfx))))
-
 ;; When non-#f, holds a mutable cell (a one-element list) into which
 ;; hole annotations are cons'd during pass 2.  Bound via parameterize
 ;; inside asm-template; #f outside (so non-template assembly collects nothing).

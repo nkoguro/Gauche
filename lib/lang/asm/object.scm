@@ -40,7 +40,6 @@
   (use binary.io)
   (use util.match)
   (export <obj-template> make-obj-template obj-template?
-          register-patch-handler!
           link-template))
 (select-module lang.asm.object)
 
@@ -105,7 +104,7 @@
 ;; Patch handler table: maps symbol -> (^ [bytes offset entry])
 ;;   bytes  - u8vector being patched (mutable copy)
 ;;   offset - byte offset of the patch location
-;;   entry  - result of (assq kw params), or #f if not supplied
+;;   entry  - result of (assoc-ref params kw), or #f if not supplied
 (define *patch-handlers* (make-hash-table 'eq?))
 
 (define (register-patch-handler! key handler)
@@ -128,6 +127,27 @@
         [(kw offset (? symbol? handler-key))
          (let1 handler (hash-table-get *patch-handlers* handler-key #f)
            (if handler
-             (handler bytes offset (assq kw params))
+             (handler bytes offset (assoc-ref params kw))
              (error "unknown patch handler:" handler-key)))]))
     (values bytes (~ tmpl'labels))))
+
+;;;
+;;; Architecture-specific patch handlers
+;;;
+
+;; They are placed here instead of architecture-specific assembler
+;; module.  This breaks modularity, but allows link-template used
+;; without loading the assembler.
+
+;; x86_64
+;; Handler translates a symbol (movsd/#f -> #xf2, movss -> #xf3) into a
+;; prefix byte at the given offset.
+(register-patch-handler!
+ 'x86_64-movs_
+ (^[bytes offset entry]
+   (let* ([v   (if entry (cadr entry) 'movsd)]
+          [pfx (case v
+                 [(movsd) #xf2]
+                 [(movss) #xf3]
+                 [else (error "movs_ value must be movsd or movss:" v)])])
+     (u8vector-set! bytes offset pfx))))
