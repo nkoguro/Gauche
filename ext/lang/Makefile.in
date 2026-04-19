@@ -1,0 +1,28 @@
+srcdir       = @srcdir@
+top_builddir = @top_builddir@
+top_srcdir   = @top_srcdir@
+
+SCM_CATEGORY = lang/asm
+
+include ../Makefile.ext
+
+LIBFILES = lang--asm--x86_64.$(SOEXT)
+SCMFILES = x86_64.sci
+
+CONFIG_GENERATED = Makefile
+PREGENERATED =
+XCLEANFILES = lang--asm--x86_64.c x86_64.sci
+
+all : $(LIBFILES)
+
+OBJECTS = $(x86_64_OBJECTS)
+
+x86_64_OBJECTS = lang--asm--x86_64.$(OBJEXT)
+
+lang--asm--x86_64.$(SOEXT) : $(x86_64_OBJECTS)
+	$(MODLINK) lang--asm--x86_64.$(SOEXT) $(x86_64_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
+
+lang--asm--x86_64.c x86_64.sci : $(top_srcdir)/libsrc/lang/asm/x86_64.scm
+	$(PRECOMP) -e -P -o lang--asm--x86_64 $(top_srcdir)/libsrc/lang/asm/x86_64.scm
+
+install : install-std

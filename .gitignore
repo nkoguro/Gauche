@@ -119,6 +119,7 @@ test.record
 /ext/gauche/gauche--sequence.c
 /ext/gauche/gauche--unicode.c
 /ext/gauche/unicode-attr.scm
+/ext/lang/lang--asm--x86_64.c
 /ext/mt-random/math--mt-random.c
 /ext/native/gauche--ffitest.c
 /ext/peg/parser--peg.c

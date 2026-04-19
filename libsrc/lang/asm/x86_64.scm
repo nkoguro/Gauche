@@ -616,11 +616,11 @@
     `(:immediate ,(if (keyword? i) '(0 0 0 0 0 0 0 0) (int64 i)) ,@s)))
 
 
-(define *regs8*  '(%al %cl %dl %bl %ah %ch %dh %bh))
-(define *regs16* '(%ax %cx %dx %bx %sp %bp %si %di))
-(define *regs32* '(%eax %ecx %edx %ebx %esp %ebp %esi %edi))
-(define *regs64* '(%rax %rcx %rdx %rbx %rsp %rbp %rsi %rdi
-                   %r8  %r9  %r10 %r11 %r12 %r13 %r14 %r15))
+(define-constant *regs8*  '(%al %cl %dl %bl %ah %ch %dh %bh))
+(define-constant *regs16* '(%ax %cx %dx %bx %sp %bp %si %di))
+(define-constant *regs32* '(%eax %ecx %edx %ebx %esp %ebp %esi %edi))
+(define-constant *regs64* '(%rax %rcx %rdx %rbx %rsp %rbp %rsi %rdi
+                            %r8  %r9  %r10 %r11 %r12 %r13 %r14 %r15))
 
 ;; reg8 - legacy general 8bit registers
 (define (reg8? opr) (memq opr *regs8*))
@@ -637,7 +637,7 @@
 (define (regnum reg) (find-index (cut eq? reg <>) *regs64*))
 (define (regnumb reg) (or (regnum reg) reg))
 
-(define *regsse*
+(define-constant *regsse*
   '(%xmm0 %xmm1 %xmm2 %xmm3 %xmm4 %xmm5 %xmm6 %xmm7))
 
 ;; to pass to regset
