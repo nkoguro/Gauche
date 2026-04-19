@@ -1,5 +1,8 @@
 2026-04-19  Shiro Kawai  <shiro@acm.org>
 
+	* src/compaux.c (unwrap_rec): Avoid deel recursion while processing
+	  long list.
+
 	* ext/lang: Precompile lang.asm.x86_64
 
 2026-04-14  Shiro Kawai  <shiro@acm.org>

@@ -390,34 +390,76 @@ static ScmObj unwrap_rec(ScmObj form, unwrap_ctx *ctx)
     }
 
     if (SCM_PAIRP(form)) {
-        e = Scm_HashCoreSearch(&ctx->history, (intptr_t)form, SCM_DICT_CREATE);
-        ScmObj ca = unwrap_rec(SCM_CAR(form), ctx);
-        ScmObj cd = unwrap_rec(SCM_CDR(form), ctx);
-        if (ca == SCM_CAR(form) && cd == SCM_CDR(form)
-            && (!ctx->immutable || Scm_ImmutablePairP(form))) {
-            fill_history(e, form);
-            /* no need to create a new cons */
-            return form;
-        }
-        /* We have to create a new cons.  Make sure to keep attributes. */
-        ScmObj p = SCM_NIL;
-        if (SCM_EXTENDED_PAIR_P(form)) {
-            if (ctx->immutable || Scm_ImmutablePairP(form)) {
-                p = Scm_MakeImmutablePair(ca, cd, Scm_PairAttr(SCM_PAIR(form)));
-            } else {
-                p = Scm_MakeExtendedPair(ca, cd, Scm_PairAttr(SCM_PAIR(form)));
+        /* Walk the spine iteratively to avoid deep CDR recursion.
+           We need to detect shared tail, thus we have to traverse the
+           spine form right to left.  So we first build an array of
+           list entries then walk back.
+           (Simply recursing to CDR can create a deep recursion some
+           platforms don't like.) */
+        typedef struct { ScmObj pair; ScmDictEntry *entry; } SpineFrame;
+#define SPINE_INIT_SIZE 64
+        SpineFrame spine_buf[SPINE_INIT_SIZE];
+        SpineFrame *spine = spine_buf;
+        int spine_len = 0, spine_cap = SPINE_INIT_SIZE;
+        ScmObj cur = form;
+
+        while (SCM_PAIRP(cur)) {
+            ScmDictEntry *ce = Scm_HashCoreSearch(&ctx->history, (intptr_t)cur,
+                                                  SCM_DICT_GET);
+            if (ce) break;      /* shared or cyclic tail — handled below */
+            ce = Scm_HashCoreSearch(&ctx->history, (intptr_t)cur,
+                                    SCM_DICT_CREATE);
+            if (spine_len >= spine_cap) {
+                int new_cap = spine_cap * 2;
+                SpineFrame *new_spine = SCM_NEW_ARRAY(SpineFrame, new_cap);
+                memcpy(new_spine, spine, sizeof(SpineFrame) * spine_len);
+                spine = new_spine;
+                spine_cap = new_cap;
             }
-        } else {
-            if (ctx->immutable) {
-                p = Scm_MakeImmutablePair(ca, cd, SCM_NIL);
+            spine[spine_len].pair  = cur;
+            spine[spine_len].entry = ce;
+            spine_len++;
+            cur = SCM_CDR(cur);
+        }
+#undef SPINE_INIT_SIZE
+
+        /* Process the tail: a non-pair, or a pair already in history. */
+        ScmObj tail = unwrap_rec(cur, ctx);
+
+        /* Process spine from back to front, recursing into CARs only. */
+        for (int i = spine_len - 1; i >= 0; i--) {
+            ScmObj pair = spine[i].pair;
+            ScmDictEntry *ent = spine[i].entry;
+            ScmObj ca = unwrap_rec(SCM_CAR(pair), ctx);
+            ScmObj cd = tail;
+
+            if (ca == SCM_CAR(pair) && cd == SCM_CDR(pair)
+                && (!ctx->immutable || Scm_ImmutablePairP(pair))) {
+                fill_history(ent, pair);
+                tail = pair;
             } else {
-                p = Scm_Cons(ca, cd);
+                ScmObj p;
+                if (SCM_EXTENDED_PAIR_P(pair)) {
+                    if (ctx->immutable || Scm_ImmutablePairP(pair)) {
+                        p = Scm_MakeImmutablePair(ca, cd, Scm_PairAttr(SCM_PAIR(pair)));
+                    } else {
+                        p = Scm_MakeExtendedPair(ca, cd, Scm_PairAttr(SCM_PAIR(pair)));
+                    }
+                } else {
+                    if (ctx->immutable) {
+                        p = Scm_MakeImmutablePair(ca, cd, SCM_NIL);
+                    } else {
+                        p = Scm_Cons(ca, cd);
+                    }
+                }
+                fill_history(ent, p);
+                register_location(ctx, &SCM_PAIR(p)->car, ca);
+                register_location(ctx, &SCM_PAIR(p)->cdr, cd);
+                tail = p;
             }
         }
-        fill_history(e, p);
-        register_location(ctx, &SCM_PAIR(p)->car, ca);
-        register_location(ctx, &SCM_PAIR(p)->cdr, cd);
-        return p;
+
+        return tail;
     }
     if (SCM_IDENTIFIERP(form)) {
         return SCM_OBJ(Scm_UnwrapIdentifier(SCM_IDENTIFIER(form)));
