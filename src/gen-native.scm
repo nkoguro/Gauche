@@ -327,9 +327,9 @@
        entry3:  (movq (imm64 :iarg2) %r8)
        entry2:  (movq (imm64 :iarg1) %rdx)
        entry1:  (movq (imm64 :iarg0) %rcx)
-       entry0:  (addq -32 %rsp)           ; %rcx-%r9 save area
+       entry0:  (addq -40 %rsp)           ; %rcx-%r9 save area + 8byte align
                 (call (func:))
-                (addq 32 %rsp)
+                (addq 40 %rsp)
                 (ret)
        end:)))
 
@@ -357,7 +357,7 @@
        entry3:  (movq (imm64 :iarg2) %r8)
        entry2:  (movq (imm64 :iarg1) %rdx)
        entry1:  (movq (imm64 :iarg0) %rcx)
-       entry0:  (addq -32 %rsp)           ; %rcx-%r9 save area
+       entry0:  (addq -32 %rsp)         ; %rcx-%r9 save area
                 (call (func:))
                 (addq 32 %rsp)
        epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
@@ -473,13 +473,15 @@
           (when (not tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill '()])
             (if (null? args)
-              (let-values ([(bytes _)
-                            (asm-inst tmpl
+              (let*-values
+                  ([(spill-area-bytes) (* 8 num-spills)]
+                   [(bytes _)
+                             (asm-inst tmpl
                                       (list* `(:func ,<void*> ,ptr)
                                              `(:init-spill-size ,<int32>
-                                               ,(* 8 num-spills))
+                                               ,spill-area-bytes)
                                              `(:epilogue-spill-size ,<int32>
-                                               ,(* 8 num-spills))
+                                               ,spill-area-bytes)
                                              named))])
                 (%%call-native 0
                                (+ spill-base (* num-spills 8))

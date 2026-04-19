@@ -1222,12 +1222,17 @@
             (Foooooooooo-o 0 1 2 3 4 5 6 7 8 9))
          (t 11 (Fcb (^[x] (+ x 10))))
 
-         (test* "error and codepad memory management" #t
-                (let1 proc (lambda (_) (error "wow"))
-                  (dotimes [2000]
-                    (guard (e [else #t])
-                      (Fcb proc)))
-                  #t))
+         (cond-expand
+          [gauche.os.windows
+           ;; We need SEH unwind record fix
+           ]
+          [else
+           (test* "error and codepad memory management" #t
+                  (let1 proc (lambda (_) (error "wow"))
+                    (dotimes [2000]
+                      (guard (e [else #t])
+                        (Fcb proc)))
+                    #t))])
          )]))
 
   (parameterize ([current-ffi-subsystem :stubgen])
