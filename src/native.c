@@ -415,7 +415,7 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
          * On Windows x64, register RUNTIME_FUNCTION + UNWIND_INFO for the
          * codepad so the OS exception unwinder can traverse this frame.
          */
-#if defined(GAUCHE_WINDOWS)
+#if defined(GAUCHE_WINDOWS) && defined(__MINGW64__)
         if (win_prolog_end > 0 && win_frame_size > 0) {
             setup_codepad_pdata(vm->codeCache, codepad, orig_codesize,
                                 pdata_off,
@@ -458,7 +458,7 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
             Scm_Error("unknown return type: %S", rettype);
         }
     } SCM_WHEN_ERROR {
-#if defined(GAUCHE_WINDOWS)
+#if defined(GAUCHE_WINDOWS) && defined(__MINGW64__)
         if (xpad_pdata) {
             RtlDeleteFunctionTable((PRUNTIME_FUNCTION)(void*)xpad_pdata);
         }
@@ -467,7 +467,7 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         SCM_NEXT_HANDLER;
     } SCM_END_PROTECT;
 
-#if defined(GAUCHE_WINDOWS)
+#if defined(GAUCHE_WINDOWS) && defined(__MINGW64__)
     if (xpad_pdata) {
         RtlDeleteFunctionTable((PRUNTIME_FUNCTION)(void*)xpad_pdata);
     }
