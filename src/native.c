@@ -281,8 +281,10 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                          ScmSmallInt entry,
                          ScmObj patcher,
                          ScmObj rettype,
-                         ScmSmallInt win_prolog_end,
-                         ScmSmallInt win_frame_size)
+                         /* The following two args are used on Windows.
+                            On Linux, just pass 0. */
+                         ScmSmallInt win_prolog_end SCM_UNUSED,
+                         ScmSmallInt win_frame_size SCM_UNUSED)
 {
     init_code_cache(vm);
 
@@ -296,15 +298,15 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         Scm_Error("entry out of range: %ld", entry);
     }
 
-    size_t orig_codesize = codesize;  /* before extending for spill slots */
     size_t realcodesize = codesize;
     if (tend > (ScmSmallInt)codesize) realcodesize = tend;
 
-    /* For Windows, we add PDATA area after the code.  It should start
-       at 4-byte alignment. */
-    size_t pdata_off = (realcodesize + 3) & ~(size_t)3;
     size_t alloc_size = realcodesize;
 #if defined(GAUCHE_WINDOWS)
+    /* For Windows, we add PDATA area after the code.  It should start
+       at 4-byte alignment. */
+    size_t orig_codesize = codesize;  /* before extending for spill slots */
+    size_t pdata_off = (realcodesize + 3) & ~(size_t)3;
     if (win_prolog_end > 0 && win_frame_size > 0) {
         alloc_size = pdata_off + CODEPAD_PDATA_SIZE;
     }

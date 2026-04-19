@@ -91,8 +91,9 @@
        entry5:     (movq (imm64 :iarg4) %r8)
        entry4:     (movq (imm64 :iarg3) %rcx)
        entry3:     (movq (imm64 :iarg2) %rdx)
-       init:       (movq (imm32 :spill-size) %rax)
+       init:       (movq (imm32 :init-spill-size) %rax)
                    (leaq (spill: %rip) %rsi)
+                   (subq (imm8 :align-pad) %rsp)
        loop:       (movq (%rsi) %rdi)
                    (push %rdi)
                    (addq 8 %rsi)
@@ -102,10 +103,10 @@
        entry1:     (movq (imm64 :iarg0) %rdi)
        entry0:     (movb (imm8 :num-fargs) %al)
                    (call (func:))
-       epilogue:   (addq (imm32 :spill-size) %rsp)
+       epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
                    (ret)
                    (.align 8)
-       spill:)))
+       spill:      (.dataq 0))))
 
   (define reg-labels   (~ reg-tmpl'labels))
   (define spill-labels (~ spill-tmpl'labels))
@@ -249,13 +250,18 @@
             (let loop ([args args] [icount 0] [fcount 0] [scount 0]
                        [named '()] [spill '()])
               (if (null? args)
-                (let-values ([(bytes _)
-                              (asm-inst tmpl
-                                        (list* `(:func ,<void*> ,ptr)
-                                               `(:num-fargs ,<uint8> ,num-fargs)
-                                               `(:spill-size ,<int32>
-                                                 ,(* 8 num-spills))
-                                               named))])
+                (let*-values
+                    ([(align-pad) (if (even? num-spills) 8 0)]
+                     [(bytes _)
+                      (asm-inst tmpl
+                                (list* `(:func ,<void*> ,ptr)
+                                       `(:num-fargs ,<uint8> ,num-fargs)
+                                       `(:init-spill-size ,<int32>
+                                         ,(* 8 num-spills))
+                                       `(:epilogue-spill-size ,<int32>
+                                         ,(+ (* 8 num-spills) align-pad))
+                                       `(:align-pad ,<int8> ,align-pad)
+                                       named))])
                   (%%call-native 0
                                  (+ spill-base (* num-spills 8))
                                  bytes
@@ -481,15 +487,14 @@
                   ([(align-pad) (if (even? num-spills) 8 0)]
                    [(spill-area-bytes) (* 8 num-spills)]
                    [(bytes _)
-                             (asm-inst tmpl
-                                      (list* `(:func ,<void*> ,ptr)
-                                             `(:init-spill-size ,<int32>
-                                               ,spill-area-bytes)
-                                             `(:epilogue-spill-size ,<int32>
-                                               ,(+ spill-area-bytes align-pad))
-                                             `(:align-pad ,<int8>
-                                                          ,align-pad)
-                                             named))])
+                    (asm-inst tmpl
+                              (list* `(:func ,<void*> ,ptr)
+                                     `(:init-spill-size ,<int32>
+                                       ,spill-area-bytes)
+                                     `(:epilogue-spill-size ,<int32>
+                                       ,(+ spill-area-bytes align-pad))
+                                     `(:align-pad ,<int8> ,align-pad)
+                                     named))])
                 ;; win-frame-size = shadow space (32) + spill args (8*N)
                 (%%call-native 0
                                (+ spill-base spill-area-bytes)
