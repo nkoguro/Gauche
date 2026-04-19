@@ -38,10 +38,6 @@
 
 (define (gen-stub-amd64 port)
   ;; When all args can be on registers.
-  ;; The code tail jumps to the target, so the target's return directly
-  ;; returns to the caller of call-amd64.  Thus we can reuse the same
-  ;; codepad area without worrying the recursive calls overwrite active
-  ;; code.
   (define reg-tmpl
     (asm-template
      '(func:       (.dataq :func)
@@ -95,7 +91,7 @@
        entry5:     (movq (imm64 :iarg4) %r8)
        entry4:     (movq (imm64 :iarg3) %rcx)
        entry3:     (movq (imm64 :iarg2) %rdx)
-       init:       (movq (imm32 :init-spill-size) %rax)
+       init:       (movq (imm32 :spill-size) %rax)
                    (leaq (spill: %rip) %rsi)
        loop:       (movq (%rsi) %rdi)
                    (push %rdi)
@@ -106,7 +102,7 @@
        entry1:     (movq (imm64 :iarg0) %rdi)
        entry0:     (movb (imm8 :num-fargs) %al)
                    (call (func:))
-       epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
+       epilogue:   (addq (imm32 :spill-size) %rsp)
                    (ret)
                    (.align 8)
        spill:)))
@@ -257,9 +253,7 @@
                               (asm-inst tmpl
                                         (list* `(:func ,<void*> ,ptr)
                                                `(:num-fargs ,<uint8> ,num-fargs)
-                                               `(:init-spill-size ,<int32>
-                                                 ,(* 8 num-spills))
-                                               `(:epilogue-spill-size ,<int32>
+                                               `(:spill-size ,<int32>
                                                  ,(* 8 num-spills))
                                                named))])
                   (%%call-native 0
