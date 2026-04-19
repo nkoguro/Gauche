@@ -217,7 +217,7 @@
                                     (list* `(:func ,<void*> ,ptr)
                                            `(:num-fargs ,<uint8> ,num-fargs)
                                            params))])
-              (%%call-native 0 0 bytes 0 end-addr entry '() rettype))))))
+              (%%call-native 0 0 bytes 0 end-addr entry '() rettype 0 0))))))
    :port port)
 
   ;; call-amd64-spill: named patches handled by link-template; only raw
@@ -263,7 +263,8 @@
                                  spill-base
                                  entry
                                  spill
-                                 rettype))
+                                 rettype
+                                 0 0))
                 (cond [(%iarg-type? (caar args))
                        (if (< icount 6)
                          (loop (cdr args) (+ icount 1) fcount scount
@@ -342,6 +343,7 @@
        entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
        init:    (movq (imm32 :init-spill-size) %rax)
                 (leaq (spill: %rip) %rsi)
+                (subq (imm8 :align-pad) %rsp) ; ensure alignment
        loop:    (movq (%rsi) %rdi)
                 (push %rdi)
                 (addq 8 %rsi)
@@ -395,7 +397,8 @@
   (pprint
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
+            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f)
+            (win-prolog-end #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-reg-bytes*
@@ -408,7 +411,9 @@
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4:
                          entry4f0: entry4f1: entry4f2: entry4f3:)))
-            (set! end-addr (cdr (assq 'end: lbs)))))
+            (set! end-addr (cdr (assq 'end: lbs)))
+            ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
+            (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4))))
         (^[ptr args num-args num-fargs rettype]
           (when (not tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
@@ -446,13 +451,16 @@
                           (asm-inst tmpl
                                     (list* `(:func ,<void*> ,ptr)
                                            params))])
-              (%%call-native 0 0 bytes 0 end-addr entry '() rettype))))))
+              ;; win-frame-size=40: shadow space (32) + 8-byte alignment
+              (%%call-native 0 0 bytes 0 end-addr entry '() rettype
+                             win-prolog-end 40))))))
    :port port)
 
   (pprint
    `(define call-winx64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-addr #f) (spill-base #f))
+            (tmpl #f) (asm-inst #f) (entry-addr #f) (spill-base #f)
+            (win-prolog-end #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-spill-bytes*
@@ -462,29 +470,37 @@
             (set! tmpl t)
             (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-addr (cdr (assq 'entry: lbs)))
-            (set! spill-base (cdr (assq 'spill: lbs)))))
+            (set! spill-base (cdr (assq 'spill: lbs)))
+            ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
+            (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4))))
         (^[ptr args num-args num-fargs num-spills rettype]
           (when (not tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill '()])
             (if (null? args)
               (let*-values
-                  ([(spill-area-bytes) (* 8 num-spills)]
+                  ([(align-pad) (if (even? num-spills) 8 0)]
+                   [(spill-area-bytes) (* 8 num-spills)]
                    [(bytes _)
                              (asm-inst tmpl
                                       (list* `(:func ,<void*> ,ptr)
                                              `(:init-spill-size ,<int32>
                                                ,spill-area-bytes)
                                              `(:epilogue-spill-size ,<int32>
-                                               ,spill-area-bytes)
+                                               ,(+ spill-area-bytes align-pad))
+                                             `(:align-pad ,<int8>
+                                                          ,align-pad)
                                              named))])
+                ;; win-frame-size = shadow space (32) + spill args (8*N)
                 (%%call-native 0
-                               (+ spill-base (* num-spills 8))
+                               (+ spill-base spill-area-bytes)
                                bytes
                                0
                                spill-base
                                entry-addr
                                spill
-                               rettype))
+                               rettype
+                               win-prolog-end
+                               (+ spill-area-bytes align-pad 32)))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount

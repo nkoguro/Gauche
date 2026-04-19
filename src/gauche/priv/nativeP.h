@@ -49,7 +49,9 @@ SCM_EXTERN ScmObj Scm__VMCallNative(ScmVM *vm,
                                     ScmSmallInt end,
                                     ScmSmallInt entry,
                                     ScmObj patcher,
-                                    ScmObj rettype);
+                                    ScmObj rettype,
+                                    ScmSmallInt win_prolog_end,
+                                    ScmSmallInt win_frame_size);
 
 SCM_EXTERN ScmObj Scm__AllocateCodePage(ScmU8Vector *code);
 

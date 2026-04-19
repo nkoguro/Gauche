@@ -20,3 +20,19 @@ ScmObj Fcb(ScmObj proc)
 {
     return Scm_ApplyRec1(proc, SCM_MAKE_INT(1));
 }
+
+ScmObj Fcb_spill9(ScmObj a, ScmObj b, ScmObj c, ScmObj d, ScmObj e,
+                  ScmObj f, ScmObj g, ScmObj h, ScmObj i,
+                  ScmObj proc)
+{
+    ScmObj lis = Scm_List(a, b, c, d, e, f, g, h, i, NULL);
+    return Scm_ApplyRec1(proc, lis);
+}
+
+ScmObj Fcb_spill10(ScmObj a, ScmObj b, ScmObj c, ScmObj d, ScmObj e,
+                   ScmObj f, ScmObj g, ScmObj h, ScmObj i, ScmObj j,
+                   ScmObj proc)
+{
+    ScmObj lis = Scm_List(a, b, c, d, e, f, g, h, i, j, NULL);
+    return Scm_ApplyRec1(proc, lis);
+}

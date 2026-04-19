@@ -1209,9 +1209,17 @@
                      (define-c-function Foo-o `(,<top> ,<top>) <top>)
                      (define-c-function Foooooooooo-o
                        '(,<top> ,<top> ,<top> ,<top> ,<top>
-                         ,<top> ,<top> ,<top> ,<top> ,<top> )
+                         ,<top> ,<top> ,<top> ,<top> ,<top>)
                        <top>)
                      (define-c-function Fcb `(,<top>) <top>)
+                     (define-c-function Fcb-spill9
+                       '(,<top> ,<top> ,<top> ,<top> ,<top>
+                         ,<top> ,<top> ,<top> ,<top> ,<top>)
+                       <top>)
+                     (define-c-function Fcb-spill10
+                       '(,<top> ,<top> ,<top> ,<top> ,<top>
+                         ,<top> ,<top> ,<top> ,<top> ,<top> ,<top>)
+                       <top>)
                      )
                    (current-module))
                   'ok))
@@ -1221,18 +1229,17 @@
          (t '(9 8 7 6 5 4 3 2 1 0)
             (Foooooooooo-o 0 1 2 3 4 5 6 7 8 9))
          (t 11 (Fcb (^[x] (+ x 10))))
+         (t '(8 7 6 5 4 3 2 1 0)
+            (Fcb-spill9 0 1 2 3 4 5 6 7 8 reverse))
+         (t '(9 8 7 6 5 4 3 2 1 0)
+            (Fcb-spill10 0 1 2 3 4 5 6 7 8 9 reverse))
 
-         (cond-expand
-          [gauche.os.windows
-           ;; We need SEH unwind record fix
-           ]
-          [else
-           (test* "error and codepad memory management" #t
+         (test* "error and codepad memory management" #t
                   (let1 proc (lambda (_) (error "wow"))
                     (dotimes [2000]
                       (guard (e [else #t])
                         (Fcb proc)))
-                    #t))])
+                    #t))
          )]))
 
   (parameterize ([current-ffi-subsystem :stubgen])

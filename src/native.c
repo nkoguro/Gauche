@@ -118,6 +118,89 @@ static inline void *get_entry_address(ScmCodeCache *cc, void *wpad_ptr)
     return cc->xpad->ptr + (wpad_ptr - cc->wpad->ptr);
 }
 
+#if defined(GAUCHE_WINDOWS)
+/*
+ * Windows x64 exception unwinding requires RUNTIME_FUNCTION + UNWIND_INFO
+ * for every non-leaf function in dynamically generated code.  We pack both
+ * structs into a single CpPdata block placed right after the codepad code,
+ * register it with RtlAddFunctionTable before each call, and deregister it
+ * afterward.
+ * Cf.  https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64
+ *
+ * Unwind operation codes used here:
+ *   UWOP_ALLOC_SMALL (2): 1-node form, OpInfo = (size/8 - 1), size in 8..128
+ *   UWOP_ALLOC_LARGE (1): 2-node form with OpInfo=0, extra slot = size/8
+ */
+#define CP_UWOP_ALLOC_LARGE  1
+#define CP_UWOP_ALLOC_SMALL  2
+
+/*
+ * CpPdata layout (20 bytes):
+ *   bytes  0-11  RUNTIME_FUNCTION  (BeginAddress, EndAddress, UnwindData)
+ *   bytes 12-19  UNWIND_INFO header + two UNWIND_CODE slots
+ *
+ * The first 12 bytes are layout-compatible with Windows RUNTIME_FUNCTION.
+ */
+typedef struct {
+    /* RUNTIME_FUNCTION (3 x DWORD) */
+    uint32_t BeginAddress;
+    uint32_t EndAddress;
+    uint32_t UnwindData;        /* RVA of VersionFlags field below */
+    /* UNWIND_INFO */
+    uint8_t  VersionFlags;      /* Version:3=1, Flags:5=0 */
+    uint8_t  SizeOfProlog;
+    uint8_t  CountOfCodes;
+    uint8_t  FrameInfo;         /* FrameRegister=0, FrameOffset=0 */
+    /* UnwindCode[0] */
+    uint8_t  Code0Offset;
+    uint8_t  Code0Op;           /* UnwindOp:4, OpInfo:4 */
+    /* UnwindCode[1] — extra data for ALLOC_LARGE, or padding to even count */
+    uint16_t Code1;
+} CpPdata;
+
+/* Allocation granularity (round to 8 bytes so the next codepad item aligns) */
+#define CODEPAD_PDATA_SIZE  ((sizeof(CpPdata) + 7) & ~(size_t)7)
+
+static void setup_codepad_pdata(ScmCodeCache *cc,
+                                void *codepad,
+                                size_t code_end,   /* EndAddress: past last instruction */
+                                size_t pdata_off,  /* where to write CpPdata block */
+                                ScmSmallInt entry,
+                                ScmSmallInt prolog_end,
+                                ScmSmallInt frame_size)
+{
+    CpPdata *pd = (CpPdata *)((char*)codepad + pdata_off);
+    size_t cp_xoff = (size_t)((char*)codepad - (char*)cc->wpad->ptr);
+    uint8_t prolog_sz = (uint8_t)(prolog_end - entry);
+
+    SCM_ASSERT(prolog_end > entry && (prolog_end - entry) <= 255);
+    SCM_ASSERT(frame_size > 0 && (frame_size % 8) == 0);
+
+    pd->BeginAddress = (uint32_t)(cp_xoff + entry);
+    pd->EndAddress   = (uint32_t)(cp_xoff + code_end);
+    pd->UnwindData   = (uint32_t)(cp_xoff + pdata_off
+                                  + offsetof(CpPdata, VersionFlags));
+    pd->VersionFlags  = 1;           /* Version=1, Flags=0 */
+    pd->SizeOfProlog  = prolog_sz;
+    pd->FrameInfo     = 0;
+
+    if (frame_size <= 128) {
+        /* UWOP_ALLOC_SMALL: 1 node, OpInfo = (size/8 - 1) */
+        pd->CountOfCodes = 1;
+        pd->Code0Offset  = prolog_sz;
+        pd->Code0Op      = (uint8_t)(CP_UWOP_ALLOC_SMALL
+                                      | (uint8_t)(((frame_size / 8) - 1) << 4));
+        pd->Code1        = 0;
+    } else {
+        /* UWOP_ALLOC_LARGE OpInfo=0: 2 nodes, Code1 = size/8 */
+        pd->CountOfCodes = 2;
+        pd->Code0Offset  = prolog_sz;
+        pd->Code0Op      = (uint8_t)(CP_UWOP_ALLOC_LARGE); /* OpInfo=0 */
+        pd->Code1        = (uint16_t)(frame_size / 8);
+    }
+}
+#endif /* GAUCHE_WINDOWS */
+
 /*
  * some utility to 'patch' the code array
  */
@@ -197,7 +280,9 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                          ScmSmallInt end,
                          ScmSmallInt entry,
                          ScmObj patcher,
-                         ScmObj rettype)
+                         ScmObj rettype,
+                         ScmSmallInt win_prolog_end,
+                         ScmSmallInt win_frame_size)
 {
     init_code_cache(vm);
 
@@ -211,10 +296,21 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         Scm_Error("entry out of range: %ld", entry);
     }
 
+    size_t orig_codesize = codesize;  /* before extending for spill slots */
     size_t realcodesize = codesize;
     if (tend > (ScmSmallInt)codesize) realcodesize = tend;
 
-    void *codepad = allocate_code_cache(vm, realcodesize);
+    /* For Windows, we add PDATA area after the code.  It should start
+       at 4-byte alignment. */
+    size_t pdata_off = (realcodesize + 3) & ~(size_t)3;
+    size_t alloc_size = realcodesize;
+#if defined(GAUCHE_WINDOWS)
+    if (win_prolog_end > 0 && win_frame_size > 0) {
+        alloc_size = pdata_off + CODEPAD_PDATA_SIZE;
+    }
+#endif
+
+    void *codepad = allocate_code_cache(vm, alloc_size);
     if (tstart > 0) memset(codepad, 0, tstart);
     memcpy(codepad + tstart,
            SCM_UVECTOR_ELEMENTS(code)+start,
@@ -225,6 +321,9 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
     }
 
     ScmObj result = SCM_UNDEFINED;
+#if defined(GAUCHE_WINDOWS)
+    void * volatile xpad_pdata = NULL;
+#endif
 
     SCM_UNWIND_PROTECT {
         /*
@@ -311,6 +410,22 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         }
 
         /*
+         * On Windows x64, register RUNTIME_FUNCTION + UNWIND_INFO for the
+         * codepad so the OS exception unwinder can traverse this frame.
+         */
+#if defined(GAUCHE_WINDOWS)
+        if (win_prolog_end > 0 && win_frame_size > 0) {
+            setup_codepad_pdata(vm->codeCache, codepad, orig_codesize,
+                                pdata_off,
+                                entry, win_prolog_end, win_frame_size);
+            xpad_pdata = get_entry_address(vm->codeCache,
+                                           (char*)codepad + pdata_off);
+            RtlAddFunctionTable((PRUNTIME_FUNCTION)(void*)xpad_pdata, 1,
+                                (DWORD64)vm->codeCache->xpad->ptr);
+        }
+#endif
+
+        /*
          * Call the code
          */
         void *entryPtr = get_entry_address(vm->codeCache, codepad + entry);
@@ -341,10 +456,20 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
             Scm_Error("unknown return type: %S", rettype);
         }
     } SCM_WHEN_ERROR {
+#if defined(GAUCHE_WINDOWS)
+        if (xpad_pdata) {
+            RtlDeleteFunctionTable((PRUNTIME_FUNCTION)(void*)xpad_pdata);
+        }
+#endif
         free_code_cache(vm, codepad);
         SCM_NEXT_HANDLER;
     } SCM_END_PROTECT;
 
+#if defined(GAUCHE_WINDOWS)
+    if (xpad_pdata) {
+        RtlDeleteFunctionTable((PRUNTIME_FUNCTION)(void*)xpad_pdata);
+    }
+#endif
     free_code_cache(vm, codepad);
     return result;
 }

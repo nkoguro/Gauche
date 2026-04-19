@@ -95,9 +95,12 @@
                               start::<fixnum>
                               end::<fixnum>
                               entry::<fixnum>
-                              patcher rettype)
+                              patcher rettype
+                              win-prolog-end::<fixnum>
+                              win-frame-size::<fixnum>)
    (return (Scm__VMCallNative (Scm_VM) tstart tend code start end entry
-                              patcher rettype)))
+                              patcher rettype
+                              win-prolog-end win-frame-size)))
 
  ;; For JIT
  (define-cproc %%jit-compile-procedure (proc compiler)
