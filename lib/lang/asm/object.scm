@@ -47,6 +47,7 @@
 ;;   bytes   - u8vector of assembled machine code (zeros at placeholder holes)
 ;;   labels  - alist of (symbol . byte-offset)
 ;;   patches - list of (keyword byte-offset byte-width) describing holes
+;;     NB: The same keyword can appear multiple times in patches list.
 (define-class <obj-template> ()
   ((bytes   :init-keyword :bytes :type <u8vector>)
    (labels  :init-keyword :labels)

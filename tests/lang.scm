@@ -311,7 +311,7 @@
     (test* "asm-template round-trip labels" '() labels)))
 
 (let ()
-  (define tmpl (asm-template '(entry
+  (define tmpl (asm-template '(entry:
                                 (push %rbp)
                                 (movq %rsp %rbp)
                                 (ret))))
@@ -320,7 +320,7 @@
            '(#x55 #x48 #x89 #xe5 #xc3)
            (u8vector->list bytes))
     (test* "asm-template with labels alist"
-           '((entry . 0))
+           '((entry: . 0))
            labels)))
 
 ;; Verify that link-template does not mutate the template's byte vector
@@ -396,7 +396,7 @@
                                (movb (imm8  :nb) %cl)
                                (ret))))
   (receive (b _) (link-template tmpl `((:fn ,<uint64> #xdeadbeef00112233)
-                                         (:nb ,<uint8> 7)))
+                                       (:nb ,<uint8> 7)))
     (test* "multiple placeholders"
            (append '(#x48 #xb8 #x33 #x22 #x11 #x00 #xef #xbe #xad #xde)
                    '(#xb1 #x07)
@@ -410,9 +410,26 @@
                    '(#xc3))
            (u8vector->list b))))
 
+;; Placeholder can appear multiple times
+(let ()
+  (define tmpl (asm-template '((movq (imm64 :a) %rax)
+                               (movb (imm8  :b) %cl)
+                               (movq (imm64 :a) %rax)
+                               (movb (imm8  :b) %cl)
+                               (ret))))
+  (receive (b _) (link-template tmpl `((:a ,<uint64> #xcafebabe01234567)
+                                       (:b ,<uint8> #xfe)))
+    (test* "placeholders appear multiple times"
+           (append '(#x48 #xb8 #x67 #x45 #x23 #x01 #xbe #xba #xfe #xca)
+                   '(#xb1 #xfe)
+                   '(#x48 #xb8 #x67 #x45 #x23 #x01 #xbe #xba #xfe #xca)
+                   '(#xb1 #x0fe)
+                   '(#xc3))
+           (u8vector->list b))))
+
 ;; Placeholder in a template that also has labels
 (let ()
-  (define tmpl (asm-template '(start
+  (define tmpl (asm-template '(start:
                                (movq (imm64 :ptr) %rax)
                                (ret))))
   (receive (b labels) (link-template tmpl `((:ptr ,<uint64> #xff)))
@@ -420,7 +437,7 @@
            '(#x48 #xb8 #xff 0 0 0 0 0 0 0 #xc3)
            (u8vector->list b))
     (test* "placeholder with label labels"
-           '((start . 0))
+           '((start: . 0))
            labels)))
 
 ;; --- data-directive placeholders ---
