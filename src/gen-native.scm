@@ -218,7 +218,7 @@
                            `((:func ,<void*> ,ptr)
                              (:num-fargs ,<uint8> ,num-fargs)
                              ,@params))
-              (%%call-native 0 0 bytes 0 end-addr entry '() rettype 0 0))))))
+              (%%call-native 0 0 bytes 0 end-addr entry rettype 0 0))))))
    :port port)
 
   ;; call-amd64-spill: named patches handled by link-template; only raw
@@ -272,7 +272,6 @@
                                    0     ;start
                                    (+ spill-base spill-area-bytes) ;end
                                    entry ;entry
-                                   '()   ;patcher
                                    rettype
                                    0 0)))
                 (cond [(%iarg-type? (caar args))
@@ -460,7 +459,7 @@
                            (list* `(:func ,<void*> ,ptr)
                                   params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
-              (%%call-native 0 0 bytes 0 end-addr entry '() rettype
+              (%%call-native 0 0 bytes 0 end-addr entry rettype
                              win-prolog-end 40))))))
    :port port)
 
@@ -507,7 +506,6 @@
                                  0      ;start
                                  (+ spill-base spill-area-bytes) ;end
                                  entry-addr                      ;entry
-                                 '()                             ;patcher
                                  rettype
                                  win-prolog-end
                                  (+ spill-area-bytes align-pad 32))))

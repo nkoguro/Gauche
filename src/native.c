@@ -202,39 +202,6 @@ static void setup_codepad_pdata(ScmCodeCache *cc,
 #endif /* GAUCHE_WINDOWS */
 
 /*
- * some utility to 'patch' the code array
- */
-
-typedef union {
-    intptr_t n;
-    uint8_t bn[SIZEOF_INTPTR_T];
-
-    int16_t i16;
-    uint8_t bi16[2];
-
-    int32_t i32;
-    uint8_t bi32[4];
-
-    int64_t i64;
-    uint8_t bi64[8];
-
-    double d;
-    uint8_t bd[SIZEOF_DOUBLE];
-
-    float f;
-    uint8_t bf[SIZEOF_FLOAT];
-} pun_t;
-
-static inline void patch1(void *dst, ScmSmallInt pos,
-                          uint8_t *src, ScmSmallInt size, void *lim)
-{
-    if (dst + pos + size > lim) {
-        Scm_Error("filler position out of range: %ld", pos);
-    }
-    memcpy(dst+pos, src, size);
-}
-
-/*
  * Copy CODE to the scratch pad, starting from START-th byte up to right before
  * END-th byte, from the pad's TSTART-th position.
  *
@@ -242,34 +209,9 @@ static inline void patch1(void *dst, ScmSmallInt pos,
  * scratch pad area is allocated up to TEND, and filled with zero after the
  * code.
  *
- * Then the pad is patched according to PATCHER, as explained below.
- *
  * Finally, the code is called from the entry offset ENTRY.
  *
- * PATCHER has the following list:
- *   ((<pos> <type> <value>) ...)
- *
- *    <pos>  - specifies the position in the byte array to be filled.
- *
- *    <type> - a <native-type> object or <top>:
- *        <top>      : ScmObj.  <value>'s ScmObj is used as is.
- *        <c-pointer ...> or <c-array ...>
- *                   : pointer. <value> is <native-handle>
- *        integral types
- *                   : values must be appropriate integer.
- *                     Its integer value is used.
- *        <uint8>    : byte.    <value> must be an integer [0..255].
- *        <int16>    : 16bit integer.  <value> must be an integral type.
- *        <int32>    : 32bit integer.  <value> must be an integral type.
- *        <int64>    : 64bit integer.  <value> must be an integral type.
- *        <double>   : double.  <value> must be a real number.
- *        <float>    : float.   <value> must be a real number.
- *        <c-string> : string.  <value> must be a string.  Pointer to the
- *                     cstring is used.
- *
- *    <value> - Scheme value to pass.
- *
- * RETTYPE is also a <native-type> or <top>, plus <void> for no value.
+ * RETTYPE is  a <native-type> or <top>.
  */
 
 ScmObj Scm__VMCallNative(ScmVM *vm,
@@ -279,7 +221,6 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                          ScmSmallInt start,
                          ScmSmallInt end,
                          ScmSmallInt entry,
-                         ScmObj patcher,
                          ScmObj rettype,
                          /* The following two args are used on Windows.
                             On Linux, just pass 0. */
@@ -328,89 +269,6 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
 #endif
 
     SCM_UNWIND_PROTECT {
-        /*
-         * Patch it
-         */
-        void *limit = codepad + codesize;
-
-        ScmObj cp;
-        SCM_FOR_EACH(cp, patcher) {
-            ScmObj e = SCM_CAR(cp);
-            if (Scm_Length(e) != 3) {
-                Scm_Error("malformed filler entry: %S", e);
-            }
-            ScmObj s_pos = SCM_CAR(e);
-            ScmObj type = SCM_CADR(e);
-            ScmObj val = SCM_CAR(SCM_CDDR(e));
-
-            if (!SCM_INTP(s_pos)
-                || (!SCM_NATIVE_TYPE_P(type) && !SCM_EQ(type, SCM_OBJ(SCM_CLASS_TOP)))) {
-                Scm_Error("bad filler entry: %S", e);
-            }
-            ScmSmallInt pos = SCM_INT_VALUE(s_pos);
-
-            pun_t pun;
-
-            if (SCM_EQ(type, SCM_OBJ(SCM_CLASS_TOP))) {
-                pun.n = (intptr_t)val;
-                patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (SCM_C_POINTER_P(type) || SCM_C_ARRAY_P(type)) {
-                if (!SCM_NATIVE_HANDLE_P(val)) {
-                    SCM_TYPE_ERROR(val, "native-handle");
-                }
-                pun.n = (intptr_t)Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(val));
-                patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else if (Scm_NativeTypeIntegralP(SCM_NATIVE_TYPE(type))) {
-                ScmNativeType *nt = SCM_NATIVE_TYPE(type);
-                int unsignedp = Scm_NativeTypeUnsignedP(nt);
-                switch (nt->size) {
-                case 1:
-                    pun.bn[0] = unsignedp
-                        ? Scm_GetIntegerU8(val)
-                        : (uint8_t)Scm_GetInteger8(val);
-                    patch1(codepad, pos, pun.bn, 1, limit);
-                    break;
-                case 2:
-                    pun.i64 = unsignedp
-                        ? (int64_t)Scm_GetIntegerU16(val)
-                        : Scm_GetInteger16(val);
-                    patch1(codepad, pos, pun.bi16, 2, limit);
-                    break;
-                case 4:
-                    pun.i64 = unsignedp
-                        ? (int64_t)Scm_GetIntegerU32(val)
-                        : Scm_GetInteger32(val);
-                    patch1(codepad, pos, pun.bi32, 4, limit);
-                    break;
-                case 8:
-                    pun.i64 = unsignedp
-                        ? (int64_t)Scm_GetIntegerU64(val)
-                        : Scm_GetInteger64(val);
-                    patch1(codepad, pos, pun.bi64, 8, limit);
-                    break;
-                default:
-                    pun.i64 = unsignedp
-                        ? (int64_t)Scm_GetIntegerU64(val)
-                        : Scm_GetInteger64(val);
-                    patch1(codepad, pos, pun.bi64, nt->size, limit);
-                    break;
-                }
-            } else if (SCM_EQ(type, Scm_NativeDoubleType)) {
-                pun.d = Scm_GetDouble(val);
-                patch1(codepad, pos, pun.bd, SIZEOF_DOUBLE, limit);
-            } else if (SCM_EQ(type, Scm_NativeFloatType)) {
-                pun.f = (float)Scm_GetDouble(val);
-                patch1(codepad, pos, pun.bf, SIZEOF_FLOAT, limit);
-            } else if (SCM_EQ(type, Scm_NativeCStringType)) {
-                /* NB: If the callee retains the pointer, we need malloc. */
-                if (!SCM_STRINGP(val)) SCM_TYPE_ERROR(val, "string");
-                pun.n = (intptr_t)Scm_GetStringConst(SCM_STRING(val));
-                patch1(codepad, pos, pun.bn, SIZEOF_INTPTR_T, limit);
-            } else {
-                Scm_Error("unknown patch type: %S", type);
-            }
-        }
-
         /*
          * On Windows x64, register RUNTIME_FUNCTION + UNWIND_INFO for the
          * codepad so the OS exception unwinder can traverse this frame.
