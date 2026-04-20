@@ -122,6 +122,16 @@
         [(kw offset (? integer? width))
          (and-let1 entry (assq kw params)
            (match entry
+             ;; Array form: fill each value using the element type.
+             [(_ (? (^x (of-type? x <c-array>)) array-type) vals)
+              (unless (list? vals)
+                (error "c-array parameter value must be a list:" vals))
+              (let* ([elem-type (~ array-type 'element-type)]
+                     [elem-size (~ elem-type 'size)])
+                (let loop ([vs vals] [off offset])
+                  (unless (null? vs)
+                    (fill-native-value! bytes off elem-size elem-type (car vs))
+                    (loop (cdr vs) (+ off elem-size)))))]
              [(_ native-type val)
               (fill-native-value! bytes offset width native-type val)]))]
         ;; Special patch: dispatch to registered handler.

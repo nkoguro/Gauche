@@ -519,6 +519,24 @@
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
 
+;; --- c-array parameter ---
+
+(let ([make-array-type (with-module gauche.typeutil make-c-array-type)]
+      [tmpl (make-obj-template (make-u8vector 12 0) '() '((:data 0 0)))])
+  (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30))))
+    (test* "c-array <uint8>"
+           '(10 20 30 0 0 0 0 0 0 0 0 0)
+           (u8vector->list b)))
+  (receive (b _) (link-template tmpl `((:data ,(make-array-type <int32> '(3)) (1 2 3))))
+    (test* "c-array <int32>"
+           '(1 0 0 0 2 0 0 0 3 0 0 0)
+           (u8vector->list b)))
+  (test* "c-array non-list error"
+         (test-error)
+         (receive (b _)
+           (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) not-a-list)))
+           b)))
+
 ;; --- movs_ instruction-variant placeholder ---
 
 ;; ((movs_ :op) %xmm0 %xmm1)  -- sse->sse form
