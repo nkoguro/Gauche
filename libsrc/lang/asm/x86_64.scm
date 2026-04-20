@@ -47,13 +47,13 @@
   (use lang.asm.object)
   (use lang.asm.regset)
   (use util.match)
-  (export asm asm-template asm-dump)
+  (export x86_64-asm x86_64-dump)
   )
 (select-module lang.asm.x86_64)
 
 ;; When non-#f, holds a mutable cell (a one-element list) into which
 ;; hole annotations are cons'd during pass 2.  Bound via parameterize
-;; inside asm-template; #f outside (so non-template assembly collects nothing).
+;; inside x86_64-asm; #f outside (so non-template assembly collects nothing).
 (define patch-collector (make-parameter #f))
 
 ;; Instruction notation
@@ -88,12 +88,12 @@
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
-;; asm-template :: [Insn] -> <obj-template>
+;; x86_64-asm :: [Insn] -> <obj-template>
 ;;   First stage of assembly.  Builds the full byte sequence with zeros at
 ;;   placeholder holes, and records where each hole is.
 ;;   :postamble N appends N zero bytes after the assembled code, making the
 ;;   returned bytes larger without adding any patches or labels there.
-(define (asm-template insns)
+(define (x86_64-asm insns)
   (let* ([a-map   (run-pass1 insns)]
          [acc     (list '())]           ; mutable cell: (list <patch-list>)
          [bss     (parameterize ([patch-collector acc])
@@ -102,11 +102,6 @@
          [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
          [patches (car acc)])
     (make-obj-template code labels patches 'little-endian)))
-
-;; asm  :: [Insn] -> u8vector, [(label . addr)]
-;;   Main entry (backward-compatible wrapper).
-(define (asm insns)
-  (link-template (asm-template insns) '()))
 
 ;; run-pass1 :: [Insn] -> [(p, addr)]
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
@@ -143,10 +138,10 @@
                        (cons (p addr a-map) seed))))
                  '() a-map)))
 
-;; asm-dump :: [Insn] -> ()
+;; x86_64-dump :: [Insn] -> ()
 ;;   For debugging.  Show the assembly results in human-readable way.
-(define (asm-dump insns)
-  (let* ([tmpl   (asm-template insns)]
+(define (x86_64-dump insns)
+  (let* ([tmpl   (x86_64-asm insns)]
          [a-map  (run-pass1 insns)]
          [bss    (run-pass2 a-map)])
     (let loop ([insns insns] [a-map a-map] [bss bss])

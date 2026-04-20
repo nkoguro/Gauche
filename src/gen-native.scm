@@ -41,7 +41,7 @@
 (define (gen-stub-amd64 port)
   ;; When all args can be on registers.
   (define reg-tmpl
-    (asm-template
+    (x86_64-asm
      '(func:       (.dataq :func)
        farg0:      (.dataq :farg0)
        farg1:      (.dataq :farg1)
@@ -71,7 +71,7 @@
 
   ;; Spill case.
   (define spill-tmpl
-    (asm-template
+    (x86_64-asm
      '(func:       (.dataq :func)
        farg0:      (.dataq :farg0)
        farg1:      (.dataq :farg1)
@@ -319,7 +319,7 @@
 
 (define (gen-stub-winx64 port)
   (define reg-tmpl
-    (asm-template
+    (x86_64-asm
      '(func:    (.dataq :func)
        farg0:   (.dataq :farg0)
        farg1:   (.dataq :farg1)
@@ -341,7 +341,7 @@
 
   ;; Spill case.
   (define spill-tmpl
-    (asm-template
+    (x86_64-asm
      '(func:    (.dataq :func)
        farg0:   (.dataq :farg0)
        farg1:   (.dataq :farg1)
