@@ -112,18 +112,23 @@
   (hash-table-set! *patch-handlers* key handler))
 
 ;; link-template :: <obj-template>, [(keyword native-type value [extra-offset])]
+;;                  [#:postamble <int>]
 ;;                  -> u8vector, AList
 ;;   Applies patches from PARAMS and returns the finalized byte vector and
 ;;   label alist.  The template is never mutated; a fresh u8vector is returned.
+;;   If POSTAMBLE > 0, the returned vector is extended by that many zero bytes
+;;   beyond the template's own bytes (useful for per-call data regions).
 ;;   Each param entry is either:
 ;;     (keyword native-type value)              -- fill at the patch's own offset
 ;;     (keyword native-type value extra-offset) -- fill at patch-offset + extra-offset
 ;;     (keyword c-array-type values)            -- fill array starting at patch's offset
 ;;     (keyword c-array-type values extra-offset) -- fill array starting at patch-offset + extra-offset
 ;;   The offset form lets callers fill locations derived from a named anchor.
-(define (link-template tmpl params)
-  (let* ([bytes (u8vector-copy (~ tmpl'bytes))]
-         [len   (uvector-size bytes)])
+(define (link-template tmpl params :key (postamble 0))
+  (let* ([base  (~ tmpl'bytes)]
+         [len   (+ (uvector-size base) postamble)]
+         [bytes (rlet1 v (make-u8vector len 0)
+                  (u8vector-copy! v 0 base))])
 
     ;; Bounds-check ACTUAL then fill VALUE of NTYPE at that position.
     (define (checked-fill! kw actual ntype val)

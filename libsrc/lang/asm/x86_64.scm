@@ -88,18 +88,17 @@
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
-;; asm-template :: [Insn] :postamble Int -> <obj-template>
+;; asm-template :: [Insn] -> <obj-template>
 ;;   First stage of assembly.  Builds the full byte sequence with zeros at
 ;;   placeholder holes, and records where each hole is.
 ;;   :postamble N appends N zero bytes after the assembled code, making the
 ;;   returned bytes larger without adding any patches or labels there.
-(define (asm-template insns :key (postamble 0))
+(define (asm-template insns)
   (let* ([a-map   (run-pass1 insns)]
          [acc     (list '())]           ; mutable cell: (list <patch-list>)
          [bss     (parameterize ([patch-collector acc])
                     (run-pass2 a-map))]
-         [padding (make-list postamble 0)]
-         [code    (list->u8vector (concatenate (append bss (list padding))))]
+         [code    (list->u8vector (concatenate bss))]
          [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
          [patches (car acc)])
     (make-obj-template code labels patches)))

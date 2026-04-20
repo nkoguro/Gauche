@@ -106,7 +106,7 @@
        epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
                    (ret)
                    (.align 8)
-       spill:      (.dataq 0))))
+       spill:      (.dataq :spill))))
 
   (define reg-labels   (~ reg-tmpl'labels))
   (define spill-labels (~ spill-tmpl'labels))
@@ -170,7 +170,7 @@
   (pprint
    `(define call-amd64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f))
+            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-reg-bytes*
@@ -178,7 +178,7 @@
                        *amd64-call-reg-patches*))
                  (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -213,11 +213,11 @@
                                             `(,fkey ,@(car args)) r)
                                      (cons `(,fkey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (let-values ([(bytes _)
-                          (asm-inst tmpl
-                                    (list* `(:func ,<void*> ,ptr)
-                                           `(:num-fargs ,<uint8> ,num-fargs)
-                                           params))])
+            (receive [bytes _]
+                (link-tmpl tmpl
+                           `((:func ,<void*> ,ptr)
+                             (:num-fargs ,<uint8> ,num-fargs)
+                             ,@params))
               (%%call-native 0 0 bytes 0 end-addr entry '() rettype 0 0))))))
    :port port)
 
@@ -226,7 +226,7 @@
   (pprint
    `(define call-amd64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-offsets #f) (spill-base #f))
+            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-spill-bytes*
@@ -234,7 +234,7 @@
                        *amd64-call-spill-patches*))
                  (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -248,29 +248,33 @@
                                     (+ 6 num-fargs))]
                  [entry (~ entry-offsets effective-nargs)])
             (let loop ([args args] [icount 0] [fcount 0] [scount 0]
-                       [named '()] [spill '()])
+                       [named '()] [spill-params '()])
               (if (null? args)
-                (let*-values
-                    ([(align-pad) (if (even? num-spills) 8 0)]
-                     [(bytes _)
-                      (asm-inst tmpl
-                                (list* `(:func ,<void*> ,ptr)
-                                       `(:num-fargs ,<uint8> ,num-fargs)
-                                       `(:init-spill-size ,<int32>
-                                         ,(* 8 num-spills))
-                                       `(:epilogue-spill-size ,<int32>
-                                         ,(+ (* 8 num-spills) align-pad))
-                                       `(:align-pad ,<int8> ,align-pad)
-                                       named))])
-                  (%%call-native 0
-                                 (+ spill-base (* num-spills 8))
-                                 bytes
-                                 0
-                                 spill-base
-                                 entry
-                                 spill
-                                 rettype
-                                 0 0))
+                (let* ([align-pad (if (even? num-spills) 8 0)]
+                       [spill-area-bytes (* 8 num-spills)])
+                  (receive [bytes _]
+                      (link-tmpl tmpl
+                                 `((:func ,<void*> ,ptr)
+                                   (:num-fargs ,<uint8> ,num-fargs)
+                                   (:init-spill-size
+                                    ,<int32>
+                                    ,spill-area-bytes)
+                                   (:epilogue-spill-size
+                                    ,<int32>
+                                    ,(+ spill-area-bytes align-pad))
+                                   (:align-pad ,<int8> ,align-pad)
+                                   ,@named
+                                   ,@spill-params)
+                                 :postamble spill-area-bytes)
+                    (%%call-native 0     ;tstart
+                                   0     ;tend (no zero fill)
+                                   bytes ;code
+                                   0     ;start
+                                   (+ spill-base spill-area-bytes) ;end
+                                   entry ;entry
+                                   '()   ;patcher
+                                   rettype
+                                   0 0)))
                 (cond [(%iarg-type? (caar args))
                        (if (< icount 6)
                          (loop (cdr args) (+ icount 1) fcount scount
@@ -278,13 +282,12 @@
                                             :iarg3 :iarg4 :iarg5) icount)
                                        ,@(car args))
                                      named)
-                               spill)
+                               spill-params)
                          (loop (cdr args) (+ icount 1) fcount (+ scount 1)
                                named
-                               (cons `(,(+ spill-base
-                                           (* (- num-spills scount 1) 8))
-                                       ,@(car args))
-                                     spill)))]
+                               (cons `(:func ,@(car args)
+                                       ,(+ spill-base (* (- num-spills scount 1) 8)))
+                                     spill-params)))]
                       [(%farg-type? (caar args))
                        (if (< fcount 8)
                          (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3
@@ -298,13 +301,12 @@
                                    (list* `(,vkey ,<uint8> movss)
                                           `(,fkey ,@(car args)) named)
                                    (cons `(,fkey ,@(car args)) named))
-                                 spill))
+                                 spill-params))
                          (loop (cdr args) icount (+ fcount 1) (+ scount 1)
                                named
-                               (cons `(,(+ spill-base
-                                           (* (- num-spills scount 1) 8))
-                                       ,@(car args))
-                                     spill)))]
+                               (cons `(:spill ,@(car args)
+                                       ,(* (- num-spills scount 1) 8))
+                                     spill-params)))]
                       [else (error "bad arg entry:" (car args))])))))))
    :port port)
   )
@@ -365,7 +367,7 @@
        epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
                 (ret)
                 (.align 8)
-       spill:   (.dataq 0))))
+       spill:   (.dataq :spill))))
 
   (define reg-labels   (~ reg-tmpl'labels))
   (define spill-labels (~ spill-tmpl'labels))
@@ -403,7 +405,7 @@
   (pprint
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-offsets #f) (end-addr #f)
+            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
             (win-prolog-end #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
@@ -412,7 +414,7 @@
                        *winx64-call-reg-patches*))
                  (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4:
@@ -453,10 +455,10 @@
                                      (list* `(,fkey ,@(car args))
                                             `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (let-values ([(bytes _)
-                          (asm-inst tmpl
-                                    (list* `(:func ,<void*> ,ptr)
-                                           params))])
+            (receive [bytes _]
+                (link-tmpl tmpl
+                           (list* `(:func ,<void*> ,ptr)
+                                  params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
               (%%call-native 0 0 bytes 0 end-addr entry '() rettype
                              win-prolog-end 40))))))
@@ -465,7 +467,7 @@
   (pprint
    `(define call-winx64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (asm-inst #f) (entry-addr #f) (spill-base #f)
+            (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
             (win-prolog-end #f))
         (define (init!)
           (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
@@ -474,51 +476,53 @@
                        *winx64-call-spill-patches*))
                  (lbs (~ t'labels)))
             (set! tmpl t)
-            (set! asm-inst (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-addr (cdr (assq 'entry: lbs)))
             (set! spill-base (cdr (assq 'spill: lbs)))
             ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
             (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4))))
         (^[ptr args num-args num-fargs num-spills rettype]
           (when (not tmpl) (init!))
-          (let loop ([args args] [count 0] [scount 0] [named '()] [spill '()])
+          (let loop ([args args] [count 0] [scount 0] [named '()] [spill-params '()])
             (if (null? args)
-              (let*-values
-                  ([(align-pad) (if (even? num-spills) 8 0)]
-                   [(spill-area-bytes) (* 8 num-spills)]
-                   [(bytes _)
-                    (asm-inst tmpl
-                              (list* `(:func ,<void*> ,ptr)
-                                     `(:init-spill-size ,<int32>
-                                       ,spill-area-bytes)
-                                     `(:epilogue-spill-size ,<int32>
-                                       ,(+ spill-area-bytes align-pad))
-                                     `(:align-pad ,<int8> ,align-pad)
-                                     named))])
-                ;; win-frame-size = shadow space (32) + spill args (8*N)
-                (%%call-native 0
-                               (+ spill-base spill-area-bytes)
-                               bytes
-                               0
-                               spill-base
-                               entry-addr
-                               spill
-                               rettype
-                               win-prolog-end
-                               (+ spill-area-bytes align-pad 32)))
+              (let* ([align-pad (if (even? num-spills) 8 0)]
+                     [spill-area-bytes (* 8 num-spills)])
+                (receive [bytes _]
+                    (link-tmpl tmpl
+                               `((:func ,<void*> ,ptr)
+                                 (:init-spill-size
+                                  ,<int32>
+                                  ,spill-area-bytes)
+                                 (:epilogue-spill-size
+                                  ,<int32>
+                                  ,(+ spill-area-bytes align-pad))
+                                 (:align-pad ,<int8> ,align-pad)
+                                 ,@named
+                                 ,@spill-params)
+                               :postamble spill-area-bytes)
+                  ;; win-frame-size = shadow space (32) + spill args (8*N)
+                  (%%call-native 0      ;tstart
+                                 0      ;tend (no zero fill needed)
+                                 bytes  ;code
+                                 0      ;start
+                                 (+ spill-base spill-area-bytes) ;end
+                                 entry-addr                      ;entry
+                                 '()                             ;patcher
+                                 rettype
+                                 win-prolog-end
+                                 (+ spill-area-bytes align-pad 32))))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount
                              (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)
                                      ,@(car args))
                                    named)
-                             spill)
+                             spill-params)
                        (loop (cdr args) (+ count 1) (+ scount 1)
                              named
-                             (cons `(,(+ spill-base
-                                         (* (- num-spills scount 1) 8))
-                                     ,@(car args))
-                                   spill)))]
+                             (cons `(:spill ,@(car args)
+                                     ,(* (- num-spills scount 1) 8))
+                                   spill-params)))]
                     [(%farg-type? (caar args))
                      ;; We load both integer regs and flonum regs.
                      ;; It matters for variadic function call.
@@ -534,13 +538,12 @@
                                         `(,ikey ,@(car args)) named)
                                  (list* `(,fkey ,@(car args))
                                         `(,ikey ,@(car args)) named))
-                               spill))
+                               spill-params))
                        (loop (cdr args) (+ count 1) (+ scount 1)
                              named
-                             (cons `(,(+ spill-base
-                                         (* (- num-spills scount 1) 8))
-                                     ,@(car args))
-                                   spill)))]
+                             (cons `(:func ,@(car args)
+                                     ,(+ spill-base (* (- num-spills scount 1) 8)))
+                                   spill-params)))]
                     [else (error "bad arg entry:" (car args))]))))))
    :port port)
   )
