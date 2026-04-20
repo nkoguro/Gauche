@@ -519,6 +519,57 @@
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
 
+;; --- asm-template :postamble ---
+
+;; No postamble: bytes size equals assembled code size.
+(let ()
+  (define tmpl (asm-template '((ret)) :postamble 0))
+  (receive (b _) (link-template tmpl '())
+    (test* "asm-template :postamble 0"
+           '(#xc3)
+           (u8vector->list b))))
+
+;; :postamble 8: eight zero bytes appended after the code.
+(let ()
+  (define tmpl (asm-template '((ret)) :postamble 8))
+  (receive (b _) (link-template tmpl '())
+    (test* "asm-template :postamble 8 size"
+           9
+           (uvector-size b))
+    (test* "asm-template :postamble 8 content"
+           '(#xc3 0 0 0 0 0 0 0 0)
+           (u8vector->list b))))
+
+;; :postamble preserves labels (labels point into code, not postamble).
+(let ()
+  (define tmpl (asm-template '(entry: (ret)) :postamble 4))
+  (receive (_ labels) (link-template tmpl '())
+    (test* "asm-template :postamble labels preserved"
+           '((entry: . 0))
+           labels)))
+
+;; .align at end of insn list pads code; postamble follows the aligned size.
+;; ret (1 byte) + .align 8 (7 padding bytes) = 8 bytes of code.
+(let ()
+  (define tmpl (asm-template '((ret) (.align 8)) :postamble 8))
+  (receive (b _) (link-template tmpl '())
+    (test* "asm-template ends with .align + :postamble"
+           (append '(#xc3 0 0 0 0 0 0 0)   ; ret + 7 align bytes
+                   '(0 0 0 0 0 0 0 0))      ; 8-byte postamble
+           (u8vector->list b))))
+
+;; offset-form can fill into the postamble region using a patch as anchor.
+;; Template: (.dataq :anchor) [8 bytes] + postamble [8 bytes] = 16 bytes.
+;; :anchor patch is at offset 0; extra-offset 8 reaches into the postamble.
+(let ()
+  (define tmpl (asm-template '((.dataq :anchor)) :postamble 8))
+  (receive (b _) (link-template tmpl `((:anchor ,<uint64> #xfeedface00000000 0)
+                                       (:anchor ,<uint32> #xdeadbeef         8)))
+    (test* "asm-template :postamble filled via offset form"
+           (append '(#x00 #x00 #x00 #x00 #xce #xfa #xed #xfe)  ; .dataq
+                   '(#xef #xbe #xad #xde 0 0 0 0))              ; postamble
+           (u8vector->list b))))
+
 ;; --- offset parameter form (keyword native-type value extra-offset) ---
 
 ;; Template: 16 zero bytes, one 8-byte patch at offset 0 for :base.

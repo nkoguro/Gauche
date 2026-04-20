@@ -88,19 +88,21 @@
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
-;; asm-template :: [Insn] -> <obj-template>
+;; asm-template :: [Insn] :postamble Int -> <obj-template>
 ;;   First stage of assembly.  Builds the full byte sequence with zeros at
 ;;   placeholder holes, and records where each hole is.
-(define (asm-template insns)
+;;   :postamble N appends N zero bytes after the assembled code, making the
+;;   returned bytes larger without adding any patches or labels there.
+(define (asm-template insns :key (postamble 0))
   (let* ([a-map   (run-pass1 insns)]
          [acc     (list '())]           ; mutable cell: (list <patch-list>)
          [bss     (parameterize ([patch-collector acc])
                     (run-pass2 a-map))]
-         [bytes   (list->u8vector (concatenate bss))]
+         [padding (make-list postamble 0)]
+         [code    (list->u8vector (concatenate (append bss (list padding))))]
          [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
          [patches (car acc)])
-    (make-obj-template bytes labels patches)))
-
+    (make-obj-template code labels patches)))
 
 ;; asm  :: [Insn] -> u8vector, [(label . addr)]
 ;;   Main entry (backward-compatible wrapper).
@@ -114,13 +116,21 @@
 ;;   and addr is a value of PC after the code is fetched.
 (define (run-pass1 insns)
   (values-ref
-   (map-accum (match-lambda*
-                [((? symbol? label) addr) (values (cons label addr) addr)]
-                [(insn addr) (let* ([p (asm1 (parse-insn insn))]
-                                    [dummy (p addr #f)]
-                                    [naddr (+ addr (length dummy))])
-                               (values (cons p naddr) naddr))])
-              0 insns)
+   (map-accum
+    (match-lambda*
+      [((? symbol? label) addr) (values (cons label addr) addr)]
+      [(insn addr) (let* ([p     (asm1 (parse-insn insn))]
+                          [dummy (p addr #f)]
+                          [n     (length dummy)]
+                          [naddr (+ addr n)]
+                          ;; pass2 calls closures with end-addr, which is
+                          ;; already aligned for .align, yielding 0 bytes.
+                          ;; Freeze the pass-1 count so pass2 is consistent.
+                          [p2    (if (eq? (car insn) '.align)
+                                   (^[a t] (make-list n 0))
+                                   p)])
+                     (values (cons p2 naddr) naddr))])
+    0 insns)
    0))
 
 ;; run-pass2 :: [(p, xaddr)] -> [[Byte]]
