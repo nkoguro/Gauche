@@ -1234,7 +1234,15 @@
          (t '(9 8 7 6 5 4 3 2 1 0)
             (Fcb-spill10 0 1 2 3 4 5 6 7 8 9 reverse))
 
-         (test* "error and codepad memory management" #t
+         (test* #"recursion via FFI ~'opts" 99
+                (let ([k 0])
+                  (define (f n)
+                    (if (= k 10)
+                      99
+                      (begin (inc! k) (Fcb f))))
+                  (Fcb f)))
+
+         (test* #"error and codepad memory management ~'opts" #t
                   (let1 proc (lambda (_) (error "wow"))
                     (dotimes [2000]
                       (guard (e [else #t])
