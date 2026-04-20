@@ -24,14 +24,16 @@
 (define (emit-tmpl-vars port prefix tmpl)
   (let ([bytes-var   (string->symbol #"*~|prefix|-bytes*")]
         [labels-var  (string->symbol #"*~|prefix|-labels*")]
-        [patches-var (string->symbol #"*~|prefix|-patches*")])
+        [patches-var (string->symbol #"*~|prefix|-patches*")]
+        [endian-var  (string->symbol #"*~|prefix|-endian*")])
     (pprint `(define ,bytes-var ,(~ tmpl'bytes))
             :port port
             ;; TRANSIENT: :radix -> :radix-prefix after the new release
             :controls (make-write-controls :pretty #t :width 75
                                            :base 16 :radix #t))
     (pprint `(define ,labels-var ',(~ tmpl'labels)) :port port)
-    (pprint `(define ,patches-var ',(~ tmpl'patches)) :port port)))
+    (pprint `(define ,patches-var ',(~ tmpl'patches)) :port port)
+    (pprint `(define ,endian-var ',(~ tmpl'endian)) :port port)))
 
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
@@ -172,11 +174,12 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-reg-bytes*
                        *amd64-call-reg-labels*
-                       *amd64-call-reg-patches*))
-                 (lbs (~ t'labels)))
+                       *amd64-call-reg-patches*
+                       *amd64-call-reg-endian*)]
+                 [lbs (~ t'labels)])
             (set! tmpl t)
             (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
@@ -228,11 +231,12 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *amd64-call-spill-bytes*
                        *amd64-call-spill-labels*
-                       *amd64-call-spill-patches*))
-                 (lbs (~ t'labels)))
+                       *amd64-call-spill-patches*
+                       *amd64-call-spill-endian*)]
+                 [lbs (~ t'labels)])
             (set! tmpl t)
             (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
@@ -407,11 +411,12 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-reg-bytes*
                        *winx64-call-reg-labels*
-                       *winx64-call-reg-patches*))
-                 (lbs (~ t'labels)))
+                       *winx64-call-reg-patches*
+                       *winx64-call-reg-endian*)]
+                 [lbs (~ t'labels)])
             (set! tmpl t)
             (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-offsets
@@ -469,11 +474,12 @@
             (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ((t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
                        *winx64-call-spill-bytes*
                        *winx64-call-spill-labels*
-                       *winx64-call-spill-patches*))
-                 (lbs (~ t'labels)))
+                       *winx64-call-spill-patches*
+                       *winx64-call-spill-endian*)]
+                 [lbs (~ t'labels)])
             (set! tmpl t)
             (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
             (set! entry-addr (cdr (assq 'entry: lbs)))

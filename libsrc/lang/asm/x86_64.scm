@@ -101,7 +101,7 @@
          [code    (list->u8vector (concatenate bss))]
          [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
          [patches (car acc)])
-    (make-obj-template code labels patches)))
+    (make-obj-template code labels patches 'little-endian)))
 
 ;; asm  :: [Insn] -> u8vector, [(label . addr)]
 ;;   Main entry (backward-compatible wrapper).

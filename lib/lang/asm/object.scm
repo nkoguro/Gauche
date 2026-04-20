@@ -48,13 +48,17 @@
 ;;   labels  - alist of (symbol . byte-offset)
 ;;   patches - list of (keyword byte-offset byte-width) describing holes
 ;;     NB: The same keyword can appear multiple times in patches list.
+;;   endian  - one of endianness symbol.  this can differ from what
+;;             (native-endian) returns when we're cross-assembling.
 (define-class <obj-template> ()
   ((bytes   :init-keyword :bytes :type <u8vector>)
    (labels  :init-keyword :labels)
-   (patches :init-keyword :patches)))
+   (patches :init-keyword :patches)
+   (endian  :init-keyword :endian)))
 
-(define (make-obj-template bytes labels patches)
-  (make <obj-template> :bytes bytes :labels labels :patches patches))
+(define (make-obj-template bytes labels patches endian)
+  (make <obj-template>
+    :bytes bytes :labels labels :patches patches :endian endian))
 
 (define (obj-template? x) (is-a? x <obj-template>))
 
@@ -68,7 +72,7 @@
 ;; fill-native-value! :: u8vector, int, int, <native-type>|<top>, val -> ()
 ;;   Fill BYTES from OFFSET spanning SIZE bytes with the binary representation
 ;;   of VALUE according to TYPE (always little-endian for numeric types).
-(define (fill-native-value! bytes offset size type value)
+(define (fill-native-value! bytes offset size type value endian)
   (define (bad)
     (error "Unsupported type to use in link-template:" type))
   (cond
@@ -79,19 +83,21 @@
      [(eq? (~ type'super) <integer>)
       (if (~ type'unsigned?)
         (case (~ type'size)
-          [(1) (put-u8!    bytes offset value)]
-          [(2) (put-u16le! bytes offset value)]
-          [(4) (put-u32le! bytes offset value)]
-          [(8) (put-u64le! bytes offset value)]
+          [(1) (put-u8!  bytes offset value)]
+          [(2) (put-u16! bytes offset value endian)]
+          [(4) (put-u32! bytes offset value endian)]
+          [(8) (put-u64! bytes offset value endian)]
           [else (bad)])
         (case (~ type'size)
-          [(1) (put-s8!    bytes offset value)]
-          [(2) (put-s16le! bytes offset value)]
-          [(4) (put-s32le! bytes offset value)]
-          [(8) (put-s64le! bytes offset value)]
+          [(1) (put-s8!  bytes offset value)]
+          [(2) (put-s16! bytes offset value endian)]
+          [(4) (put-s32! bytes offset value endian)]
+          [(8) (put-s64! bytes offset value endian)]
           [else (bad)]))]
-     [(eq? type <float>)   (put-f32le! bytes offset value)]
-     [(eq? type <double>)  (put-f64le! bytes offset value)]
+     [(eq? type <float>)   (put-f32! bytes offset value endian)]
+     [(eq? type <double>)  (put-f64! bytes offset value endian)]
+     ;; NB: We always fill pointer with native endian, for the
+     ;; raw address won't make sense for cross assembling.
      [(or (of-type? type <c-pointer>)
           (of-type? type <c-array>)
           (of-type? type <c-function>)
@@ -127,6 +133,7 @@
 (define (link-template tmpl params :key (postamble 0))
   (let* ([base  (~ tmpl'bytes)]
          [len   (+ (uvector-size base) postamble)]
+         [endian (~ tmpl'endian)]
          [bytes (rlet1 v (make-u8vector len 0)
                   (u8vector-copy! v 0 base))])
 
@@ -135,7 +142,7 @@
       (when (>= actual len)
         (errorf "link-template: ~s adjusted offset ~a exceeds template size ~a"
                 kw actual len))
-      (fill-native-value! bytes actual (- len actual) ntype val))
+      (fill-native-value! bytes actual (- len actual) ntype val endian))
 
     ;; Fill array VALS into consecutive element-sized slots starting at START.
     (define (fill-array! kw start atype vals)
@@ -161,7 +168,7 @@
              [(_ ntype val (? integer? xoff))
               (checked-fill! kw (+ base xoff) ntype val)]
              [(_ ntype val)
-              (fill-native-value! bytes base width ntype val)]))]
+              (fill-native-value! bytes base width ntype val endian)]))]
         ;; Special patch: dispatch to registered handler.
         [(kw offset (? symbol? handler-key))
          (let1 handler (hash-table-get *patch-handlers* handler-key #f)

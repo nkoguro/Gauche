@@ -560,7 +560,8 @@
 ;; --- offset parameter form (keyword native-type value extra-offset) ---
 
 ;; Template: 16 zero bytes, one 8-byte patch at offset 0 for :base.
-(let ([tmpl (make-obj-template (make-u8vector 16 0) '() '((:base 0 8)))])
+(let ([tmpl (make-obj-template (make-u8vector 16 0) '() '((:base 0 8))
+                               'little-endian)])
   ;; extra-offset 0: fills at the patch's own offset (same as scalar form)
   (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 0)))
     (test* "offset form extra=0"
@@ -587,7 +588,8 @@
 ;; --- c-array parameter ---
 
 (let ([make-array-type (with-module gauche.typeutil make-c-array-type)]
-      [tmpl (make-obj-template (make-u8vector 12 0) '() '((:data 0 0)))])
+      [tmpl (make-obj-template (make-u8vector 12 0) '() '((:data 0 0))
+                               'little-endian)])
   (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30))))
     (test* "c-array <uint8>"
            '(10 20 30 0 0 0 0 0 0 0 0 0)
