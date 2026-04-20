@@ -519,6 +519,33 @@
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
 
+;; --- offset parameter form (keyword native-type value extra-offset) ---
+
+;; Template: 16 zero bytes, one 8-byte patch at offset 0 for :base.
+(let ([tmpl (make-obj-template (make-u8vector 16 0) '() '((:base 0 8)))])
+  ;; extra-offset 0: fills at the patch's own offset (same as scalar form)
+  (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 0)))
+    (test* "offset form extra=0"
+           '(#x04 #x03 #x02 #x01 0 0 0 0 0 0 0 0 0 0 0 0)
+           (u8vector->list b)))
+  ;; extra-offset 4: fills 4 bytes starting at offset 4
+  (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 4)))
+    (test* "offset form extra=4"
+           '(0 0 0 0 #x04 #x03 #x02 #x01 0 0 0 0 0 0 0 0)
+           (u8vector->list b)))
+  ;; two offset params referencing the same keyword
+  (receive (b _) (link-template tmpl `((:base ,<uint32> #xdeadbeef 0)
+                                       (:base ,<uint32> #x12345678 8)))
+    (test* "offset form two fills from same base"
+           '(#xef #xbe #xad #xde 0 0 0 0 #x78 #x56 #x34 #x12 0 0 0 0)
+           (u8vector->list b)))
+  ;; out-of-bounds: extra-offset puts fill start at or past template end
+  (test* "offset form out-of-bounds error"
+         (test-error)
+         (receive (b _)
+           (link-template tmpl `((:base ,<uint32> 0 16)))
+           b)))
+
 ;; --- c-array parameter ---
 
 (let ([make-array-type (with-module gauche.typeutil make-c-array-type)]
@@ -530,6 +557,11 @@
   (receive (b _) (link-template tmpl `((:data ,(make-array-type <int32> '(3)) (1 2 3))))
     (test* "c-array <int32>"
            '(1 0 0 0 2 0 0 0 3 0 0 0)
+           (u8vector->list b)))
+  ;; c-array with extra-offset: fill starting at base + 4
+  (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30) 4)))
+    (test* "c-array <uint8> with extra-offset"
+           '(0 0 0 0 10 20 30 0 0 0 0 0)
            (u8vector->list b)))
   (test* "c-array non-list error"
          (test-error)

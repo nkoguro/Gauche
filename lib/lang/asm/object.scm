@@ -111,29 +111,52 @@
 (define (register-patch-handler! key handler)
   (hash-table-set! *patch-handlers* key handler))
 
-;; link-template :: <obj-template>, [(keyword native-type value)] -> u8vector, AList
-;;   Applies patches from PARAMS and returns the finalised byte vector and
+;; link-template :: <obj-template>, [(keyword native-type value [extra-offset])]
+;;                  -> u8vector, AList
+;;   Applies patches from PARAMS and returns the finalized byte vector and
 ;;   label alist.  The template is never mutated; a fresh u8vector is returned.
+;;   Each param entry is either:
+;;     (keyword native-type value)              -- fill at the patch's own offset
+;;     (keyword native-type value extra-offset) -- fill at patch-offset + extra-offset
+;;     (keyword c-array-type values)            -- fill array starting at patch's offset
+;;     (keyword c-array-type values extra-offset) -- fill array starting at patch-offset + extra-offset
+;;   The offset form lets callers fill locations derived from a named anchor.
 (define (link-template tmpl params)
-  (let1 bytes (u8vector-copy (~ tmpl'bytes))
+  (let* ([bytes (u8vector-copy (~ tmpl'bytes))]
+         [len   (uvector-size bytes)])
+
+    ;; Bounds-check ACTUAL then fill VALUE of NTYPE at that position.
+    (define (checked-fill! kw actual ntype val)
+      (when (>= actual len)
+        (errorf "link-template: ~s adjusted offset ~a exceeds template size ~a"
+                kw actual len))
+      (fill-native-value! bytes actual (- len actual) ntype val))
+
+    ;; Fill array VALS into consecutive element-sized slots starting at START.
+    (define (fill-array! kw start atype vals)
+      (unless (list? vals)
+        (error "c-array parameter value must be a list:" vals))
+      (let* ([etype (~ atype 'element-type)]
+             [esize (~ etype 'size)])
+        (let loop ([vs vals] [off start])
+          (unless (null? vs)
+            (checked-fill! kw off etype (car vs))
+            (loop (cdr vs) (+ off esize))))))
+
     (dolist [patch (~ tmpl'patches)]
       (match patch
         ;; Typed patch: encode value according to native-type.
-        [(kw offset (? integer? width))
-         (and-let1 entry (assq kw params)
+        [(kw base (? integer? width))
+         (dolist [entry (filter (^e (eq? (car e) kw)) params)]
            (match entry
-             ;; Array form: fill each value using the element type.
-             [(_ (? (^x (of-type? x <c-array>)) array-type) vals)
-              (unless (list? vals)
-                (error "c-array parameter value must be a list:" vals))
-              (let* ([elem-type (~ array-type 'element-type)]
-                     [elem-size (~ elem-type 'size)])
-                (let loop ([vs vals] [off offset])
-                  (unless (null? vs)
-                    (fill-native-value! bytes off elem-size elem-type (car vs))
-                    (loop (cdr vs) (+ off elem-size)))))]
-             [(_ native-type val)
-              (fill-native-value! bytes offset width native-type val)]))]
+             [(_ (? (^x (of-type? x <c-array>)) atype) vals)
+              (fill-array! kw base atype vals)]
+             [(_ (? (^x (of-type? x <c-array>)) atype) vals (? integer? xoff))
+              (fill-array! kw (+ base xoff) atype vals)]
+             [(_ ntype val (? integer? xoff))
+              (checked-fill! kw (+ base xoff) ntype val)]
+             [(_ ntype val)
+              (fill-native-value! bytes base width ntype val)]))]
         ;; Special patch: dispatch to registered handler.
         [(kw offset (? symbol? handler-key))
          (let1 handler (hash-table-get *patch-handlers* handler-key #f)
