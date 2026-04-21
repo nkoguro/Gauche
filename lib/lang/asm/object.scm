@@ -39,26 +39,43 @@
   (use gauche.uvector)
   (use binary.io)
   (use util.match)
-  (export <obj-template> make-obj-template obj-template?
-          link-template))
+  (export <obj-fragment> make-obj-fragment obj-fragment?
+          <obj-template> make-obj-template obj-template?
+          link-template link-templates))
 (select-module lang.asm.object)
 
-;; Template class.
-;;   bytes   - u8vector of assembled machine code (zeros at placeholder holes)
-;;   labels  - alist of (symbol . byte-offset)
-;;   patches - list of (keyword byte-offset byte-width) describing holes
-;;     NB: The same keyword can appear multiple times in patches list.
-;;   endian  - one of endianness symbol.  this can differ from what
-;;             (native-endian) returns when we're cross-assembling.
-(define-class <obj-template> ()
-  ((bytes   :init-keyword :bytes :type <u8vector>)
+;; Fragment class.  Holds one contiguous section of assembled machine code.
+;;   bytes   - u8vector of assembled bytes (zeros at placeholder holes)
+;;   labels  - alist of (symbol . byte-offset), offsets relative to this fragment
+;;   patches - list of patch descriptors, offsets relative to this fragment
+;;   section - symbol naming the section (e.g. 'text, 'data)
+(define-class <obj-fragment> ()
+  ((bytes   :init-keyword :bytes   :type <u8vector>)
    (labels  :init-keyword :labels)
    (patches :init-keyword :patches)
-   (endian  :init-keyword :endian)))
+   (section :init-keyword :section)))
 
+(define (make-obj-fragment bytes labels patches section)
+  (make <obj-fragment>
+    :bytes bytes :labels labels :patches patches :section section))
+
+(define (obj-fragment? x) (is-a? x <obj-fragment>))
+
+;; Template class.  Holds one or more fragments plus shared endianness.
+;;   fragments - list of <obj-fragment>
+;;   endian    - one of the endianness symbols; can differ from (native-endian)
+;;               when cross-assembling.
+(define-class <obj-template> ()
+  ((fragments :init-keyword :fragments)
+   (endian    :init-keyword :endian)))
+
+;; Temporary 4-arg compatibility wrapper: wraps bytes/labels/patches into a
+;; single 'text fragment.  Will be replaced by the proper 2-arg constructor
+;; in Step 4.
 (define (make-obj-template bytes labels patches endian)
   (make <obj-template>
-    :bytes bytes :labels labels :patches patches :endian endian))
+    :fragments (list (make-obj-fragment bytes labels patches 'text))
+    :endian endian))
 
 (define (obj-template? x) (is-a? x <obj-template>))
 
@@ -130,21 +147,16 @@
 ;;     (keyword c-array-type values)            -- fill array starting at patch's offset
 ;;     (keyword c-array-type values extra-offset) -- fill array starting at patch-offset + extra-offset
 ;;   The offset form lets callers fill locations derived from a named anchor.
-(define (link-template tmpl params :key (postamble 0))
-  (let* ([base  (~ tmpl'bytes)]
-         [len   (+ (uvector-size base) postamble)]
-         [endian (~ tmpl'endian)]
-         [bytes (rlet1 v (make-u8vector len 0)
-                  (u8vector-copy! v 0 base))])
-
-    ;; Bounds-check ACTUAL then fill VALUE of NTYPE at that position.
+;; apply-patches! :: u8vector, symbol, patches, params -> ()
+;;   Core patch application loop shared by link-template and link-templates.
+(define (apply-patches! bytes endian patches params)
+  (let1 len (uvector-size bytes)
     (define (checked-fill! kw actual ntype val)
       (when (>= actual len)
-        (errorf "link-template: ~s adjusted offset ~a exceeds template size ~a"
+        (errorf "link-templates: ~s adjusted offset ~a exceeds template size ~a"
                 kw actual len))
       (fill-native-value! bytes actual (- len actual) ntype val endian))
 
-    ;; Fill array VALS into consecutive element-sized slots starting at START.
     (define (fill-array! kw start atype vals)
       (unless (list? vals)
         (error "c-array parameter value must be a list:" vals))
@@ -155,9 +167,8 @@
             (checked-fill! kw off etype (car vs))
             (loop (cdr vs) (+ off esize))))))
 
-    (dolist [patch (~ tmpl'patches)]
+    (dolist [patch patches]
       (match patch
-        ;; Typed patch: encode value according to native-type.
         [(kw base (? integer? width))
          (dolist [entry (filter (^e (eq? (car e) kw)) params)]
            (match entry
@@ -169,13 +180,71 @@
               (checked-fill! kw (+ base xoff) ntype val)]
              [(_ ntype val)
               (fill-native-value! bytes base width ntype val endian)]))]
-        ;; Special patch: dispatch to registered handler.
         [(kw offset (? symbol? handler-key))
          (let1 handler (hash-table-get *patch-handlers* handler-key #f)
            (if handler
              (handler bytes offset (assoc-ref params kw))
-             (error "unknown patch handler:" handler-key)))]))
-    (values bytes (~ tmpl'labels))))
+             (error "unknown patch handler:" handler-key)))]))))
+
+;; link-templates :: (listof <obj-template>), params :key postamble -> u8vector, alist
+;;   Merges fragments from all templates, grouped by section in first-seen order
+;;   (A+C+B+D), rebases all label/patch offsets, applies params, and returns
+;;   the finalized byte vector and merged label alist.
+(define (link-templates tmpls params :key (postamble 0))
+  (unless (pair? tmpls)
+    (error "link-templates: template list must not be empty"))
+  (let* ([endian (~ (car tmpls) 'endian)]
+         [_      (for-each (^t (unless (eq? (~ t 'endian) endian)
+                                 (error "link-templates: templates have mismatched endianness")))
+                           (cdr tmpls))]
+         ;; All fragments in input order.
+         [frags    (append-map (^t (~ t 'fragments)) tmpls)]
+         ;; Section order by first appearance.
+         [sections (delete-duplicates (map (^f (~ f 'section)) frags) eq?)])
+    ;; Walk sections in order.  For each section, walk all fragments (in order)
+    ;; and pick those matching the current section, accumulating bytes, labels,
+    ;; and patches with rebased offsets.
+    (let loop ([secs sections] [offset 0]
+               [rev-blists '()] [labels '()] [patches '()])
+      (if (null? secs)
+        ;; All sections processed: build the final vector and apply params.
+        (let* ([byte-list (append-map identity (reverse rev-blists))]
+               [total     (+ (length byte-list) postamble)]
+               [bytes     (list->u8vector
+                           (append byte-list (make-list postamble 0)))])
+          (apply-patches! bytes endian patches params)
+          (values bytes labels))
+        (let1 sec (car secs)
+          (let floop ([fs frags] [off offset]
+                      [sec-blist '()] [sec-labels '()] [sec-patches '()])
+            (if (null? fs)
+              ;; Done with this section's fragments; advance to next section.
+              (loop (cdr secs) off
+                    (cons (reverse sec-blist) rev-blists)
+                    (append labels sec-labels)
+                    (append patches sec-patches))
+              (let1 frag (car fs)
+                (if (eq? (~ frag 'section) sec)
+                  (let* ([fb   (~ frag 'bytes)]
+                         [flen (uvector-size fb)])
+                    (floop (cdr fs)
+                           (+ off flen)
+                           (append (reverse (u8vector->list fb)) sec-blist)
+                           (append sec-labels
+                                   (map (^p (cons (car p) (+ off (cdr p))))
+                                        (~ frag 'labels)))
+                           (append sec-patches
+                                   (map (^p (cons* (car p)
+                                                   (+ off (cadr p))
+                                                   (cddr p)))
+                                        (~ frag 'patches)))))
+                  (floop (cdr fs) off
+                         sec-blist sec-labels sec-patches))))))))))
+
+;; link-template :: <obj-template>, params :key postamble -> u8vector, alist
+;;   Single-template convenience wrapper around link-templates.
+(define (link-template tmpl params :key (postamble 0))
+  (link-templates (list tmpl) params :postamble postamble))
 
 ;;;
 ;;; Architecture-specific patch handlers

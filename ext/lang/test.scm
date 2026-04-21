@@ -677,4 +677,88 @@
                    '(#xc3))                         ; ret
            (u8vector->list b))))
 
+;;----------------------------------------------------------------------
+(test-section "link-templates")
+
+;; Helper: make a simple single-fragment template from raw data.
+(define (make-text-tmpl bytes labels patches)
+  (make-obj-template bytes labels patches 'little-endian))
+
+;; --- Two single-section templates concatenated ---
+
+(let* ([t1 (make-text-tmpl #u8(1 2 3) '((a: . 0) (b: . 2)) '())]
+       [t2 (make-text-tmpl #u8(4 5 6) '((c: . 0) (d: . 1)) '())])
+  (receive (bytes labels) (link-templates (list t1 t2) '())
+    (test* "link-templates two text: bytes"
+           '(1 2 3 4 5 6)
+           (u8vector->list bytes))
+    (test* "link-templates two text: labels rebased"
+           '((a: . 0) (b: . 2) (c: . 3) (d: . 4))
+           (sort labels (^[x y] (< (cdr x) (cdr y)))))))
+
+;; --- Patch in the second template is correctly rebased and applied ---
+
+(let* ([t1 (make-text-tmpl #u8(0 0 0 0) '() '())]
+       ;; patch descriptor: (keyword byte-offset byte-width)
+       [t2 (make-text-tmpl #u8(0 0 0 0 0 0 0 0) '() '((:val 0 8)))])
+  (receive (bytes _) (link-templates (list t1 t2) `((:val ,<uint64> #xdeadbeef)))
+    (test* "link-templates patch rebased into second template"
+           (append '(0 0 0 0)
+                   '(#xef #xbe #xad #xde 0 0 0 0))
+           (u8vector->list bytes))))
+
+;; --- Two templates each with text and data fragments: A+C+B+D ordering ---
+;; We build templates with two fragments manually using make-obj-template's
+;; compat wrapper for each fragment, then merge both.
+
+(let* ([frag-t1-text (make-obj-fragment #u8(10 20 30) '((tx1: . 0)) '() 'text)]
+       [frag-t1-data (make-obj-fragment #u8(40 50)    '((da1: . 0)) '() 'data)]
+       [tmpl1        (make <obj-template>
+                       :fragments (list frag-t1-text frag-t1-data)
+                       :endian 'little-endian)]
+       [frag-t2-text (make-obj-fragment #u8(60 70)     '((tx2: . 0)) '() 'text)]
+       [frag-t2-data (make-obj-fragment #u8(80 90 100) '((da2: . 0)) '() 'data)]
+       [tmpl2        (make <obj-template>
+                       :fragments (list frag-t2-text frag-t2-data)
+                       :endian 'little-endian)])
+  (receive (bytes labels) (link-templates (list tmpl1 tmpl2) '())
+    ;; Expected order: text1(3) + text2(2) + data1(2) + data2(3) = A+C+B+D
+    (test* "link-templates A+C+B+D bytes"
+           '(10 20 30 60 70 40 50 80 90 100)
+           (u8vector->list bytes))
+    ;; Labels: tx1:=0, tx2:=3, da1:=5, da2:=7
+    (test* "link-templates A+C+B+D labels"
+           '((tx1: . 0) (tx2: . 3) (da1: . 5) (da2: . 7))
+           (sort labels (^[x y] (< (cdr x) (cdr y)))))))
+
+;; --- Param patch in a data fragment of the second template ---
+
+(let* ([frag-text (make-obj-fragment #u8(1 2 3) '() '() 'text)]
+       ;; patch at offset 0 in data fragment, byte-width 4
+       [frag-data (make-obj-fragment #u8(0 0 0 0) '() '((:x 0 4)) 'data)]
+       [tmpl      (make <obj-template>
+                    :fragments (list frag-text frag-data)
+                    :endian 'little-endian)])
+  (receive (bytes _) (link-templates (list tmpl) `((:x ,<uint32> #x01020304)))
+    ;; text(3 bytes) + data(4 bytes); patch at offset 0 in data = offset 3 overall
+    (test* "link-templates data patch applied after text"
+           '(1 2 3 4 3 2 1)
+           (u8vector->list bytes))))
+
+;; --- link-template still works as a single-template wrapper ---
+
+(let* ([tmpl (x86_64-asm '(entry: (movq %rax %rcx) (ret)))])
+  (receive (b1 lbs1) (link-template  tmpl '())
+    (receive (b2 lbs2) (link-templates (list tmpl) '())
+      (test* "link-template wrapper: bytes match"  (u8vector->list b1) (u8vector->list b2))
+      (test* "link-template wrapper: labels match" lbs1 lbs2))))
+
+;; --- Mismatched endianness error ---
+
+(let* ([t1 (make-obj-template #u8(1) '() '() 'little-endian)]
+       [t2 (make-obj-template #u8(1) '() '() 'big-endian)])
+  (test* "link-templates endian mismatch"
+         #t
+         (guard (e (#t #t)) (link-templates (list t1 t2) '()) #f)))
+
 (test-end)
