@@ -1,5 +1,5 @@
 ;;
-;; testing gauche.ctype
+;; testing gauche.btype
 ;;
 
 (use gauche.test)
@@ -8,10 +8,10 @@
 (test-start "ffi")
 
 ;;----------------------------------------------------------
-(test-section "gauche.ctype")
+(test-section "gauche.btype")
 
-(use gauche.ctype)
-(test-module 'gauche.ctype)
+(use gauche.btype)
+(test-module 'gauche.btype)
 
 ;; Type equivalences
 (let* ([int* (make-c-pointer-type <int>)]
@@ -433,7 +433,7 @@
     (test* #"~|type| size&alignment" expect
            (list (~ type'size) (~ type'alignment))))
   (define native-type-offset*
-    (with-module gauche.ctype native-type-offset))
+    (with-module gauche.btype native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -489,7 +489,7 @@
                                       (b ,<uint8>)))])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define native-type-offset*
-    (with-module gauche.ctype native-type-offset))
+    (with-module gauche.btype native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -531,7 +531,7 @@
     (test* #"~|type| size&alignment" expect
            (list (~ type'size) (~ type'alignment))))
   (define native-type-offset*
-    (with-module gauche.ctype native-type-offset))
+    (with-module gauche.btype native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -801,7 +801,7 @@
 ;; All union field offsets should be 0
 (let1 u (native-type '(.union uu (a::int b::double c::int8_t)))
   (define native-type-offset*
-    (with-module gauche.ctype native-type-offset))
+    (with-module gauche.btype native-type-offset))
   (test* "native-type union offsets all zero" '(0 0 0)
          (map (cut native-type-offset* u <>) '(a b c))))
 
@@ -1055,7 +1055,7 @@
 (define-module ffi-test-sandbox
   (use gauche.test)
   (use gauche.ffi)
-  (use gauche.ctype)
+  (use gauche.btype)
 
   (define foo (native-type
                '(.struct foo (c::char i::int s::short

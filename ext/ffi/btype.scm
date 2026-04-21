@@ -1,5 +1,5 @@
 ;;;
-;;; gauche.ctype - C types and native handles
+;;; gauche.btype - Binary types and native handles
 ;;;
 ;;;   Copyright (c) 2011-2025  Shiro Kawai  <shiro@acm.org>
 ;;;
@@ -34,7 +34,7 @@
 ;; This module provides the means to define and manipulate
 ;; compound binary types.
 
-(define-module gauche.ctype
+(define-module gauche.btype
   (use util.match)
   (use gauche.cgen.type.parse)
   (use gauche.uvector)
@@ -60,7 +60,7 @@
 
           native-alloc
           native-free))
-(select-module gauche.ctype)
+(select-module gauche.btype)
 
 (inline-stub
  (.include "gauche/priv/typeP.h")

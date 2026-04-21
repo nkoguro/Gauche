@@ -1,3 +1,8 @@
+2026-04-20  Shiro Kawai  <shiro@acm.org>
+
+	* Rename gauche.ctype -> gauche.btype (Binary types).
+	  We may enhance this module for general binary access.
+
 2026-04-19  Shiro Kawai  <shiro@acm.org>
 
 	* src/compaux.c (unwrap_rec): Avoid deel recursion while processing

@@ -33,7 +33,7 @@
 
 (define-module gauche.ffi
   (use util.match)
-  (use gauche.ctype)
+  (use gauche.btype)
   (use gauche.cgen.unit :only (cgen-safe-name-friendly))
   (export with-ffi
           default-ffi-subsystem

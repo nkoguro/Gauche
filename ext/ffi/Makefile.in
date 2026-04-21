@@ -6,26 +6,26 @@ include ../Makefile.ext
 
 SCM_CATEGORY = gauche
 
-LIBFILES = gauche--ctype.$(SOEXT)
-SCMFILES = ctype.sci ffi.scm ffi/stubgen.scm ffi/native.scm
+LIBFILES = gauche--btype.$(SOEXT)
+SCMFILES = btype.sci ffi.scm ffi/stubgen.scm ffi/native.scm
 
-OBJECTS = $(gauche_ctype_OBJECTS)
+OBJECTS = $(gauche_btype_OBJECTS)
 
 CONFIG_GENERATED = Makefile
 PREGENERATED =
-XCLEANFILES = gauche--ctype.c ctype.sci \
+XCLEANFILES = gauche--btype.c btype.sci \
 	      f.$(OBJEXT) f.$(SOEXT) \
 	      g.$(OBJEXT) g.$(SOEXT)
 
 all : $(LIBFILES) f.$(SOEXT) g.$(SOEXT)
 
-gauche_ctype_OBJECTS = gauche--ctype.$(OBJEXT)
+gauche_btype_OBJECTS = gauche--btype.$(OBJEXT)
 
-gauche--ctype.$(SOEXT) : $(gauche_ctype_OBJECTS)
-	$(MODLINK) gauche--ctype.$(SOEXT) $(gauche_ctype_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
+gauche--btype.$(SOEXT) : $(gauche_btype_OBJECTS)
+	$(MODLINK) gauche--btype.$(SOEXT) $(gauche_btype_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
 
-gauche--ctype.c ctype.sci : ctype.scm
-	$(PRECOMP) -e -P -o gauche--ctype $(srcdir)/ctype.scm
+gauche--btype.c btype.sci : btype.scm
+	$(PRECOMP) -e -P -o gauche--btype $(srcdir)/btype.scm
 
 f.$(SOEXT): c/f.h c/f.c
 	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/f.c -o f.$(OBJEXT)

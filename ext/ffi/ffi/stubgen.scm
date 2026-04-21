@@ -36,7 +36,7 @@
   (use gauche.cgen)
   (use gauche.cgen.type)
   (use gauche.cgen.dyncomp)
-  (use gauche.ctype)
+  (use gauche.btype)
   (use gauche.sequence)
   (use gauche.config)
   (use gauche.package.compile)

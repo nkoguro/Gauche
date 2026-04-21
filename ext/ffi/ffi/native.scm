@@ -35,7 +35,7 @@
 
 (define-module gauche.ffi.native
   (use gauche.ffi)
-  (use gauche.ctype)
+  (use gauche.btype)
   (use util.match)
   (export with-native-ffi))
 (select-module gauche.ffi.native)
