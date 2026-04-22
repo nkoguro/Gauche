@@ -37,7 +37,6 @@
   (use gauche.cgen.unit :only (cgen-safe-name-friendly))
   (export with-ffi
           default-ffi-subsystem
-          current-ffi-subsystem
           ffi-subsystem-available?
           define-c-function
           <foreign-c-function>)
@@ -122,19 +121,19 @@
 ;;; Susbsystem selection
 ;;;
 
+;; API
 (define (ffi-subsystem-available? kw)
   (case kw
     [(:stubgen) #t]
     [(:native) (boolean (#/^x86_64-.*/ (gauche-architecture)))]
     [else (error "Unrecognized FFI subsystem:" kw)]))
 
+;; API
 (define default-ffi-subsystem
-  (if (ffi-subsystem-available? :native)
-    :native
-    :stubgen))
-
-(define current-ffi-subsystem (make-parameter default-ffi-subsystem))
-
+  (make-parameter
+   (if (ffi-subsystem-available? :native)
+     :native
+     :stubgen)))
 
 ;;;
 ;;; Syntax
@@ -156,7 +155,7 @@
         (define cfns '())
         (define subsystem
           (get-keyword :subsystem (unwrap-syntax options)
-                       (current-ffi-subsystem)))
+                       (default-ffi-subsystem)))
         (define forms
           (filter-map
            (^[form]
@@ -194,6 +193,10 @@
                                      (cons (cadr cfn) ; name
                                            (make-cfn-expr cfn))) ;expr
                                    ordered-cfns)])
+          ;; NB: with-stubgen-ffi should expand into definitions, so that
+          ;; defined C functions (and other definitions) are visible
+          ;; from the following expressions.  Be careful not to wrap
+          ;; the expansion with let etc.
           (ecase subsystem
             [(:stubgen)
              (quasirename r

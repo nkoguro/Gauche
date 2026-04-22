@@ -1250,7 +1250,7 @@
                     #t))
          )]))
 
-  (parameterize ([current-ffi-subsystem :stubgen])
+  (parameterize ([default-ffi-subsystem :stubgen])
     (do-test-f ())
     (do-test-g ()))
   (when (ffi-subsystem-available? :native)
