@@ -176,9 +176,11 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       *amd64-call-reg-bytes*
-                       *amd64-call-reg-labels*
-                       *amd64-call-reg-patches*
+                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+                              *amd64-call-reg-bytes*
+                              *amd64-call-reg-labels*
+                              *amd64-call-reg-patches*
+                              'text))
                        *amd64-call-reg-endian*)]
                  [lbs *amd64-call-reg-labels*])
             (set! tmpl t)
@@ -233,9 +235,11 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       *amd64-call-spill-bytes*
-                       *amd64-call-spill-labels*
-                       *amd64-call-spill-patches*
+                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+                              *amd64-call-spill-bytes*
+                              *amd64-call-spill-labels*
+                              *amd64-call-spill-patches*
+                              'text))
                        *amd64-call-spill-endian*)]
                  [lbs *amd64-call-spill-labels*])
             (set! tmpl t)
@@ -413,9 +417,11 @@
             (win-prolog-end #f))
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       *winx64-call-reg-bytes*
-                       *winx64-call-reg-labels*
-                       *winx64-call-reg-patches*
+                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+                              *winx64-call-reg-bytes*
+                              *winx64-call-reg-labels*
+                              *winx64-call-reg-patches*
+                              'text))
                        *winx64-call-reg-endian*)]
                  [lbs *winx64-call-reg-labels*])
             (set! tmpl t)
@@ -476,9 +482,11 @@
             (win-prolog-end #f))
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       *winx64-call-spill-bytes*
-                       *winx64-call-spill-labels*
-                       *winx64-call-spill-patches*
+                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+                              *winx64-call-spill-bytes*
+                              *winx64-call-spill-labels*
+                              *winx64-call-spill-patches*
+                              'text))
                        *winx64-call-spill-endian*)]
                  [lbs *winx64-call-spill-labels*])
             (set! tmpl t)

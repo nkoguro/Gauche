@@ -69,13 +69,8 @@
   ((fragments :init-keyword :fragments)
    (endian    :init-keyword :endian)))
 
-;; Temporary 4-arg compatibility wrapper: wraps bytes/labels/patches into a
-;; single 'text fragment.  Will be replaced by the proper 2-arg constructor
-;; in Step 4.
-(define (make-obj-template bytes labels patches endian)
-  (make <obj-template>
-    :fragments (list (make-obj-fragment bytes labels patches 'text))
-    :endian endian))
+(define (make-obj-template fragments endian)
+  (make <obj-template> :fragments fragments :endian endian))
 
 (define (obj-template? x) (is-a? x <obj-template>))
 

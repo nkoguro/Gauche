@@ -51,11 +51,6 @@
   )
 (select-module lang.asm.x86_64)
 
-;; When non-#f, holds a mutable cell (a one-element list) into which
-;; hole annotations are cons'd during pass 2.  Bound via parameterize
-;; inside x86_64-asm; #f outside (so non-template assembly collects nothing).
-(define patch-collector (make-parameter #f))
-
 ;; Instruction notation
 ;;   (<opcode>)
 ;;   (<opcode> <operand1>)
@@ -84,73 +79,156 @@
 ;; have linkers, the absolute address of LABEL will never be known.
 ;; (Or, we could add an on-memory linker...)
 
+;; Accumulates patch annotations during pass 2.  #f outside x86_64-asm;
+;; bound to the growing patch list via parameterize inside x86_64-asm.
+;; Updated by (push! (patch-collector) new-patch).
+(define patch-collector (make-parameter #f))
+
+;; Tracks the current section name (e.g. 'text, 'data) during pass 2.
+;; #f outside x86_64-asm; set to 'text at entry and updated when a
+;; (section sym) marker is encountered.
+(define current-section-name (make-parameter #f))
+
+;; xaddr :: section-name x addr -> xaddr
+;;   An extended address that carries both the byte offset within the flat
+;;   assembled byte vector and the section name it belongs to.  Used as
+;;   the pass-1 accumulator and stored in label entries in the a-map.
+;;   Deconstructed with match as (sec . addr).
+(define (make-xaddr section addr) (cons section addr))
+
 ;;-----------------------------------------------------------------
 ;; Entry and x86 ISA definitions (subset)
 ;;
 
 ;; x86_64-asm :: [Insn] -> <obj-template>
-;;   First stage of assembly.  Builds the full byte sequence with zeros at
-;;   placeholder holes, and records where each hole is.
-;;   :postamble N appends N zero bytes after the assembled code, making the
-;;   returned bytes larger without adding any patches or labels there.
+;;   Assembles INSNS into an <obj-template>.  If the instruction list contains
+;;   (.section sym) pseudo-instructions, the result has one <obj-fragment> per
+;;   section region; otherwise a single 'text fragment is returned.
 (define (x86_64-asm insns)
-  (let* ([a-map   (run-pass1 insns)]
-         [acc     (list '())]           ; mutable cell: (list <patch-list>)
-         [bss     (parameterize ([patch-collector acc])
-                    (run-pass2 a-map))]
-         [code    (list->u8vector (concatenate bss))]
-         [labels  (filter-map (^p (and (symbol? (car p)) p)) a-map)]
-         [patches (car acc)])
-    (make-obj-template code labels patches 'little-endian)))
+  (let1 a-map (run-pass1 insns)
+    (receive (bss patches)
+        (parameterize ([patch-collector '()]
+                       [current-section-name 'text])
+          (let1 bss (run-pass2 a-map)
+            (values bss (patch-collector))))
+      (make-obj-template
+       (build-fragments a-map (list->u8vector (concatenate bss)) patches)
+       'little-endian))))
 
-;; run-pass1 :: [Insn] -> [(p, addr)]
+;; run-pass1 :: [Insn] -> [(p, xaddr)]
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
-;;     p :: Symbol                         ; in case of label
-;;        | (Int,[(Symbol,Int)]) -> [Byte] ; closure to generate machine codes
-;;   and addr is a value of PC after the code is fetched.
+;;     p :: Symbol          ; label: (sym . xaddr)
+;;        | (section sym)   ; .section marker: ((section sym) . xaddr)
+;;        | (Int,[(Symbol,Int)]) -> [Byte] ; closure: (closure . xaddr)
+;;   The accumulator is an xaddr (sec . addr).
+;;   Labels are stored as (sym . xaddr) so pass2 can detect cross-section refs.
 (define (run-pass1 insns)
   (values-ref
    (map-accum
     (match-lambda*
-      [((? symbol? label) addr) (values (cons label addr) addr)]
-      [(insn addr) (let* ([p     (asm1 (parse-insn insn))]
-                          [dummy (p addr #f)]
-                          [n     (length dummy)]
-                          [naddr (+ addr n)]
-                          ;; pass2 calls closures with end-addr, which is
-                          ;; already aligned for .align, yielding 0 bytes.
-                          ;; Freeze the pass-1 count so pass2 is consistent.
-                          [p2    (if (eq? (car insn) '.align)
-                                   (^[a t] (make-list n 0))
-                                   p)])
-                     (values (cons p2 naddr) naddr))])
-    0 insns)
+      [((? symbol? label) (and xaddr (sec . addr)))
+       (values (cons label xaddr) xaddr)]
+      [(('.section sym) (_ . addr))
+       (values (cons (list 'section sym) addr) (make-xaddr sym addr))]
+      [(insn (sec . addr))
+       (let* ([p     (asm1 (parse-insn insn))]
+              [dummy (p addr #f)]
+              [n     (length dummy)]
+              [naddr (+ addr n)]
+              ;; pass2 calls closures with end-addr, which is
+              ;; already aligned for .align, yielding 0 bytes.
+              ;; Freeze the pass-1 count so pass2 is consistent.
+              [p2    (if (eq? (car insn) '.align)
+                        (^[a t] (make-list n 0))
+                        p)])
+         (values (cons p2 naddr) (make-xaddr sec naddr)))])
+    (make-xaddr 'text 0) insns)
    0))
 
 ;; run-pass2 :: [(p, xaddr)] -> [[Byte]]
 ;;   Takes the result of first pass, calling the closure P to realize the
-;;   actual machine codes.
+;;   actual machine codes.  Updates (current-section-name) when a (section sym)
+;;   marker is encountered.
 (define (run-pass2 a-map)
   (reverse (fold (^[p+addr seed]
                    (match-let1 (p . addr) p+addr
-                     (if (symbol? p)
-                       seed          ;ignore labels
-                       (cons (p addr a-map) seed))))
+                     (cond
+                      [(symbol? p) seed]   ; label: ignore
+                      [(and (pair? p) (eq? (car p) 'section))
+                       (current-section-name (cadr p))
+                       seed]
+                      [else (cons (p addr a-map) seed)])))
                  '() a-map)))
+
+;; build-fragments :: a-map, u8vector, patches -> [<obj-fragment>]
+;;   Splits the flat assembled code into one fragment per section region.
+;;   Section regions are derived from (section sym) markers in A-MAP; the
+;;   implicit first region starts at offset 0 with section 'text.
+;;   Labels and patches are filtered to their owning region and rebased to
+;;   fragment-local offsets.
+(define (build-fragments a-map code patches)
+  (let* ([total (uvector-size code)]
+         ;; Collect section boundaries: ((sec-name . start-offset) ...)
+         [sec-starts
+          (cons (cons 'text 0)
+                (filter-map (^p (and (pair? (car p))
+                                     (eq? (caar p) 'section)
+                                     (cons (cadar p) (cdr p))))
+                            a-map))]
+         ;; Build (sec-name start end) regions
+         [regions
+          (let loop ([ss sec-starts] [result '()])
+            (if (null? (cdr ss))
+              (reverse (cons (list (caar ss) (cdar ss) total) result))
+              (loop (cdr ss)
+                    (cons (list (caar ss) (cdar ss) (cdr (cadr ss)))
+                          result))))])
+    (map (^[region]
+           (match-let1 (sec start end) region
+             (let* ([frag-bytes (u8vector-copy code start end)]
+                    [frag-labels
+                     (filter-map
+                      (^p (and (symbol? (car p))
+                               (match (cdr p)
+                                 [(fsec . addr)
+                                  (and (eq? fsec sec)
+                                       (cons (car p) (- addr start)))])))
+                      a-map)]
+                    [frag-patches
+                     (filter-map
+                      (^p (let1 off (cadr p)
+                            (and (>= off start) (< off end)
+                                 (match p
+                                   [(kw o 'label-rel end-off)
+                                    (list kw (- o start) 'label-rel
+                                          (- end-off start))]
+                                   [(kw o . rest)
+                                    (cons* kw (- o start) rest)]))))
+                      patches)])
+               (make-obj-fragment frag-bytes frag-labels frag-patches sec))))
+         regions)))
 
 ;; x86_64-dump :: [Insn] -> ()
 ;;   For debugging.  Show the assembly results in human-readable way.
 (define (x86_64-dump insns)
-  (let* ([tmpl   (x86_64-asm insns)]
-         [a-map  (run-pass1 insns)]
-         [bss    (run-pass2 a-map)])
+  (let* ([tmpl  (x86_64-asm insns)]
+         [a-map (run-pass1 insns)]
+         [bss   (parameterize ([current-section-name 'text])
+                  (run-pass2 a-map))])
     (let loop ([insns insns] [a-map a-map] [bss bss])
       (unless (null? insns)
-        (match-let1 (_ . addr) (car a-map)
-          (if (symbol? (car insns))     ;label
-            (begin
-              (format #t "~4d:~24a    ~a:\n" addr "" (car insns))
-              (loop (cdr insns) (cdr a-map) bss))
+        (let* ([entry (car a-map)]
+               [raw   (cdr entry)]
+               ;; label entries have (addr . sec) as cdr; others have plain int
+               [addr  (if (pair? raw) (car raw) raw)])
+          (cond
+           [(symbol? (car insns))   ; label
+            (format #t "~4d:~24a    ~a:\n" addr "" (car insns))
+            (loop (cdr insns) (cdr a-map) bss)]
+           [(and (pair? (car insns)) (eq? (caar insns) '.section))
+            (format #t "     .section ~a\n" (cadar insns))
+            (loop (cdr insns) (cdr a-map) bss)]  ; no bss entry for .section
+           [else
             (let1 byte-slices (slices (car bss) 8)
               (define (bytedump bytes)
                 (with-output-to-string
@@ -164,7 +242,7 @@
               (when (pair? byte-slices)
                 (dolist [bytes (cdr byte-slices)]
                   (format #t "    :~24a\n" (bytedump bytes))))
-              (loop (cdr insns) (cdr a-map) (cdr bss)))))))))
+              (loop (cdr insns) (cdr a-map) (cdr bss)))]))))))
 
 ;; asm1 :: ParsedInsn -> (Int, [Symbol,Int]) -> [Byte]
 ;;  Called in pass 1.   The heart of instruction to machine code mapping.
@@ -321,10 +399,24 @@
     (cond [(not label-alist)
            ((expand-spec (opc opcode) (immX 0)) 0 0)] ; dummy
           [(assq-ref label-alist target)
-           => (^[taddr]
-                (unless (immX? (- taddr addr))
-                  (error "jump target out of range:" target))
-                ((expand-spec (opc opcode) (immX (- taddr addr))) 0 0))]
+           => (^[v]
+                (match-let1 (tsec . taddr) v
+                 (let1 cur-sec (current-section-name)
+                  (if (or (not cur-sec) (eq? tsec cur-sec))
+                    ;; intra-section: bake in displacement
+                    (begin
+                      (unless (immX? (- taddr addr))
+                        (error "jump target out of range:" target))
+                      ((expand-spec (opc opcode) (immX (- taddr addr))) 0 0))
+                    ;; cross-section
+                    (if short?
+                      (error "cross-section short jump not allowed:" target)
+                      ;; near jump: emit zeros and record a label-rel patch
+                      (begin
+                        (when (patch-collector)
+                          (push! (patch-collector)
+                                 (list target (- addr 4) 'label-rel addr)))
+                        ((expand-spec (opc opcode) (immX 0)) 0 0)))))))]
           [else (error "jump destination doesn't exist:" target)])))
 
 ;; special case to load label's address into a register.
@@ -335,12 +427,13 @@
   (define w rex.w)
   (^[addr label-alist]
     (if label-alist
-      (let1 laddr (assq-ref label-alist label)
-        (unless laddr (error "undefined label:" label))
+      (let1 v (assq-ref label-alist label)
+        (unless v (error "undefined label:" label))
+        (match-let1 (_ . laddr) v
         (warn "Using absolute address of label may not what you want to do. \
                Consider using leaq label(%rip) instead.\n")
         ((! w (rex.b dst) (opc+rq #xb8 dst) (imm64 laddr)) 0 0))
-      ((! w (rex.b dst) (opc+rq #xb8 dst) (imm64 0)) 0 0)))) ;; dummy
+      ((! w (rex.b dst) (opc+rq #xb8 dst) (imm64 0)) 0 0))))) ;; dummy
 
 ;; op-movs_ :: keyword, closure -> closure
 ;;   Wraps an inner expand-spec closure for a movsd instruction.  In pass 2,
@@ -350,9 +443,7 @@
   (^[a t]
     (let1 bytes (inner a t)
       (when (and t (patch-collector))
-        (let1 acc (patch-collector)
-          (set-car! acc (cons (list kw (- a (length bytes)) 'x86_64-movs_)
-                              (car acc)))))
+        (push! (patch-collector) (list kw (- a (length bytes)) 'x86_64-movs_)))
       bytes)))
 
 ;; addq family
@@ -402,8 +493,7 @@
 (define (data-hole kw width)
   (^[a t]
     (when (and t (patch-collector))
-      (let1 acc (patch-collector)
-        (set-car! acc (cons (list kw (- a width) width) (car acc)))))
+      (push! (patch-collector) (list kw (- a width) width)))
     (make-list width 0)))
 
 ;; for align
@@ -559,9 +649,18 @@
 (define (mem-label l)
   (^[s a t]
     (if (and a t)
-      (let1 laddr (assq-ref t l)
-        (unless laddr (error "undefined label:" l))
-        `(:mode 0 :r/m 5 :displacement ,(int32 (- laddr a)) ,@s))
+      (let* ([v       (assq-ref t l)]
+             [cur-sec (current-section-name)])
+        (unless v (error "undefined label:" l))
+        (match-let1 (lsec . laddr) v
+        (if (or (not cur-sec) (eq? lsec cur-sec))
+          ;; intra-section: bake in RIP-relative displacement
+          `(:mode 0 :r/m 5 :displacement ,(int32 (- laddr a)) ,@s)
+          ;; cross-section: emit zero, record label-rel patch
+          (begin
+            (when (patch-collector)
+              (push! (patch-collector) (list l (- a 4) 'label-rel a)))
+            `(:mode 0 :r/m 5 :displacement ,(int32 0) ,@s)))))
       `(:mode 0 :r/m 5 :displacement ,(int32 0) ,@s))))
 
 (define (mem-base+disp base disp)
@@ -578,9 +677,10 @@
 (define (mem-base+disp-label base l)
   (^[s a t]
     (if (and a t)
-      (let1 laddr (assq-ref t l)
-        (unless laddr (error "undefined label:" l))
-        ((mem-base+disp base (- laddr a)) s a t))
+      (let1 v (assq-ref t l)
+        (unless v (error "undefined label:" l))
+        (match-let1 (_ . laddr) v
+          ((mem-base+disp base (- laddr a)) s a t)))
       ((mem-base+disp base 0) s a t))))
 
 (define (mem-sib base index scale disp)
@@ -601,22 +701,19 @@
 (define (imm8 i)
   (^[s a t]
     (when (and (keyword? i) t (patch-collector))
-      (let1 acc (patch-collector)
-        (set-car! acc (cons (list i (- a 1) 1) (car acc)))))
+      (push! (patch-collector) (list i (- a 1) 1)))
     `(:immediate ,(if (keyword? i) '(0) (int8 i)) ,@s)))
 
 (define (imm32 i)
   (^[s a t]
     (when (and (keyword? i) t (patch-collector))
-      (let1 acc (patch-collector)
-        (set-car! acc (cons (list i (- a 4) 4) (car acc)))))
+      (push! (patch-collector) (list i (- a 4) 4)))
     `(:immediate ,(if (keyword? i) '(0 0 0 0) (int32 i)) ,@s)))
 
 (define (imm64 i)
   (^[s a t]
     (when (and (keyword? i) t (patch-collector))
-      (let1 acc (patch-collector)
-        (set-car! acc (cons (list i (- a 8) 8) (car acc)))))
+      (push! (patch-collector) (list i (- a 8) 8)))
     `(:immediate ,(if (keyword? i) '(0 0 0 0 0 0 0 0) (int64 i)) ,@s)))
 
 

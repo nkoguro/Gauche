@@ -560,8 +560,9 @@
 ;; --- offset parameter form (keyword native-type value extra-offset) ---
 
 ;; Template: 16 zero bytes, one 8-byte patch at offset 0 for :base.
-(let ([tmpl (make-obj-template (make-u8vector 16 0) '() '((:base 0 8))
-                               'little-endian)])
+(let ([tmpl (make-obj-template
+              (list (make-obj-fragment (make-u8vector 16 0) '() '((:base 0 8)) 'text))
+              'little-endian)])
   ;; extra-offset 0: fills at the patch's own offset (same as scalar form)
   (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 0)))
     (test* "offset form extra=0"
@@ -588,8 +589,9 @@
 ;; --- c-array parameter ---
 
 (let ([make-array-type (with-module gauche.typeutil make-c-array-type)]
-      [tmpl (make-obj-template (make-u8vector 12 0) '() '((:data 0 0))
-                               'little-endian)])
+      [tmpl (make-obj-template
+             (list (make-obj-fragment (make-u8vector 12 0) '() '((:data 0 0)) 'text))
+             'little-endian)])
   (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30))))
     (test* "c-array <uint8>"
            '(10 20 30 0 0 0 0 0 0 0 0 0)
@@ -682,7 +684,7 @@
 
 ;; Helper: make a simple single-fragment template from raw data.
 (define (make-text-tmpl bytes labels patches)
-  (make-obj-template bytes labels patches 'little-endian))
+  (make-obj-template (list (make-obj-fragment bytes labels patches 'text)) 'little-endian))
 
 ;; --- Two single-section templates concatenated ---
 
@@ -755,10 +757,80 @@
 
 ;; --- Mismatched endianness error ---
 
-(let* ([t1 (make-obj-template #u8(1) '() '() 'little-endian)]
-       [t2 (make-obj-template #u8(1) '() '() 'big-endian)])
+(let* ([t1 (make-obj-template (list (make-obj-fragment #u8(1) '() '() 'text)) 'little-endian)]
+       [t2 (make-obj-template (list (make-obj-fragment #u8(1) '() '() 'text)) 'big-endian)])
   (test* "link-templates endian mismatch"
          #t
          (guard (e (#t #t)) (link-templates (list t1 t2) '()) #f)))
+
+;;----------------------------------------------------------------------
+(test-section ".section pseudo-instruction")
+
+;; --- Two-section assembly: text + data fragments ---
+
+(let* ([tmpl (x86_64-asm '((movq %rdi %rax)
+                           (.section data)
+                           (.dataq (imm64 #xdeadbeef))))]
+       [frags (~ tmpl 'fragments)])
+  (test* ".section produces two fragments" 2 (length frags))
+  (test* ".section text fragment section" 'text (~ (car frags) 'section))
+  (test* ".section data fragment section" 'data (~ (cadr frags) 'section))
+  ;; movq %rdi,%rax = REX.W(48) 89 f8
+  (test* ".section text bytes" '(#x48 #x89 #xf8)
+         (u8vector->list (~ (car frags) 'bytes)))
+  (test* ".section data bytes" '(#xef #xbe #xad #xde 0 0 0 0)
+         (u8vector->list (~ (cadr frags) 'bytes))))
+
+;; --- Labels are fragment-local after splitting ---
+
+(let* ([tmpl (x86_64-asm '(entry:
+                           (movq %rdi %rax)
+                           (.section data)
+                           val:
+                           (.dataq (imm64 0))))]
+       [frags (~ tmpl 'fragments)]
+       [text-frag (car frags)]
+       [data-frag (cadr frags)])
+  (test* ".section text label offset" 0
+         (assq-ref (~ text-frag 'labels) 'entry:))
+  (test* ".section data label offset" 0
+         (assq-ref (~ data-frag 'labels) 'val:)))
+
+;; --- Param patch in data fragment is correctly rebased ---
+
+(let* ([tmpl (x86_64-asm '((movq %rdi %rax)
+                           (.section data)
+                           (.dataq :myval)))]
+       [frags  (~ tmpl 'fragments)]
+       [dpatch (car (~ (cadr frags) 'patches))])
+  ;; patch offset within data fragment should be 0
+  (test* ".section data patch offset" 0 (cadr dpatch))
+  ;; applying the param should fill the data word; text(3) + data(8) = 11 bytes
+  (receive (bytes _) (link-template tmpl `((:myval ,<uint64> #xcafebabe)))
+    (test* ".section data param fill"
+           '(#x48 #x89 #xf8 #xbe #xba #xfe #xca 0 0 0 0)
+           (u8vector->list bytes))))
+
+;; --- Cross-section near jump produces a label-rel patch ---
+
+(let* ([tmpl  (x86_64-asm '((jmpl data-target:)
+                            (.section data)
+                            data-target:
+                            (.dataq (imm64 0))))]
+       [text-frag (car (~ tmpl 'fragments))]
+       [tpatch    (car (~ text-frag 'patches))])
+  (test* "cross-section jmpl patch key"    'data-target: (car tpatch))
+  (test* "cross-section jmpl patch offset" 1             (cadr tpatch))
+  (test* "cross-section jmpl patch type"   'label-rel    (caddr tpatch))
+  (test* "cross-section jmpl insn-end"     5             (cadddr tpatch)))
+
+;; --- Cross-section short jump signals an error ---
+
+(test* "cross-section short jump error"
+       (test-error <error> #/cross-section short jump not allowed/)
+       (x86_64-asm '((jmp data-target:)
+                     (.section data)
+                     data-target:
+                     (.dataq (imm64 0)))))
 
 (test-end)
