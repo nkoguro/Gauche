@@ -144,7 +144,7 @@
 ;;   The offset form lets callers fill locations derived from a named anchor.
 ;; apply-patches! :: u8vector, symbol, patches, params -> ()
 ;;   Core patch application loop shared by link-template and link-templates.
-(define (apply-patches! bytes endian patches params)
+(define (apply-patches! bytes endian patches params labels)
   (let1 len (uvector-size bytes)
     (define (checked-fill! kw actual ntype val)
       (when (>= actual len)
@@ -164,6 +164,15 @@
 
     (dolist [patch patches]
       (match patch
+        [(kw base 'label-rel (? integer? end-off))
+         ;; cross-section relative jump/reference: resolve target label
+         (let1 target-addr (assq-ref labels kw #f)
+           (unless target-addr
+             (errorf "link-templates: label-rel: undefined label ~s" kw))
+           (let1 disp (- target-addr end-off)
+             (unless (ineq (- (expt 2 31)) <= disp < (expt 2 31))
+               (errorf "link-templates: label-rel: displacement out of range for ~s" kw))
+             (put-s32! bytes base disp endian)))]
         [(kw base (? integer? width))
          (dolist [entry (filter (^e (eq? (car e) kw)) params)]
            (match entry
@@ -207,7 +216,7 @@
                [total     (+ (length byte-list) postamble)]
                [bytes     (list->u8vector
                            (append byte-list (make-list postamble 0)))])
-          (apply-patches! bytes endian patches params)
+          (apply-patches! bytes endian patches params labels)
           (values bytes labels))
         (let1 sec (car secs)
           (let floop ([fs frags] [off offset]
@@ -229,9 +238,11 @@
                                    (map (^p (cons (car p) (+ off (cdr p))))
                                         (~ frag 'labels)))
                            (append sec-patches
-                                   (map (^p (cons* (car p)
-                                                   (+ off (cadr p))
-                                                   (cddr p)))
+                                   (map (^p (match p
+                                              [(kw disp 'label-rel end-off)
+                                               (list kw (+ off disp) 'label-rel (+ off end-off))]
+                                              [(kw disp . rest)
+                                               (cons* kw (+ off disp) rest)]))
                                         (~ frag 'patches)))))
                   (floop (cdr fs) off
                          sec-blist sec-labels sec-patches))))))))))

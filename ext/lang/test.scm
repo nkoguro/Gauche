@@ -833,4 +833,27 @@
                      data-target:
                      (.dataq (imm64 0)))))
 
+;; --- label-rel patch resolution via link-template ---
+;; Layout after link-template:
+;;   text[0]   ret            1 byte  (#xc3)
+;;   text[1]   jmpl data-target:  5 bytes  (#xe9 + 4-byte disp)
+;;   text[6]   padding for alignment
+;;   data[8]   .dataq 0       8 bytes  (pad before label)
+;;   data[16]  data-target:   <- absolute offset 16
+;;   data[16]  .dataq 0       8 bytes
+;; insn-end = 6, target = 14, disp = 14 - 6 = 8 = #x00000008
+(let* ([tmpl (x86_64-asm '((ret)
+                           (jmpl data-target:)
+                           (.section data)
+                           (.align 8)
+                           (.dataq (imm64 0))
+                           data-target:
+                           (.dataq (imm64 0))))])
+  (receive (bytes _) (link-template tmpl '())
+    (test* "label-rel resolved: full bytes"
+           (append '(#xc3 #xe9 #x0a #x00 #x00 #x00)  ; text: ret + jmpl disp=8+2
+                   '(#x00 #x00)                      ; alignment padding
+                   (make-list 16 0))                 ; data: 16 zero bytes
+           (u8vector->list bytes))))
+
 (test-end)
