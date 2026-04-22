@@ -1,3 +1,9 @@
+2026-04-22  Shiro Kawai  <shiro@acm.org>
+
+	* lib/scheme/bytevector.scm (bytevector-*-native-ref): Fix unnecessary
+	  endianness argument from 'native' procedures.
+	  https://github.com/shirok/Gauche/issues/1258
+
 2026-04-20  Shiro Kawai  <shiro@acm.org>
 
 	* Rename gauche.ctype -> gauche.btype (Binary types).
