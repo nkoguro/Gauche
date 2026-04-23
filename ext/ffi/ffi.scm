@@ -146,6 +146,7 @@
 
 (autoload gauche.ffi.stubgen (:macro with-stubgen-ffi))
 (autoload gauche.ffi.native  (:macro with-native-ffi))
+(autoload gauche.ffi.aux     native-alloc native-free)
 
 (define-syntax with-ffi
   (er-macro-transformer

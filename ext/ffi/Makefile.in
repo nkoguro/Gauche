@@ -6,14 +6,15 @@ include ../Makefile.ext
 
 SCM_CATEGORY = gauche
 
-LIBFILES = gauche--btype.$(SOEXT)
-SCMFILES = btype.sci ffi.scm ffi/stubgen.scm ffi/native.scm
+LIBFILES = gauche--btype.$(SOEXT) gauche--ffi--aux.$(SOEXT)
+SCMFILES = btype.sci ffi.scm ffi/aux.sci ffi/stubgen.scm ffi/native.scm
 
-OBJECTS = $(gauche_btype_OBJECTS)
+OBJECTS = $(gauche_btype_OBJECTS) $(gauche_ffi_aux_OBJECTS)
 
 CONFIG_GENERATED = Makefile
 PREGENERATED =
 XCLEANFILES = gauche--btype.c btype.sci \
+	      gauche--ffi--aux.c ffi/aux.sci \
 	      f.$(OBJEXT) f.$(SOEXT) \
 	      g.$(OBJEXT) g.$(SOEXT)
 
@@ -27,6 +28,20 @@ gauche--btype.$(SOEXT) : $(gauche_btype_OBJECTS)
 gauche--btype.c btype.sci : btype.scm
 	$(PRECOMP) -e -P -o gauche--btype $(srcdir)/btype.scm
 
+gauche_ffi_aux_OBJECTS = gauche--ffi--aux.$(OBJEXT)
+
+gauche--ffi--aux.$(SOEXT) : $(gauche_ffi_aux_OBJECTS)
+	$(MODLINK) gauche--ffi--aux.$(SOEXT) $(gauche_ffi_aux_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
+
+gauche--ffi--aux.c ffi/aux.sci : ffi/aux.scm
+	$(PRECOMP) -e -P -o gauche--ffi--aux -i ffi/aux.sci $(srcdir)/ffi/aux.scm
+
+install : install-std
+
+#
+# Files for testing
+#
+
 f.$(SOEXT): c/f.h c/f.c
 	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/f.c -o f.$(OBJEXT)
 	$(LINK) f.$(SOEXT) f.$(OBJEXT)
@@ -34,6 +49,3 @@ f.$(SOEXT): c/f.h c/f.c
 g.$(SOEXT): c/g.c
 	$(COMPILE) -c -I $(srcdir)/c $(srcdir)/c/g.c -o g.$(OBJEXT)
 	$(LINK) g.$(SOEXT) g.$(OBJEXT) $(EXT_LIBGAUCHE) $(LIBS)
-
-
-install : install-std

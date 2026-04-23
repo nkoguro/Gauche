@@ -57,9 +57,7 @@
 
           native-type
           native-type->signature
-
-          native-alloc
-          native-free))
+          ))
 (select-module gauche.btype)
 
 (inline-stub
@@ -541,45 +539,3 @@
                       args)
                    ,ret))]
     [else (error "Cannot produce signature for native type:" type)]))
-
-;;;
-;;;  Raw memory
-;;;
-
-(define-cproc %native-alloc (size::<fixnum> type::<native-type>)
-  (let* ([p::void* (malloc size)]
-         [attrs (SCM_LIST1 (Scm_Cons 'malloc '#t))])
-    (when (== p NULL)
-      (Scm_Error "malloc failed (size %ld\n)" size))
-    (return
-     (Scm__MakeNativeHandle p
-                            type
-                            (-> type name)
-                            p
-                            (+ p size)
-                            SCM_UNDEFINED
-                            attrs
-                            0))))
-
-(define (native-alloc size-or-type)
-  (assume-type size-or-type (</> <fixnum> <native-type>))
-  (let ([realsize (typecase size-or-type
-                    [<fixnum> size-or-type]
-                    [<native-type> (~ size-or-type'size)])]
-        [ptype (cond
-                [(aggregate-type? size-or-type) size-or-type]
-                [(is-a? size-or-type <native-type>)
-                 (make-c-pointer-type size-or-type)]
-                [else (make-c-pointer-type <void>)])])
-    (%native-alloc realsize ptype)))
-
-(define-cproc native-free (handle::<native-handle>) ::<void>
-  (when (SCM_FALSEP (Scm_Assq 'malloc (-> handle attrs)))
-    (Scm_Error "Attempt to free a handle which is not malloc'ed: %S"
-               handle))
-  (unless (SCM_FALSEP (Scm_Assq 'freed (-> handle attrs)))
-    (Scm_Error "Attempt to free an already-freed handle: %S"
-               handle))
-  (set! (-> handle attrs)
-        (Scm_Acons 'freed '#t (-> handle attrs)))
-  (free (-> handle ptr)))
