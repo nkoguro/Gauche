@@ -600,8 +600,9 @@
                "static ScmObj ffisetup(ScmObj *argv, int argc, void *data)"
                "{"
                "    SCM_ASSERT(argc == 3);"
-               "    SCM_ASSERT(SCM_DLOBJP(argv[0]));"
-               "    ScmDLObj *dlo = SCM_DLOBJ(argv[0]);"
+               "    ScmObj dlobj = argv[0];"
+               "    SCM_ASSERT(SCM_FALSEP(dlobj) || SCM_DLOBJP(dlobj));"
+               "    ScmDLObj *dlo = SCM_FALSEP(dlobj)? NULL : SCM_DLOBJ(dlobj);"
                "    ScmObj fptr;")
     (when (pair? pointer-return-cfns)
       (cgen-body "    ScmObj types = argv[1];"))

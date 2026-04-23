@@ -1250,12 +1250,37 @@
                     #t))
          )]))
 
+  (define-syntax do-test-i              ;i for internal
+    (syntax-rules ::: ()
+      [(_ opts)
+       (let-syntax ([t (syntax-rules ()
+                         [(_ expect expr)
+                          (test* #"i ~'opts ~'expr" expect expr)])])
+         (test* #"with-ffi i ~'opts" 'ok
+                (begin
+                  (eval
+                   `(with-ffi
+                     #f                 ;internal
+                     opts
+                     (define-c-function Scm_Cons `(,<top> ,<top>) <top>)
+                     (define-c-function Scm_Length `(,<top>) <fixnum>)
+                     (define-c-function strlen `(c-string) <size_t>))
+                   (current-module))
+                  'ok))
+         (t '(a . b) (Scm_Cons 'a 'b))
+         (t 3 (Scm_Length '(a b c)))
+         (t -1 (Scm_Length 'a))
+         (t 5 (strlen "abcde"))
+         )]))
+
   (parameterize ([default-ffi-subsystem :stubgen])
     (do-test-f ())
-    (do-test-g ()))
+    (do-test-g ())
+    (do-test-i ()))
   (when (ffi-subsystem-available? :native)
     (do-test-f (:subsystem :native))
-    (do-test-g (:subsystem :native)))
+    (do-test-g (:subsystem :native))
+    (do-test-i (:subsystem :native)))
   )
 
 (test-end)
