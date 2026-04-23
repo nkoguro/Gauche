@@ -6,7 +6,7 @@
 (use util.match)
 (use gauche.uvector)
 (use file.util)
-(use lang.asm.object)
+(use lang.asm.linker)
 (use lang.asm.x86_64)
 
 ;;;
@@ -175,8 +175,8 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
+                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
                               *amd64-call-reg-bytes*
                               *amd64-call-reg-labels*
                               *amd64-call-reg-patches*
@@ -184,7 +184,7 @@
                        *amd64-call-reg-endian*)]
                  [lbs *amd64-call-reg-labels*])
             (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -234,8 +234,8 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
+                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
                               *amd64-call-spill-bytes*
                               *amd64-call-spill-labels*
                               *amd64-call-spill-patches*
@@ -243,7 +243,7 @@
                        *amd64-call-spill-endian*)]
                  [lbs *amd64-call-spill-labels*])
             (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
@@ -416,8 +416,8 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
+                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
                               *winx64-call-reg-bytes*
                               *winx64-call-reg-labels*
                               *winx64-call-reg-patches*
@@ -425,7 +425,7 @@
                        *winx64-call-reg-endian*)]
                  [lbs *winx64-call-reg-labels*])
             (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
             (set! entry-offsets
                   (map (^k (cdr (assq k lbs)))
                        '(entry0: entry1: entry2: entry3: entry4:
@@ -481,8 +481,8 @@
             (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.object 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.object 'make-obj-fragment)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
+                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
                               *winx64-call-spill-bytes*
                               *winx64-call-spill-labels*
                               *winx64-call-spill-patches*
@@ -490,7 +490,7 @@
                        *winx64-call-spill-endian*)]
                  [lbs *winx64-call-spill-labels*])
             (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.object 'link-template))
+            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
             (set! entry-addr (cdr (assq 'entry: lbs)))
             (set! spill-base (cdr (assq 'spill: lbs)))
             ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:

@@ -1,5 +1,9 @@
 2026-04-22  Shiro Kawai  <shiro@acm.org>
 
+	* lib/lang/asm/linker.scm: Renamed from object.  The main function
+	  of this module is now assembling fragments and resolving
+	  offsets, so it is more like a linker.
+
 	* src/load.c (Scm_DLGetEntryAddress),
 	  src/libeval.scm (dlobj-get-entry-address): Allow to look up
 	  function address in the current process by passing #f as dlo.

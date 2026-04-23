@@ -14,8 +14,8 @@
 (test-section "lang.asm")
 (use lang.asm.regset)
 (test-module 'lang.asm.regset)
-(use lang.asm.object)
-(test-module 'lang.asm.object)
+(use lang.asm.linker)
+(test-module 'lang.asm.linker)
 
 ;; lang.asm.x86_64 is tested in ext/lang
 

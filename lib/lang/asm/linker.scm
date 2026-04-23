@@ -35,14 +35,14 @@
 ;; binary code bytearray, with information to 'patch' parts of the code
 ;; in the 'link' stage.
 
-(define-module lang.asm.object
+(define-module lang.asm.linker
   (use gauche.uvector)
   (use binary.io)
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
           link-template link-templates))
-(select-module lang.asm.object)
+(select-module lang.asm.linker)
 
 ;; Fragment class.  Holds one contiguous section of assembled machine code.
 ;;   bytes   - u8vector of assembled bytes (zeros at placeholder holes)

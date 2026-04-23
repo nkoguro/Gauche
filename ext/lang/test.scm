@@ -1,6 +1,6 @@
 (use gauche.test)
 (use gauche.uvector)
-(use lang.asm.object)
+(use lang.asm.linker)
 
 (test-start "lang.asm.x86_64")
 

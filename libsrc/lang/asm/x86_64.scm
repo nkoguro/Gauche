@@ -44,7 +44,7 @@
   (use scheme.list)
   (use srfi.13)
   (use srfi.42)
-  (use lang.asm.object)
+  (use lang.asm.linker)
   (use lang.asm.regset)
   (use util.match)
   (export x86_64-asm x86_64-dump)
