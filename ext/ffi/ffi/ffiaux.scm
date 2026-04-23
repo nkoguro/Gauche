@@ -1,5 +1,5 @@
 ;;;
-;;; gauche.ffi.aux - Auxiliary functions for FFI
+;;; gauche.ffi.ffiaux - Auxiliary functions for FFI
 ;;;
 ;;;   Copyright (c) 2026  Shiro Kawai  <shiro@acm.org>
 ;;;
@@ -33,10 +33,10 @@
 
 ;; This is a submodule of gauche.ffi and not meant to be used directly.
 
-(define-module gauche.ffi.aux
+(define-module gauche.ffi.ffiaux
   (export native-alloc
           native-free))
-(select-module gauche.ffi.aux)
+(select-module gauche.ffi.ffiaux)
 
 (inline-stub
  (.include "gauche/priv/typeP.h")
