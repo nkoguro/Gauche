@@ -87,6 +87,11 @@ static struct {
                                      but we may change this design in future.
                                   */
     ScmInternalMutex dso_mutex;
+
+    ScmHashCore in_process_entries; /* name -> <native-handle> for entries
+                                       looked up in process
+                                       (see lookup_entry_in_process) */
+    ScmInternalMutex in_process_mutex; /* mutex for in_process_entries */
 } ldinfo;
 
 /* keywords used for load and load-from-port surbs */
@@ -875,7 +880,78 @@ ScmObj Scm_DLObjs()
     return z;
 }
 
+/* Process-wide lookup variant of lookup_entry.
+   NAME must begin with '_'.  Tries without and then with the underscore,
+   matching the convention in lookup_entry. */
+
+#define INTERNAL_FN_PREFIX "_Scm__"
+
+static ScmObj lookup_entry_in_process(ScmString *name, ScmNativeType *type)
+{
+    const char *cname = Scm_GetStringConst(name);
+
+    /* We don't allow to take address of internal API */
+    if (strncmp(cname, INTERNAL_FN_PREFIX, strlen(INTERNAL_FN_PREFIX)) == 0) {
+        return SCM_FALSE;
+    }
+
+    /* Check cache first. */
+    ScmObj cached = SCM_UNDEFINED;
+    SCM_INTERNAL_MUTEX_LOCK(ldinfo.in_process_mutex);
+    ScmDictEntry *ce = Scm_HashCoreSearch(&ldinfo.in_process_entries,
+                                          (intptr_t)name, SCM_DICT_GET);
+    if (ce) {
+        cached = SCM_DICT_VALUE(ce);
+    }
+    SCM_INTERNAL_MUTEX_UNLOCK(ldinfo.in_process_mutex);
+    if (!SCM_UNDEFINEDP(cached)) return cached;
+
+    /* Try without leading '_' first, then with (same as lookup_entry). */
+    const char *names[2] = { cname + 1, cname };
+    ScmDynLoadEntry ptr = NULL;
+
+    for (int i = 0; i < 2 && !ptr; i++) {
+        const char *sym = names[i];
+#if defined(HAVE_DLOPEN)
+        /* RTLD_DEFAULT makes dlsym search every mapped library. */
+        ptr = dl_sym(RTLD_DEFAULT, sym);
+#elif defined(GAUCHE_WINDOWS)
+        /* Walk every module currently mapped into this process.
+           Buffer of 1024 covers virtually all real-world processes;
+           if it overflows we silently search only the modules that fit. */
+        HMODULE mods[1024];
+        DWORD needed = 0;
+        if (!EnumProcessModules(GetCurrentProcess(), mods,
+                                sizeof(mods), &needed)) {
+            Scm_SysError("EnumProcessModules failed");
+        }
+
+        DWORD filled = (needed < (DWORD)sizeof(mods)
+                        ? needed
+                        : (DWORD)sizeof(mods));
+        int n = (int)(filled / sizeof(HMODULE));
+        for (int i = 0; i < n; i++) {
+            ptr = dl_sym((void*)mods[i], sym);
+            if (ptr) break;
+        }
+#endif /* GAUCHE_WINDOWS */
+    }
+
+    if (!ptr) return SCM_FALSE;
+    ScmObj handle = Scm__MakeNativeHandle((void*)ptr, type, SCM_OBJ(name),
+                                          NULL, NULL, SCM_UNDEFINED, SCM_NIL,
+                                          0);
+    /* Store in cache. */
+    SCM_INTERNAL_MUTEX_LOCK(ldinfo.in_process_mutex);
+    ScmDictEntry *ne = Scm_HashCoreSearch(&ldinfo.in_process_entries,
+                                          (intptr_t)name, SCM_DICT_CREATE);
+    (void)SCM_DICT_SET_VALUE(ne, handle);
+    SCM_INTERNAL_MUTEX_UNLOCK(ldinfo.in_process_mutex);
+    return handle;
+}
+
 /* name should have '_' prefix.  We look for a symbol with and without it.
+   If DLO is NULL, searches the entire running process.
    Returns a <native-handle> or #f. */
 ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
 {
@@ -883,11 +959,19 @@ ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
     else if (!SCM_NATIVE_TYPE_P(type)) {
         SCM_TYPE_ERROR(type, "native-type or #f");
     }
+    if (Scm_StringRef(name, 0, FALSE) != '_') {
+        Scm_Error("dlobj-get-entry-address needs a name starting with '_': %S",
+                  SCM_OBJ(name));
+    }
 
-    lock_dlobj(dlo);
-    ScmObj handle = lookup_entry(dlo, name, SCM_NATIVE_TYPE(type));
-    unlock_dlobj(dlo);
-    return handle;
+    if (dlo == NULL) {
+        return lookup_entry_in_process(name, SCM_NATIVE_TYPE(type));
+    } else {
+        lock_dlobj(dlo);
+        ScmObj handle = lookup_entry(dlo, name, SCM_NATIVE_TYPE(type));
+        unlock_dlobj(dlo);
+        return handle;
+    }
 }
 
 /*------------------------------------------------------------------
@@ -1371,6 +1455,9 @@ void Scm__InitLoad(void)
     (void)SCM_INTERNAL_MUTEX_INIT(ldinfo.prov_mutex);
     (void)SCM_INTERNAL_COND_INIT(ldinfo.prov_cv);
     (void)SCM_INTERNAL_MUTEX_INIT(ldinfo.dso_mutex);
+    Scm_HashCoreInitSimple(&ldinfo.in_process_entries, SCM_HASH_STRING, 0,
+                           NULL);
+    (void)SCM_INTERNAL_MUTEX_INIT(ldinfo.in_process_mutex);
 
     key_error_if_not_found = SCM_MAKE_KEYWORD("error-if-not-found");
     key_macro = SCM_MAKE_KEYWORD("macro");

@@ -39,6 +39,13 @@
 
 #include <windows.h>
 
+/* For EnumProcessModules.  We assume recent Windows and force to use
+   K32EnumProcessModules by setting PSAPI_VERSION to 2. */
+#ifndef PSAPI_VERSION
+#define PSAPI_VERSION 2
+#endif
+#include <psapi.h>
+
 static void *dl_open(const char *path)
 {
     LPTSTR xpath = (LPTSTR)SCM_MBS2WCS(path);

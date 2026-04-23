@@ -1,5 +1,10 @@
 2026-04-22  Shiro Kawai  <shiro@acm.org>
 
+	* src/load.c (Scm_DLGetEntryAddress),
+	  src/libeval.scm (dlobj-get-entry-address): Allow to look up
+	  function address in the current process by passing #f as dlo.
+	  Also ensure the name has prefix '_' to detect careless mistakes.
+
 	* lib/scheme/bytevector.scm (bytevector-*-native-ref): Fix unnecessary
 	  endianness argument from 'native' procedures.
 	  https://github.com/shirok/Gauche/issues/1258

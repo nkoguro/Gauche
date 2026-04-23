@@ -289,9 +289,10 @@
   (return (Scm_CloseDLO dlo FALSE)))
 
 ;; API (experimental)
-;; returns #<c-pointer TYPE>
-(define-cproc dlobj-get-entry-address (dlo::<dlobj> name::<string>
-                                                    :optional (type #f))
+;; DLO may be a <dlobj> or #f; #f means search the entire running process.
+;; returns #<native-handle TYPE>
+(define-cproc dlobj-get-entry-address (dlo::<dlobj>? name::<string>
+                                                     :optional (type #f))
   Scm_DLOGetEntryAddress)
 
 ;; API
