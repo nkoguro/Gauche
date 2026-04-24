@@ -43,7 +43,8 @@
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
           link-template link-templates
-          reconstruct-obj-template))
+          serialize-obj-template dump-obj-template deserialize-obj-template
+          ))
 (select-module lang.asm.linker)
 
 ;; Fragment class.  Holds one contiguous section of assembled machine code.
@@ -302,13 +303,37 @@
 (define (link-template tmpl params :key (postamble 0))
   (link-templates (list tmpl) params :postamble postamble))
 
-;; reconstruct-obj-template :: list -> <obj-template>
-;;   Reconstruct an <obj-template> from a keyword-plist literal of the form
+;; serialize-obj-template :: <obj-template> -> list
+;;  Convert an obj-template to a nested keyword-value list for serialization.
+(define (serialize-obj-template tmpl)
+  (assume-type tmpl <obj-template>)
+  `(:fragments
+    ,(map (^[frag]
+            `(:section ,(~ frag 'section)
+              :bytes   ,(~ frag 'bytes)
+              :labels  ,(~ frag 'labels)
+              :patches ,(~ frag 'patches)
+              :locals  ,(~ frag 'locals)))
+          (~ tmpl 'fragments))
+    :endian          ,(~ tmpl 'endian)
+    :stack-word-size ,(~ tmpl 'stack-word-size)))
+
+;; dump-obj-template :: <obj-template>, <symbol>, Port -> ()
+(define (dump-obj-template tmpl varname port)
+  (pprint `(define ,(unwrap-syntax varname)
+             ',(serialize-obj-template tmpl))
+            :port port
+            ;; TRANSIENT: :radix -> :radix-prefix after the new release
+            :controls (make-write-controls :pretty #t :width 75
+                                           :base 16 :radix #t)))
+
+;; deserialize-obj-template :: list -> <obj-template>
+;;   Deserialize an <obj-template> from a keyword-plist literal of the form
 ;;   produced by gen-native.scm's emit-tmpl-literal:
 ;;     (:endian ENDIAN :stack-word-size N :fragments
 ;;      ((:section SEC :bytes BYTES :labels LABELS :patches PATCHES :locals LOCALS) ...))
 ;;   All keys are optional; missing keys receive sensible defaults.
-(define (reconstruct-obj-template spec)
+(define (deserialize-obj-template spec)
   (make-obj-template
    (map (^[fspec]
           (make-obj-fragment

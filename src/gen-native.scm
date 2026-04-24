@@ -18,30 +18,6 @@
   (display ";; Generated automatically by gen-native.scm.  DO NOT EDIT.\n" port)
   (display "\n" port))
 
-;;; Emit a single define form that captures the complete template structure.
-;;; VARNAME is a symbol; TMPL is an <obj-template>.
-;;; The emitted literal has the form:
-;;;   '(:endian ENDIAN :stack-word-size N
-;;;     :fragments ((:section SEC :bytes #u8(...) :labels (...) :patches (...) :locals (...)) ...))
-;;; Use reconstruct-obj-template (in lang.asm.linker) to restore at runtime.
-(define (emit-tmpl-literal port varname tmpl)
-  (let* ([frag-specs
-          (map (^[frag]
-                 `(:section ,(~ frag 'section)
-                   :bytes   ,(~ frag 'bytes)
-                   :labels  ,(~ frag 'labels)
-                   :patches ,(~ frag 'patches)
-                   :locals  ,(~ frag 'locals)))
-               (~ tmpl 'fragments))]
-         [spec `(:endian          ,(~ tmpl 'endian)
-                 :stack-word-size ,(~ tmpl 'stack-word-size)
-                 :fragments       ,frag-specs)])
-    (pprint (list 'define varname (list 'quote spec))
-            :port port
-            ;; TRANSIENT: :radix -> :radix-prefix after the new release
-            :controls (make-write-controls :pretty #t :width 75
-                                           :base 16 :radix #t))))
-
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
 
@@ -119,10 +95,10 @@
        spill:      (.dataq :spill))))
 
   (display ";; Register-only calling\n" port)
-  (emit-tmpl-literal port '*amd64-call-reg-tmpl* reg-tmpl)
+  (dump-obj-template reg-tmpl '*amd64-call-reg-tmpl* port)
 
   (display ";; Spill-to-stack case\n" port)
-  (emit-tmpl-literal port '*amd64-call-spill-tmpl* spill-tmpl)
+  (dump-obj-template spill-tmpl '*amd64-call-spill-tmpl* port)
 
   (pprint
    `(define (%iarg-type? t)
@@ -172,7 +148,7 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *amd64-call-reg-tmpl*)]
                  [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
             (receive (_ lbs) (lnk t '())
@@ -227,7 +203,7 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *amd64-call-spill-tmpl*)]
                  [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
             (receive (_ lbs) (lnk t '())
@@ -368,10 +344,10 @@
        spill:   (.dataq :spill))))
 
   (display ";; Register-only calling\n" port)
-  (emit-tmpl-literal port '*winx64-call-reg-tmpl* reg-tmpl)
+  (dump-obj-template reg-tmpl '*winx64-call-reg-tmpl* port)
 
   (display ";; Spill-to-stack case\n" port)
-  (emit-tmpl-literal port '*winx64-call-spill-tmpl* spill-tmpl)
+  (dump-obj-template spill-tmpl '*winx64-call-spill-tmpl* port)
 
   ;; (call-winx64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
@@ -397,7 +373,7 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *winx64-call-reg-tmpl*)]
                  [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
             (receive (_ lbs) (lnk t '())
@@ -458,7 +434,7 @@
             (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *winx64-call-spill-tmpl*)]
                  [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
             (receive (_ lbs) (lnk t '())
