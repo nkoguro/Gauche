@@ -209,8 +209,14 @@
                                           (- end-off start))]
                                    [(kw o . rest)
                                     (cons* kw (- o start) rest)]))))
-                      patches)])
-               (make-obj-fragment frag-bytes frag-labels frag-patches sec '()))))
+                      patches)]
+                    ;; locals: declared-locals that appear as patch keywords
+                    ;; in this fragment, preserving declared order.
+                    [frag-locals
+                     (filter (^[lkw] (any (^p (eq? (car p) lkw)) frag-patches))
+                             declared-locals)])
+               (make-obj-fragment frag-bytes frag-labels frag-patches sec
+                                  frag-locals))))
          regions)))
 
 ;; x86_64-dump :: [Insn] -> ()
@@ -531,6 +537,7 @@
     [((? integer? a))               `(mem addr ,a)]
     [((? reg64? b))                 `(mem base ,(regnum b))]
     [((? symbol? l))                `(mem label ,l)]
+    [((? keyword? kw) (? reg64? b)) `(mem base+kw ,(regnum b) ,kw)]
     [((? integer? d) (? reg64b? b)) `(mem base+disp ,(regnumb b) ,d)]
     [((? symbol? l) (? reg64b? b))  `(mem base+disp ,(regnumb b) label ,l)]
     [((? reg64? b) (? reg64? i))    `(mem sib ,(regnum b) ,(regnum i) 1 0)]
@@ -632,6 +639,7 @@
     [`(label ,l)              (mem-label l)]
     [`(base+disp ,b ,d)       (mem-base+disp b d)]
     [`(base+disp ,b label ,l) (mem-base+disp-label b l)]
+    [`(base+kw ,b ,kw)        (mem-base+kw b kw)]
     [`(sib ,b ,i ,s ,d)       (mem-sib b i s d)]))
 
 (define (r/m-reg r)
@@ -687,6 +695,24 @@
         (match-let1 (_ . laddr) v
           ((mem-base+disp base (- laddr a)) s a t)))
       ((mem-base+disp base 0) s a t))))
+
+;; mem-base+kw :: regnum, keyword -> modifier
+;;   Emits mod=10 (32-bit displacement) addressing for (:kw %reg).
+;;   Always uses SIB for %rsp/%r12 (base mod 8 = 4); plain r/m otherwise.
+;;   Records a 4-byte patch at (- a 4), which is the displacement field when
+;;   this instruction has no immediate operand following (the common case for
+;;   load/store instructions).
+(define (mem-base+kw base kw)
+  (^[s a t]
+    (when (and t (patch-collector))
+      (push! (patch-collector) (list kw (- a 4) 4)))
+    `(,@(if (>= base 8) `(:rex.b #t) '())
+      :mode 2
+      ,@(case (modulo base 8)
+          [(4) `(:r/m 4 :index 4 :base ,base)]  ; %rsp/%r12 needs SIB
+          [else `(:r/m ,base)])
+      :displacement (0 0 0 0)
+      ,@s)))
 
 (define (mem-sib base index scale disp)
   (when (= index 4)
