@@ -37,6 +37,7 @@
 
 (define-module lang.asm.linker
   (use gauche.uvector)
+  (use gauche.sequence)
   (use binary.io)
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
@@ -49,28 +50,35 @@
 ;;   labels  - alist of (symbol . byte-offset), offsets relative to this fragment
 ;;   patches - list of patch descriptors, offsets relative to this fragment
 ;;   section - symbol naming the section (e.g. 'text, 'data)
+;;   locals  - list of keywords naming local-variable slots referenced
 (define-class <obj-fragment> ()
   ((bytes   :init-keyword :bytes   :type <u8vector>)
    (labels  :init-keyword :labels)
    (patches :init-keyword :patches)
-   (section :init-keyword :section)))
+   (section :init-keyword :section)
+   (locals  :init-keyword :locals  :init-value '())))
 
-(define (make-obj-fragment bytes labels patches section)
+(define (make-obj-fragment bytes labels patches section :optional (locals '()))
   (make <obj-fragment>
-    :bytes bytes :labels labels :patches patches :section section))
+    :bytes bytes :labels labels :patches patches :section section
+    :locals locals))
 
 (define (obj-fragment? x) (is-a? x <obj-fragment>))
 
 ;; Template class.  Holds one or more fragments plus shared endianness.
-;;   fragments - list of <obj-fragment>
-;;   endian    - one of the endianness symbols; can differ from (native-endian)
-;;               when cross-assembling.
+;;   fragments       - list of <obj-fragment>
+;;   endian          - one of the endianness symbols; can differ from
+;;                     (native-endian) when cross-assembling.
+;;   stack-word-size - byte size of one stack slot (e.g. 8 on x86_64); used by
+;;                     link-templates to compute SP-relative offsets for locals.
 (define-class <obj-template> ()
-  ((fragments :init-keyword :fragments)
-   (endian    :init-keyword :endian)))
+  ((fragments       :init-keyword :fragments)
+   (endian          :init-keyword :endian)
+   (stack-word-size :init-keyword :stack-word-size :init-value 0)))
 
-(define (make-obj-template fragments endian)
-  (make <obj-template> :fragments fragments :endian endian))
+(define (make-obj-template fragments endian :optional (stack-word-size 0))
+  (make <obj-template> :fragments fragments :endian endian
+        :stack-word-size stack-word-size))
 
 (define (obj-template? x) (is-a? x <obj-template>))
 
@@ -81,13 +89,22 @@
     [gauche-0.9.15 (^ _ (error "native-ptr-fill! requires Gauche 0.9.16+"))]
     [else (module-binding-ref 'gauche.typeutil 'native-ptr-fill!)]))
 
-;; fill-native-value! :: u8vector, int, int, <native-type>|<top>, val -> ()
+;; fill-native-value! :: u8vector, int, int, <native-type>|<integer>|<top>, val -> ()
 ;;   Fill BYTES from OFFSET spanning SIZE bytes with the binary representation
 ;;   of VALUE according to TYPE (always little-endian for numeric types).
+;;   TYPE may be the Scheme class <integer> to write VALUE as a signed integer
+;;   of exactly SIZE bytes, without requiring an FFI native-type object.
 (define (fill-native-value! bytes offset size type value endian)
   (define (bad)
     (error "Unsupported type to use in link-template:" type))
   (cond
+   [(eq? type <integer>)
+    (case size
+      [(1) (put-s8!  bytes offset value)]
+      [(2) (put-s16! bytes offset value endian)]
+      [(4) (put-s32! bytes offset value endian)]
+      [(8) (put-s64! bytes offset value endian)]
+      [else (bad)])]
    [(is-a? type <native-type>)
     (unless (<= (~ type 'size) size)
       (errorf "native type ~s doesn't fit in the patch size ~a" type size))
@@ -137,11 +154,14 @@
 ;;   If POSTAMBLE > 0, the returned vector is extended by that many zero bytes
 ;;   beyond the template's own bytes (useful for per-call data regions).
 ;;   Each param entry is either:
+;;     (keyword <integer> value)                -- write value as signed integer using patch width
 ;;     (keyword native-type value)              -- fill at the patch's own offset
 ;;     (keyword native-type value extra-offset) -- fill at patch-offset + extra-offset
 ;;     (keyword c-array-type values)            -- fill array starting at patch's offset
 ;;     (keyword c-array-type values extra-offset) -- fill array starting at patch-offset + extra-offset
 ;;   The offset form lets callers fill locations derived from a named anchor.
+;;   The <integer> type form is used by link-templates for local-variable offsets
+;;   and anywhere a plain signed integer suffices without an FFI native-type object.
 ;; apply-patches! :: u8vector, symbol, patches, params -> ()
 ;;   Core patch application loop shared by link-template and link-templates.
 (define (apply-patches! bytes endian patches params labels)
@@ -194,15 +214,29 @@
 ;;   Merges fragments from all templates, grouped by section in first-seen order
 ;;   (A+C+B+D), rebases all label/patch offsets, applies params, and returns
 ;;   the finalized byte vector and merged label alist.
+;;   Local variables declared in fragment 'locals slots are collected, assigned
+;;   consecutive SP-relative offsets (slot 0 → -word, slot 1 → -2*word, ...) using
+;;   the first template's stack-word-size, and prepended to params as two-element
+;;   (keyword integer-value) entries resolved by apply-patches! normally.
 (define (link-templates tmpls params :key (postamble 0))
   (unless (pair? tmpls)
     (error "link-templates: template list must not be empty"))
   (let* ([endian (~ (car tmpls) 'endian)]
+         [word   (~ (car tmpls) 'stack-word-size)]
          [_      (for-each (^t (unless (eq? (~ t 'endian) endian)
                                  (error "link-templates: templates have mismatched endianness")))
                            (cdr tmpls))]
          ;; All fragments in input order.
          [frags    (append-map (^t (~ t 'fragments)) tmpls)]
+         ;; Collect unique local-variable keywords across all fragments, first-seen order.
+         [local-vars (delete-duplicates
+                      (append-map (^f (~ f 'locals)) frags)
+                      eq?)]
+         ;; Build (kw <integer> signed-sp-offset) entries and prepend to caller params.
+         [local-params (map-with-index
+                        (^[i kw] (list kw <integer> (* (- (+ i 1)) word)))
+                        local-vars)]
+         [all-params (append local-params params)]
          ;; Section order by first appearance.
          [sections (delete-duplicates (map (^f (~ f 'section)) frags) eq?)])
     ;; Walk sections in order.  For each section, walk all fragments (in order)
@@ -216,7 +250,7 @@
                [total     (+ (length byte-list) postamble)]
                [bytes     (list->u8vector
                            (append byte-list (make-list postamble 0)))])
-          (apply-patches! bytes endian patches params labels)
+          (apply-patches! bytes endian patches all-params labels)
           (values bytes labels))
         (let1 sec (car secs)
           (let floop ([fs frags] [off offset]

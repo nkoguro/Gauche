@@ -104,7 +104,7 @@
 ;;   Assembles INSNS into an <obj-template>.  If the instruction list contains
 ;;   (.section sym) pseudo-instructions, the result has one <obj-fragment> per
 ;;   section region; otherwise a single 'text fragment is returned.
-(define (x86_64-asm insns)
+(define (x86_64-asm insns :key (locals '()))
   (let1 a-map (run-pass1 insns)
     (receive (bss patches)
         (parameterize ([patch-collector '()]
@@ -112,8 +112,9 @@
           (let1 bss (run-pass2 a-map)
             (values bss (patch-collector))))
       (make-obj-template
-       (build-fragments a-map (list->u8vector (concatenate bss)) patches)
-       'little-endian))))
+       (build-fragments a-map (list->u8vector (concatenate bss)) patches locals)
+       'little-endian
+       8))))                                   ; stack-word-size for x86_64
 
 ;; run-pass1 :: [Insn] -> [(p, xaddr)]
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
@@ -160,13 +161,17 @@
                       [else (cons (p addr a-map) seed)])))
                  '() a-map)))
 
-;; build-fragments :: a-map, u8vector, patches -> [<obj-fragment>]
+;; build-fragments :: a-map, u8vector, patches, declared-locals
+;;                   -> [<obj-fragment>]
 ;;   Splits the flat assembled code into one fragment per section region.
 ;;   Section regions are derived from (section sym) markers in A-MAP; the
 ;;   implicit first region starts at offset 0 with section 'text.
 ;;   Labels and patches are filtered to their owning region and rebased to
 ;;   fragment-local offsets.
-(define (build-fragments a-map code patches)
+;;   declared-locals is a list of keywords (from x86_64-asm :locals argument);
+;;   each fragment's locals slot is set to the intersection of declared-locals
+;;   with the patch keywords present in that fragment (Step 3).
+(define (build-fragments a-map code patches declared-locals)
   (let* ([total (uvector-size code)]
          ;; Collect section boundaries: ((sec-name . start-offset) ...)
          [sec-starts
@@ -205,7 +210,7 @@
                                    [(kw o . rest)
                                     (cons* kw (- o start) rest)]))))
                       patches)])
-               (make-obj-fragment frag-bytes frag-labels frag-patches sec))))
+               (make-obj-fragment frag-bytes frag-labels frag-patches sec '()))))
          regions)))
 
 ;; x86_64-dump :: [Insn] -> ()
