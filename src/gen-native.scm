@@ -18,23 +18,29 @@
   (display ";; Generated automatically by gen-native.scm.  DO NOT EDIT.\n" port)
   (display "\n" port))
 
-;;; Emit bytes, labels, and patches of TMPL as three top-level define forms.
-;;; PREFIX is a string; the variables become *<prefix>-bytes*,
-;;; *<prefix>-labels*, and *<prefix>-patches*.
-(define (emit-tmpl-vars port prefix tmpl)
-  (let* ([frag        (car (~ tmpl 'fragments))]
-         [bytes-var   (string->symbol #"*~|prefix|-bytes*")]
-         [labels-var  (string->symbol #"*~|prefix|-labels*")]
-         [patches-var (string->symbol #"*~|prefix|-patches*")]
-         [endian-var  (string->symbol #"*~|prefix|-endian*")])
-    (pprint `(define ,bytes-var ,(~ frag 'bytes))
+;;; Emit a single define form that captures the complete template structure.
+;;; VARNAME is a symbol; TMPL is an <obj-template>.
+;;; The emitted literal has the form:
+;;;   '(:endian ENDIAN :stack-word-size N
+;;;     :fragments ((:section SEC :bytes #u8(...) :labels (...) :patches (...) :locals (...)) ...))
+;;; Use reconstruct-obj-template (in lang.asm.linker) to restore at runtime.
+(define (emit-tmpl-literal port varname tmpl)
+  (let* ([frag-specs
+          (map (^[frag]
+                 `(:section ,(~ frag 'section)
+                   :bytes   ,(~ frag 'bytes)
+                   :labels  ,(~ frag 'labels)
+                   :patches ,(~ frag 'patches)
+                   :locals  ,(~ frag 'locals)))
+               (~ tmpl 'fragments))]
+         [spec `(:endian          ,(~ tmpl 'endian)
+                 :stack-word-size ,(~ tmpl 'stack-word-size)
+                 :fragments       ,frag-specs)])
+    (pprint (list 'define varname (list 'quote spec))
             :port port
             ;; TRANSIENT: :radix -> :radix-prefix after the new release
             :controls (make-write-controls :pretty #t :width 75
-                                           :base 16 :radix #t))
-    (pprint `(define ,labels-var ',(~ frag 'labels)) :port port)
-    (pprint `(define ,patches-var ',(~ frag 'patches)) :port port)
-    (pprint `(define ,endian-var ',(~ tmpl 'endian)) :port port)))
+                                           :base 16 :radix #t))))
 
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
@@ -43,16 +49,7 @@
   ;; When all args can be on registers.
   (define reg-tmpl
     (x86_64-asm
-     '(func:       (.dataq :func)
-       farg0:      (.dataq :farg0)
-       farg1:      (.dataq :farg1)
-       farg2:      (.dataq :farg2)
-       farg3:      (.dataq :farg3)
-       farg4:      (.dataq :farg4)
-       farg5:      (.dataq :farg5)
-       farg6:      (.dataq :farg6)
-       farg7:      (.dataq :farg7)
-       entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
+     '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
        entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
        entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
        entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
@@ -68,12 +65,8 @@
        entry1:     (movq (imm64 :iarg0) %rdi)
        entry0:     (movb (imm8 :num-fargs) %al)
                    (jmp (func:))
-       end:)))
-
-  ;; Spill case.
-  (define spill-tmpl
-    (x86_64-asm
-     '(func:       (.dataq :func)
+                   (.section data)
+       func:       (.dataq :func)
        farg0:      (.dataq :farg0)
        farg1:      (.dataq :farg1)
        farg2:      (.dataq :farg2)
@@ -82,7 +75,12 @@
        farg5:      (.dataq :farg5)
        farg6:      (.dataq :farg6)
        farg7:      (.dataq :farg7)
-       entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
+       end:)))
+
+  ;; Spill case.
+  (define spill-tmpl
+    (x86_64-asm
+     '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
        entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
        entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
        entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
@@ -108,24 +106,23 @@
                    (call (func:))
        epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
                    (ret)
-                   (.align 8)
+                   (.section data)
+       func:       (.dataq :func)
+       farg0:      (.dataq :farg0)
+       farg1:      (.dataq :farg1)
+       farg2:      (.dataq :farg2)
+       farg3:      (.dataq :farg3)
+       farg4:      (.dataq :farg4)
+       farg5:      (.dataq :farg5)
+       farg6:      (.dataq :farg6)
+       farg7:      (.dataq :farg7)
        spill:      (.dataq :spill))))
 
-  (define reg-labels   (~ reg-tmpl'fragments 0 'labels))
-  (define spill-labels (~ spill-tmpl'fragments 0 'labels))
+  (display ";; Register-only calling\n" port)
+  (emit-tmpl-literal port '*amd64-call-reg-tmpl* reg-tmpl)
 
-  ;; Print label/offset comments for reference.
-  (display ";; Register-only calling" port)
-  (display ";; label    offset\n" port)
-  (dolist [p reg-labels]
-    (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (emit-tmpl-vars port "amd64-call-reg" reg-tmpl)
-
-  (display ";; Spill-to-stack case" port)
-  (display ";; label    offset\n" port)
-  (dolist [p spill-labels]
-    (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (emit-tmpl-vars port "amd64-call-spill" spill-tmpl)
+  (display ";; Spill-to-stack case\n" port)
+  (emit-tmpl-literal port '*amd64-call-spill-tmpl* spill-tmpl)
 
   (pprint
    `(define (%iarg-type? t)
@@ -175,22 +172,18 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
-                              *amd64-call-reg-bytes*
-                              *amd64-call-reg-labels*
-                              *amd64-call-reg-patches*
-                              'text))
-                       *amd64-call-reg-endian*)]
-                 [lbs *amd64-call-reg-labels*])
-            (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
-            (set! entry-offsets
-                  (map (^k (cdr (assq k lbs)))
-                       '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
-                         entry6f0: entry6f1: entry6f2: entry6f3:
-                         entry6f4: entry6f5: entry6f6: entry6f7:)))
-            (set! end-addr (cdr (assq 'end: lbs)))))
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+                       *amd64-call-reg-tmpl*)]
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
+            (receive (_ lbs) (lnk t '())
+              (set! tmpl t)
+              (set! link-tmpl lnk)
+              (set! entry-offsets
+                    (map (^k (cdr (assq k lbs)))
+                         '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
+                           entry6f0: entry6f1: entry6f2: entry6f3:
+                           entry6f4: entry6f5: entry6f6: entry6f7:)))
+              (set! end-addr (cdr (assq 'end: lbs))))))
         (^[ptr args num-iargs num-fargs rettype]
           (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
@@ -234,22 +227,18 @@
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
-                              *amd64-call-spill-bytes*
-                              *amd64-call-spill-labels*
-                              *amd64-call-spill-patches*
-                              'text))
-                       *amd64-call-spill-endian*)]
-                 [lbs *amd64-call-spill-labels*])
-            (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
-            (set! entry-offsets
-                  (map (^k (cdr (assq k lbs)))
-                       '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
-                         entry6f0: entry6f1: entry6f2: entry6f3:
-                         entry6f4: entry6f5: entry6f6: entry6f7:)))
-            (set! spill-base (cdr (assq 'spill: lbs)))))
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+                       *amd64-call-spill-tmpl*)]
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
+            (receive (_ lbs) (lnk t '())
+              (set! tmpl t)
+              (set! link-tmpl lnk)
+              (set! entry-offsets
+                    (map (^k (cdr (assq k lbs)))
+                         '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
+                           entry6f0: entry6f1: entry6f2: entry6f3:
+                           entry6f4: entry6f5: entry6f6: entry6f7:)))
+              (set! spill-base (cdr (assq 'spill: lbs))))))
         (^[ptr args num-iargs num-fargs num-spills rettype]
           (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
@@ -293,8 +282,8 @@
                                spill-params)
                          (loop (cdr args) (+ icount 1) fcount (+ scount 1)
                                named
-                               (cons `(:func ,@(car args)
-                                       ,(+ spill-base (* (- num-spills scount 1) 8)))
+                               (cons `(:spill ,@(car args)
+                                       ,(* (- num-spills scount 1) 8))
                                      spill-params)))]
                       [(%farg-type? (caar args))
                        (if (< fcount 8)
@@ -325,12 +314,7 @@
 (define (gen-stub-winx64 port)
   (define reg-tmpl
     (x86_64-asm
-     '(func:    (.dataq :func)
-       farg0:   (.dataq :farg0)
-       farg1:   (.dataq :farg1)
-       farg2:   (.dataq :farg2)
-       farg3:   (.dataq :farg3)
-       entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
+     '(entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
        entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
        entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
        entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
@@ -342,17 +326,18 @@
                 (call (func:))
                 (addq 40 %rsp)
                 (ret)
+                (.section data)
+       func:    (.dataq :func)
+       farg0:   (.dataq :farg0)
+       farg1:   (.dataq :farg1)
+       farg2:   (.dataq :farg2)
+       farg3:   (.dataq :farg3)
        end:)))
 
   ;; Spill case.
   (define spill-tmpl
     (x86_64-asm
-     '(func:    (.dataq :func)
-       farg0:   (.dataq :farg0)
-       farg1:   (.dataq :farg1)
-       farg2:   (.dataq :farg2)
-       farg3:   (.dataq :farg3)
-       entry:
+     '(entry:
        entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
        entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
        entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
@@ -374,23 +359,19 @@
                 (addq 32 %rsp)
        epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
                 (ret)
-                (.align 8)
+                (.section data)
+       func:    (.dataq :func)
+       farg0:   (.dataq :farg0)
+       farg1:   (.dataq :farg1)
+       farg2:   (.dataq :farg2)
+       farg3:   (.dataq :farg3)
        spill:   (.dataq :spill))))
 
-  (define reg-labels   (~ reg-tmpl'fragments 0 'labels))
-  (define spill-labels (~ spill-tmpl'fragments 0 'labels))
+  (display ";; Register-only calling\n" port)
+  (emit-tmpl-literal port '*winx64-call-reg-tmpl* reg-tmpl)
 
-  (display ";; Register-only calling" port)
-  (display ";; label    offset\n" port)
-  (dolist [p reg-labels]
-    (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (emit-tmpl-vars port "winx64-call-reg" reg-tmpl)
-
-  (display ";; Spill-to-stack case" port)
-  (display ";; label    offset\n" port)
-  (dolist [p spill-labels]
-    (format port ";; ~10a  ~3d\n" (car p) (cdr p)))
-  (emit-tmpl-vars port "winx64-call-spill" spill-tmpl)
+  (display ";; Spill-to-stack case\n" port)
+  (emit-tmpl-literal port '*winx64-call-spill-tmpl* spill-tmpl)
 
   ;; (call-winx64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
@@ -416,23 +397,19 @@
             (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
-                              *winx64-call-reg-bytes*
-                              *winx64-call-reg-labels*
-                              *winx64-call-reg-patches*
-                              'text))
-                       *winx64-call-reg-endian*)]
-                 [lbs *winx64-call-reg-labels*])
-            (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
-            (set! entry-offsets
-                  (map (^k (cdr (assq k lbs)))
-                       '(entry0: entry1: entry2: entry3: entry4:
-                         entry4f0: entry4f1: entry4f2: entry4f3:)))
-            (set! end-addr (cdr (assq 'end: lbs)))
-            ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
-            (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4))))
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+                       *winx64-call-reg-tmpl*)]
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
+            (receive (_ lbs) (lnk t '())
+              (set! tmpl t)
+              (set! link-tmpl lnk)
+              (set! entry-offsets
+                    (map (^k (cdr (assq k lbs)))
+                         '(entry0: entry1: entry2: entry3: entry4:
+                           entry4f0: entry4f1: entry4f2: entry4f3:)))
+              (set! end-addr (cdr (assq 'end: lbs)))
+              ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
+              (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4)))))
         (^[ptr args num-args num-fargs rettype]
           (when (not tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
@@ -481,20 +458,16 @@
             (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
             (win-prolog-end #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'make-obj-template)
-                       (list ((module-binding-ref 'lang.asm.linker 'make-obj-fragment)
-                              *winx64-call-spill-bytes*
-                              *winx64-call-spill-labels*
-                              *winx64-call-spill-patches*
-                              'text))
-                       *winx64-call-spill-endian*)]
-                 [lbs *winx64-call-spill-labels*])
-            (set! tmpl t)
-            (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-template))
-            (set! entry-addr (cdr (assq 'entry: lbs)))
-            (set! spill-base (cdr (assq 'spill: lbs)))
-            ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
-            (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4))))
+          (let* ([t   ((module-binding-ref 'lang.asm.linker 'reconstruct-obj-template)
+                       *winx64-call-spill-tmpl*)]
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
+            (receive (_ lbs) (lnk t '())
+              (set! tmpl t)
+              (set! link-tmpl lnk)
+              (set! entry-addr (cdr (assq 'entry: lbs)))
+              (set! spill-base (cdr (assq 'spill: lbs)))
+              ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
+              (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4)))))
         (^[ptr args num-args num-fargs num-spills rettype]
           (when (not tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill-params '()])
@@ -554,8 +527,8 @@
                                spill-params))
                        (loop (cdr args) (+ count 1) (+ scount 1)
                              named
-                             (cons `(:func ,@(car args)
-                                     ,(+ spill-base (* (- num-spills scount 1) 8)))
+                             (cons `(:spill ,@(car args)
+                                     ,(* (- num-spills scount 1) 8))
                                    spill-params)))]
                     [else (error "bad arg entry:" (car args))]))))))
    :port port)

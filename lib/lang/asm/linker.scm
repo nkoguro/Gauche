@@ -42,7 +42,8 @@
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
-          link-template link-templates))
+          link-template link-templates
+          reconstruct-obj-template))
 (select-module lang.asm.linker)
 
 ;; Fragment class.  Holds one contiguous section of assembled machine code.
@@ -190,7 +191,10 @@
            (unless target-addr
              (errorf "link-templates: label-rel: undefined label ~s" kw))
            (let1 disp (- target-addr end-off)
-             (unless (ineq (- (expt 2 31)) <= disp < (expt 2 31))
+             ;; TRANSIENT: This can be replaced with ineq macro after
+             ;; 0.9.16 release
+             (unless (and (<= (- (expt 2 31))  disp)
+                          (< disp (expt 2 31)))
                (errorf "link-templates: label-rel: displacement out of range for ~s" kw))
              (put-s32! bytes base disp endian)))]
         [(kw base (? integer? width))
@@ -297,6 +301,25 @@
 ;;   Single-template convenience wrapper around link-templates.
 (define (link-template tmpl params :key (postamble 0))
   (link-templates (list tmpl) params :postamble postamble))
+
+;; reconstruct-obj-template :: list -> <obj-template>
+;;   Reconstruct an <obj-template> from a keyword-plist literal of the form
+;;   produced by gen-native.scm's emit-tmpl-literal:
+;;     (:endian ENDIAN :stack-word-size N :fragments
+;;      ((:section SEC :bytes BYTES :labels LABELS :patches PATCHES :locals LOCALS) ...))
+;;   All keys are optional; missing keys receive sensible defaults.
+(define (reconstruct-obj-template spec)
+  (make-obj-template
+   (map (^[fspec]
+          (make-obj-fragment
+           (get-keyword :bytes   fspec #u8())
+           (get-keyword :labels  fspec '())
+           (get-keyword :patches fspec '())
+           (get-keyword :section fspec 'text)
+           (get-keyword :locals  fspec '())))
+        (get-keyword :fragments spec '()))
+   (get-keyword :endian          spec 'little-endian)
+   (get-keyword :stack-word-size spec 0)))
 
 ;;;
 ;;; Architecture-specific patch handlers
