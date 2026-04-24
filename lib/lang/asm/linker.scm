@@ -215,9 +215,12 @@
 ;;   (A+C+B+D), rebases all label/patch offsets, applies params, and returns
 ;;   the finalized byte vector and merged label alist.
 ;;   Local variables declared in fragment 'locals slots are collected, assigned
-;;   consecutive SP-relative offsets (slot 0 → -word, slot 1 → -2*word, ...) using
-;;   the first template's stack-word-size, and prepended to params as two-element
-;;   (keyword integer-value) entries resolved by apply-patches! normally.
+;;   consecutive SP-relative offsets (slot 0 : -word, slot 1 : -2*word, ...)
+;;   using the first template's stack-word-size, and prepended to params as
+;;   (keyword <integer> value) entries resolved by apply-patches! normally.
+;;   A (:nbytes-local <integer> N) entry is also prepended so prolog/epilog
+;;   fragments can patch the stack allocation size.
+;;   Sections are reordered: prolog -> text -> epilog -> data -> others
 (define (link-templates tmpls params :key (postamble 0))
   (unless (pair? tmpls)
     (error "link-templates: template list must not be empty"))
@@ -236,9 +239,18 @@
          [local-params (map-with-index
                         (^[i kw] (list kw <integer> (* (- (+ i 1)) word)))
                         local-vars)]
-         [all-params (append local-params params)]
-         ;; Section order by first appearance.
-         [sections (delete-duplicates (map (^f (~ f 'section)) frags) eq?)])
+         [nlocals    (length local-vars)]
+         ;; Prepend :nbytes-local so prolog/epilog fragments can patch stack allocation size.
+         [all-params (append (list (list :nbytes-local <integer> (* nlocals word)))
+                             local-params params)]
+         ;; Section order: prolog first, epilog after text-like sections, then data, then rest.
+         [raw-sections (delete-duplicates (map (^f (~ f 'section)) frags) eq?)]
+         [sections
+          (let* ([has? (^s (memq s raw-sections))]
+                 [fixed '(prolog text epilog data)]
+                 [fixed-present (filter has? fixed)]
+                 [rest (filter (^s (not (memq s fixed))) raw-sections)])
+            (append fixed-present rest))])
     ;; Walk sections in order.  For each section, walk all fragments (in order)
     ;; and pick those matching the current section, accumulating bytes, labels,
     ;; and patches with rebased offsets.

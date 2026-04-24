@@ -856,4 +856,116 @@
                    (make-list 16 0))                 ; data: 16 zero bytes
            (u8vector->list bytes))))
 
+
+;;----------------------------------------------------------------------
+(test-section "locals and prolog/epilog sections")
+
+;; Helper: make a single-fragment template for an arbitrary named section.
+(define (make-section-frag-tmpl section bytes :optional (patches '()) (locals '()))
+  (make-obj-template
+   (list (make-obj-fragment bytes '() patches section locals))
+   'little-endian
+   8))                                  ; stack-word-size=8
+
+;; --- Section ordering ---
+
+;; Fragments supplied in reversed order; link-templates must reorder to
+;; prolog -> text -> epilog -> data.
+(let* ([prolog-t (make-section-frag-tmpl 'prolog #u8(10 20))]
+       [text-t   (make-section-frag-tmpl 'text   #u8(30 40 50))]
+       [epilog-t (make-section-frag-tmpl 'epilog #u8(60))]
+       [data-t   (make-section-frag-tmpl 'data   #u8(70 80 90))])
+  (receive (bytes _)
+      (link-templates (list data-t epilog-t text-t prolog-t) '())
+    (test* "section ordering: prolog→text→epilog→data"
+           '(10 20  30 40 50  60  70 80 90)
+           (u8vector->list bytes))))
+
+;; Unknown sections land after the known four, preserving their first-seen order.
+(let* ([tmpl (make-obj-template
+              (list (make-obj-fragment #u8(1) '() '() 'text)
+                    (make-obj-fragment #u8(2) '() '() 'custom)
+                    (make-obj-fragment #u8(3) '() '() 'prolog)
+                    (make-obj-fragment #u8(4) '() '() 'data))
+              'little-endian)])
+  (receive (bytes _) (link-templates (list tmpl) '())
+    (test* "section ordering: unknown section after data"
+           '(3  1  4  2)
+           (u8vector->list bytes))))
+
+;; --- :nbytes-local computed from locals ---
+
+;; Two locals (:local-x, :local-y) declared in a text fragment.
+;; A prolog fragment has a 4-byte :nbytes-local patch.
+;; Expected: :nbytes-local = 2*8 = 16, :local-x = -8, :local-y = -16.
+(let* ([prolog-frag
+        (make-obj-fragment #u8(0 0 0 0) '() '((:nbytes-local 0 4)) 'prolog)]
+       [text-frag
+        (make-obj-fragment (make-u8vector 8 0) '()
+                           '((:local-x 0 4) (:local-y 4 4))
+                           'text
+                           '(:local-x :local-y))]
+       [tmpl (make-obj-template (list prolog-frag text-frag) 'little-endian 8)])
+  (receive (bytes _) (link-templates (list tmpl) '())
+    ;; prolog (4 bytes) comes first, then text (8 bytes)
+    (test* ":nbytes-local = 16"
+           '(#x10 #x00 #x00 #x00)
+           (u8vector->list (u8vector-copy bytes 0 4)))
+    (test* ":local-x offset = -8 (F8 FF FF FF)"
+           '(#xf8 #xff #xff #xff)
+           (u8vector->list (u8vector-copy bytes 4 8)))
+    (test* ":local-y offset = -16 (F0 FF FF FF)"
+           '(#xf0 #xff #xff #xff)
+           (u8vector->list (u8vector-copy bytes 8 12)))))
+
+;; --- :nbytes-local = 0 when no locals are declared ---
+
+(let* ([prolog-frag
+        (make-obj-fragment #u8(0 0 0 0) '() '((:nbytes-local 0 4)) 'prolog)]
+       [text-frag
+        (make-obj-fragment #u8(1 2 3) '() '() 'text)]
+       [tmpl (make-obj-template (list prolog-frag text-frag) 'little-endian 8)])
+  (receive (bytes _) (link-templates (list tmpl) '())
+    (test* ":nbytes-local = 0 with no locals"
+           '(#x00 #x00 #x00 #x00)
+           (u8vector->list (u8vector-copy bytes 0 4)))))
+
+;; --- Full prolog + body + epilog via x86_64-asm ---
+;;
+;; Prolog (.section prolog): subq $N, %rsp        allocate stack frame
+;; Text:                     movq (:local-a %rsp), %rax    slot 0 = -8(%rsp)
+;;                           movq (:local-b %rsp), %rcx    slot 1 = -16(%rsp)
+;; Epilog (.section epilog): addq $N, %rsp ; ret  restore and return
+;;
+;; With 2 locals and stack-word-size=8: N = 16.
+;;
+;; Expected bytes after linking:
+;;   prolog[0..6]   48 81 EC 10 00 00 00   subq $16, %rsp
+;;   text[7..14]    48 8B 84 24 F8 FF FF FF  movq -8(%rsp), %rax
+;;   text[15..22]   48 8B 8C 24 F0 FF FF FF  movq -16(%rsp), %rcx
+;;   epilog[23..30] 48 81 C4 10 00 00 00 C3  addq $16, %rsp; ret
+
+(let* ([prolog (x86_64-asm '((.section prolog)
+                             (subq (imm32 :nbytes-local) %rsp)))]
+       [body   (x86_64-asm '((movq (:local-a %rsp) %rax)
+                             (movq (:local-b %rsp) %rcx))
+                            :locals '(:local-a :local-b))]
+       [epilog (x86_64-asm '((.section epilog)
+                             (addq (imm32 :nbytes-local) %rsp)
+                             (ret)))])
+  (receive (bytes _) (link-templates (list prolog body epilog) '())
+    (test* "prolog+body+epilog: total byte count" 31 (uvector-size bytes))
+    (test* "prolog+body+epilog: prolog — subq $16,%rsp"
+           '(#x48 #x81 #xec #x10 #x00 #x00 #x00)
+           (u8vector->list (u8vector-copy bytes 0 7)))
+    (test* "prolog+body+epilog: movq -8(%rsp),%rax"
+           '(#x48 #x8b #x84 #x24 #xf8 #xff #xff #xff)
+           (u8vector->list (u8vector-copy bytes 7 15)))
+    (test* "prolog+body+epilog: movq -16(%rsp),%rcx"
+           '(#x48 #x8b #x8c #x24 #xf0 #xff #xff #xff)
+           (u8vector->list (u8vector-copy bytes 15 23)))
+    (test* "prolog+body+epilog: epilog — addq $16,%rsp + ret"
+           '(#x48 #x81 #xc4 #x10 #x00 #x00 #x00 #xc3)
+           (u8vector->list (u8vector-copy bytes 23 31)))))
+
 (test-end)
