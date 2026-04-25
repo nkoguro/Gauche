@@ -42,6 +42,8 @@
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
+          <obj-template-labels> make-obj-template-labels obj-template-labels?
+          obj-template-labels->alist
           link-templates linked-label-offset
           serialize-obj-template dump-obj-template deserialize-obj-template
           ))
@@ -83,6 +85,39 @@
         :stack-word-size stack-word-size))
 
 (define (obj-template? x) (is-a? x <obj-template>))
+
+;; Label dictionary.  Abstract label registration and lookup.
+(define-class <obj-template-labels> ()
+  ((table :init-form (make-hash-table 'eq?))))
+
+(define (make-obj-template-labels)
+  (make <obj-template-labels>))
+
+(define (obj-template-labels? x) (is-a? x <obj-template-labels>))
+
+;; add-label! :: <obj-template-labels>, symbol, integer -> <obj-template-labels>
+;;   Inserts SYM -> OFFSET.  Signals an error on duplicate.  Returns LABELS.
+(define (add-label! labels sym offset)
+  (when (hash-table-contains? (~ labels 'table) sym)
+    (error "duplicate label:" sym))
+  (hash-table-set! (~ labels 'table) sym offset)
+  labels)
+
+;; get-label-offset :: <obj-template-labels>, symbol -> integer or #f
+(define (get-label-offset labels sym)
+  (hash-table-ref/default (~ labels 'table) sym #f))
+
+;; merge-labels! :: <obj-template-labels>, alist -> <obj-template-labels>
+;;   Adds every (sym . offset) pair from ALIST into LABELS.  Returns LABELS.
+(define (merge-labels! labels alist)
+  (dolist [p alist]
+    (add-label! labels (car p) (cdr p)))
+  labels)
+
+;; obj-template-labels->alist :: <obj-template-labels> -> alist
+;;   Returns all entries as ((symbol . offset) ...) sorted by ascending offset.
+(define (obj-template-labels->alist labels)
+  (sort (hash-table->alist (~ labels 'table)) (^[a b] (< (cdr a) (cdr b)))))
 
 ;; TRANSIENT: cond-expand guard allows gen-native.scm to load this module
 ;; with BUILD_GOSH 0.9.15, which lacks native-ptr-fill!.  Remove after 0.9.16.
@@ -185,7 +220,7 @@
       (match patch
         [(kw base 'label-rel (? integer? end-off))
          ;; cross-section relative jump/reference: resolve target label
-         (let1 target-addr (assq-ref labels kw #f)
+         (let1 target-addr (get-label-offset labels kw)
            (unless target-addr
              (errorf "link-templates: label-rel: undefined label ~s" kw))
            (let1 disp (- target-addr end-off)
@@ -273,7 +308,7 @@
     ;; and pick those matching the current section, accumulating bytes, labels,
     ;; and patches with rebased offsets.
     (let loop ([secs sections] [offset 0]
-               [rev-blists '()] [labels '()] [patches '()])
+               [rev-blists '()] [labels (make-obj-template-labels)] [patches '()])
       (if (null? secs)
         ;; All sections processed: build the final vector and apply params.
         (let* ([byte-list (append-map identity (reverse rev-blists))]
@@ -289,7 +324,7 @@
               ;; Done with this section's fragments; advance to next section.
               (loop (cdr secs) off
                     (cons (reverse sec-blist) rev-blists)
-                    (append labels sec-labels)
+                    (merge-labels! labels sec-labels)
                     (append patches sec-patches))
               (let1 frag (car fs)
                 (if (eq? (~ frag 'section) sec)
@@ -318,7 +353,7 @@
 ;;   Look up LABEL (symbol) in LABEL-INFO and returns its offset.
 ;;   Signals an error if the label is not found.
 (define (linked-label-offset label-info label)
-  (or (assq-ref label-info label)
+  (or (get-label-offset label-info label)
       (errorf "linked-label-offset: label not found: ~s" label)))
 
 ;; serialize-obj-template :: <obj-template> -> list

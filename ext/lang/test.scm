@@ -10,6 +10,7 @@
 ;;----------------------------------------------------------------------
 (test-section "instructions")
 
+
 ;; Helper: assemble and return (bytes . label-alist) for comparison.
 ;; Label alist is sorted by address for deterministic comparison.
 ;; bytes is compared as a list for readability.
@@ -18,7 +19,7 @@
          (cons expected-bytes expected-labels)
          (receive (bytes labels) (link-templates (list (x86_64-asm insns)) '())
            (cons (u8vector->list bytes)
-                 (sort labels (^[a b] (< (cdr a) (cdr b))))))))
+                 (obj-template-labels->alist labels)))))
 
 ;; --- Trivial single-byte instructions ---
 
@@ -297,7 +298,7 @@
   (test* "x86_64-asm type" #t (is-a? tmpl <obj-template>))
   (receive (bytes labels) (link-templates (list tmpl)'())
     (test* "x86_64-asm round-trip bytes"  '(#x48 #x89 #xc1) (u8vector->list bytes))
-    (test* "x86_64-asm round-trip labels" '() labels)))
+    (test* "x86_64-asm round-trip labels" '() (obj-template-labels->alist labels))))
 
 (let ()
   (define tmpl (x86_64-asm '(entry:
@@ -310,7 +311,7 @@
            (u8vector->list bytes))
     (test* "x86_64-asm with labels alist"
            '((entry: . 0))
-           labels)))
+           (obj-template-labels->alist labels))))
 
 ;; Verify that link-template does not mutate the template's byte vector
 ;; (same template can be instantiated multiple times).
@@ -427,7 +428,7 @@
            (u8vector->list b))
     (test* "placeholder with label labels"
            '((start: . 0))
-           labels)))
+           (obj-template-labels->alist labels))))
 
 ;; --- data-directive placeholders ---
 
@@ -555,7 +556,7 @@
   (receive (_ labels) (link-templates (list tmpl)'() :postamble 4)
     (test* "link-templates :postamble labels unchanged"
            '((entry: . 0))
-           labels)))
+           (obj-template-labels->alist labels))))
 
 ;; --- offset parameter form (keyword native-type value extra-offset) ---
 
@@ -696,7 +697,7 @@
            (u8vector->list bytes))
     (test* "link-templates two text: labels rebased"
            '((a: . 0) (b: . 2) (c: . 3) (d: . 4))
-           (sort labels (^[x y] (< (cdr x) (cdr y)))))))
+           (obj-template-labels->alist labels))))
 
 ;; --- Patch in the second template is correctly rebased and applied ---
 
@@ -731,7 +732,7 @@
     ;; Labels: tx1:=0, tx2:=3, da1:=5, da2:=7
     (test* "link-templates A+C+B+D labels"
            '((tx1: . 0) (tx2: . 3) (da1: . 5) (da2: . 7))
-           (sort labels (^[x y] (< (cdr x) (cdr y)))))))
+           (obj-template-labels->alist labels))))
 
 ;; --- Param patch in a data fragment of the second template ---
 

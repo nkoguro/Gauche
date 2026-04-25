@@ -17,6 +17,38 @@
 (use lang.asm.linker)
 (test-module 'lang.asm.linker)
 
+(let ()
+  (define (link-single-frag frag)
+    (receive (_ lbls)
+        (link-templates (list (make-obj-template (list frag) 'little-endian 8)) '())
+      lbls))
+
+  (test* "make-obj-template-labels" #t
+         (obj-template-labels? (make-obj-template-labels)))
+
+  (test* "obj-template-labels->alist empty" '()
+         (obj-template-labels->alist (make-obj-template-labels)))
+
+  (test* "link-templates returns <obj-template-labels>" #t
+         (obj-template-labels?
+          (link-single-frag (make-obj-fragment #u8(0) '((start . 0)) '() 'text))))
+
+  (test* "obj-template-labels->alist after link-templates" '((start . 0))
+         (obj-template-labels->alist
+          (link-single-frag (make-obj-fragment #u8(0) '((start . 0)) '() 'text))))
+
+  (test* "linked-label-offset" 0
+         (linked-label-offset
+          (link-single-frag (make-obj-fragment #u8(0) '((entry . 0)) '() 'text))
+          'entry))
+
+  (test* "link-templates duplicate label error" (test-error)
+         (let* ([f1 (make-obj-fragment #u8(0) '((dup . 0)) '() 'text)]
+                [f2 (make-obj-fragment #u8(0) '((dup . 0)) '() 'text)]
+                [tmpl (make-obj-template (list f1 f2) 'little-endian 8)])
+           (link-templates (list tmpl) '())))
+  )
+
 ;; lang.asm.x86_64 is tested in ext/lang
 
 ;;----------------------------------------------------------------------
