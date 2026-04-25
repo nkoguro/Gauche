@@ -37,6 +37,7 @@
 #include "gauche/port.h"
 #include "gauche/priv/builtin-syms.h"
 #include "gauche/priv/readerP.h"
+#include "gauche/priv/loadP.h"
 #include "gauche/priv/portP.h"
 #include "gauche/priv/macroP.h"
 #include "gauche/priv/moduleP.h"
@@ -880,20 +881,35 @@ ScmObj Scm_DLObjs()
     return z;
 }
 
-/* Process-wide lookup variant of lookup_entry.
-   NAME must begin with '_'.  Tries without and then with the underscore,
-   matching the convention in lookup_entry. */
+/* name should have '_' prefix.  We look for a symbol with and without it.
+   Returns a <native-handle> or #f. */
+ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
+{
+    if (SCM_FALSEP(type)) type = Scm_NativeVoidPointerType;
+    else if (!SCM_NATIVE_TYPE_P(type)) {
+        SCM_TYPE_ERROR(type, "native-type or #f");
+    }
+    if (Scm_StringRef(name, 0, FALSE) != '_') {
+        Scm_Error("dlobj-get-entry-address needs a name starting with '_': %S",
+                  SCM_OBJ(name));
+    }
+    lock_dlobj(dlo);
+    ScmObj handle = lookup_entry(dlo, name, SCM_NATIVE_TYPE(type));
+    unlock_dlobj(dlo);
+    return handle;
+}
 
-#define INTERNAL_FN_PREFIX "_Scm__"
+/* Similar to Scm_DLOGetEntryAddress, but query in-process functions.
+   We separate this from Scm_DLOGetEntryAddress, for exposing this
+   to Scheme world allows user programs to circumvent Gauche's
+   encapsulation/isolation mechanism easily.
+   Returns an integer value (intptr_t) cast from address.  Only limited
+   intenral funcitons use this, and they know what they're dealing with.
+*/
 
-static ScmObj lookup_entry_in_process(ScmString *name, ScmNativeType *type)
+ScmObj Scm__InternalGetEntryAddress(ScmString *name)
 {
     const char *cname = Scm_GetStringConst(name);
-
-    /* We don't allow to take address of internal API */
-    if (strncmp(cname, INTERNAL_FN_PREFIX, strlen(INTERNAL_FN_PREFIX)) == 0) {
-        return SCM_FALSE;
-    }
 
     /* Check cache first. */
     ScmObj cached = SCM_UNDEFINED;
@@ -938,9 +954,7 @@ static ScmObj lookup_entry_in_process(ScmString *name, ScmNativeType *type)
     }
 
     if (!ptr) return SCM_FALSE;
-    ScmObj handle = Scm__MakeNativeHandle((void*)ptr, type, SCM_OBJ(name),
-                                          NULL, NULL, SCM_UNDEFINED, SCM_NIL,
-                                          0);
+    ScmObj handle = Scm_IntptrToInteger((intptr_t)ptr);
     /* Store in cache. */
     SCM_INTERNAL_MUTEX_LOCK(ldinfo.in_process_mutex);
     ScmDictEntry *ne = Scm_HashCoreSearch(&ldinfo.in_process_entries,
@@ -950,29 +964,6 @@ static ScmObj lookup_entry_in_process(ScmString *name, ScmNativeType *type)
     return handle;
 }
 
-/* name should have '_' prefix.  We look for a symbol with and without it.
-   If DLO is NULL, searches the entire running process.
-   Returns a <native-handle> or #f. */
-ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
-{
-    if (SCM_FALSEP(type)) type = Scm_NativeVoidPointerType;
-    else if (!SCM_NATIVE_TYPE_P(type)) {
-        SCM_TYPE_ERROR(type, "native-type or #f");
-    }
-    if (Scm_StringRef(name, 0, FALSE) != '_') {
-        Scm_Error("dlobj-get-entry-address needs a name starting with '_': %S",
-                  SCM_OBJ(name));
-    }
-
-    if (dlo == NULL) {
-        return lookup_entry_in_process(name, SCM_NATIVE_TYPE(type));
-    } else {
-        lock_dlobj(dlo);
-        ScmObj handle = lookup_entry(dlo, name, SCM_NATIVE_TYPE(type));
-        unlock_dlobj(dlo);
-        return handle;
-    }
-}
 
 /*------------------------------------------------------------------
  * Require and provide
