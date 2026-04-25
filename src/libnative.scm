@@ -43,6 +43,7 @@
 
 (inline-stub
  (.include "gauche/priv/configP.h"
+           "gauche/priv/loadP.h"
            "gauche/priv/mmapP.h"
            "gauche/priv/nativeP.h"
            "gauche/priv/codeP.h"
@@ -89,6 +90,7 @@
        (let* ([dst::char* (+ (cast char* (SCM_UVECTOR_ELEMENTS target)) tstart)])
          (memcpy dst (& ptr-val) (sizeof (.type intptr_t)))))))
 
+ ;; For FFI
  (define-cproc %%call-native (tstart::<fixnum>
                               tend::<fixnum>
                               code::<uvector>
@@ -100,6 +102,9 @@
                               win-frame-size::<fixnum>)
    (return (Scm__VMCallNative (Scm_VM) tstart tend code start end entry
                               rettype win-prolog-end win-frame-size)))
+
+ (define-cproc %%get-entry-address (name::<string>)
+   (return (Scm__InternalGetEntryAddress name)))
 
  ;; For JIT
  (define-cproc %%jit-compile-procedure (proc compiler)
