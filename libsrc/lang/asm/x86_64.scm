@@ -234,17 +234,17 @@
                [addr  (if (pair? raw) (car raw) raw)])
           (cond
            [(symbol? (car insns))   ; label
-            (format #t "~4d:~24a    ~a:\n" addr "" (car insns))
+            (format #t "~4,'0x:~12a    ~a:\n" addr "" (car insns))
             (loop (cdr insns) (cdr a-map) bss)]
            [(and (pair? (car insns)) (eq? (caar insns) '.section))
             (format #t "     .section ~a\n" (cadar insns))
             (loop (cdr insns) (cdr a-map) bss)]  ; no bss entry for .section
            [else
-            (let1 byte-slices (slices (car bss) 8)
+            (let1 byte-slices (slices (car bss) 4)
               (define (bytedump bytes)
                 (with-output-to-string
                   (^[] (dolist [b bytes] (format #t " ~2,'0x" b)))))
-              (format #t "~4d:~24a          ~s\n"
+              (format #t "~4,'0x:~12a          ~s\n"
                       addr
                       (bytedump (if (pair? byte-slices)
                                   (car byte-slices)
