@@ -42,7 +42,7 @@
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
-          link-templates
+          link-templates linked-label-offset
           serialize-obj-template dump-obj-template deserialize-obj-template
           ))
 (select-module lang.asm.linker)
@@ -297,6 +297,16 @@
                                         (~ frag 'patches)))))
                   (floop (cdr fs) off
                          sec-blist sec-labels sec-patches))))))))))
+
+;; linked-label-offset :: label-info, label -> integer
+;;   LABEL-INFO is the second value returned from link-templates
+;;   (It is currently just an alist, but users should treat it as opaque
+;;   structure).
+;;   Look up LABEL (symbol) in LABEL-INFO and returns its offset.
+;;   Signals an error if the label is not found.
+(define (linked-label-offset label-info label)
+  (or (assq-ref label-info label)
+      (errorf "linked-label-offset: label not found: ~s" label)))
 
 ;; serialize-obj-template :: <obj-template> -> list
 ;;  Convert an obj-template to a nested keyword-value list for serialization.

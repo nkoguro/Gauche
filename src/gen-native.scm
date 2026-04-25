@@ -152,54 +152,57 @@
   (pprint
    `(define call-amd64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f))
+            (tmpl #f) (link-tmpl #f) (lbl-off #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
-                       *amd64-call-reg-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
-            (receive (_ lbs) (lnk (list t) '())
-              (set! tmpl t)
-              (set! link-tmpl lnk)
-              (set! entry-offsets
-                    (map (^k (cdr (assq k lbs)))
-                         '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
-                           entry6f0: entry6f1: entry6f2: entry6f3:
-                           entry6f4: entry6f5: entry6f6: entry6f7:)))
-              (set! end-addr (cdr (assq 'end: lbs))))))
+          (set! tmpl ((module-binding-ref 'lang.asm.linker
+                                          'deserialize-obj-template)
+                      *amd64-call-reg-tmpl*))
+          (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
+          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-iargs num-fargs rettype]
           (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
-                 [entry (~ entry-offsets effective-nargs)]
+                 [entry-label (~ '#(entry0: entry1: entry2: entry3: entry4:
+                                    entry5: entry6:
+                                    entry6f0: entry6f1: entry6f2: entry6f3:
+                                    entry6f4: entry6f5: entry6f6: entry6f7:)
+                                 effective-nargs)]
                  [params
                   (let loop ([args args] [icount 0] [fcount 0] [r '()])
                     (cond [(null? args) r]
                           [(%iarg-type? (caar args))
                            (loop (cdr args) (+ icount 1) fcount
-                                 (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3 :iarg4 :iarg5)
+                                 (cons `(,(~ '#(:iarg0 :iarg1 :iarg2
+                                                :iarg3 :iarg4 :iarg5)
                                              icount)
                                          ,@(car args))
                                        r))]
                           [(%farg-type? (caar args))
-                           (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3
-                                            :farg4 :farg5 :farg6 :farg7) fcount)]
-                                 [vkey (~ '(:farg0-variant :farg1-variant
-                                            :farg2-variant :farg3-variant
-                                            :farg4-variant :farg5-variant
-                                            :farg6-variant :farg7-variant) fcount)])
+                           (let ([fkey (~ '#(:farg0 :farg1 :farg2 :farg3
+                                             :farg4 :farg5 :farg6 :farg7)
+                                          fcount)]
+                                 [vkey (~ '#(:farg0-variant :farg1-variant
+                                             :farg2-variant :farg3-variant
+                                             :farg4-variant :farg5-variant
+                                             :farg6-variant :farg7-variant)
+                                          fcount)])
                              (loop (cdr args) icount (+ fcount 1)
                                    (if (eq? (caar args) <float>)
                                      (list* `(,vkey ,<uint8> movss)
                                             `(,fkey ,@(car args)) r)
                                      (cons `(,fkey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (receive [bytes _]
+            (receive [bytes lbs]
                 (link-tmpl (list tmpl)
                            `((:func ,<void*> ,ptr)
                              (:num-fargs ,<uint8> ,num-fargs)
                              ,@params))
-              (%%call-native 0 0 bytes 0 end-addr entry rettype 0 0))))))
+              (%%call-native 0 0 bytes 0
+                             (lbl-off lbs 'end:)
+                             (lbl-off lbs entry-label)
+                             rettype 0 0))))))
    :port port)
 
   ;; call-amd64-spill: named patches handled by link-templates; only raw
@@ -207,32 +210,29 @@
   (pprint
    `(define call-amd64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (spill-base #f))
+            (tmpl #f) (link-tmpl #f) (lbl-off #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
-                       *amd64-call-spill-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
-            (receive (_ lbs) (lnk (list t) '())
-              (set! tmpl t)
-              (set! link-tmpl lnk)
-              (set! entry-offsets
-                    (map (^k (cdr (assq k lbs)))
-                         '(entry0: entry1: entry2: entry3: entry4: entry5: entry6:
-                           entry6f0: entry6f1: entry6f2: entry6f3:
-                           entry6f4: entry6f5: entry6f6: entry6f7:)))
-              (set! spill-base (cdr (assq 'spill: lbs))))))
+          (set! tmpl ((module-binding-ref 'lang.asm.linker
+                                          'deserialize-obj-template)
+                      *amd64-call-spill-tmpl*))
+          (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
+          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-iargs num-fargs num-spills rettype]
           (when (not tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
-                 [entry (~ entry-offsets effective-nargs)])
+                 [entry-label (~ '#(entry0: entry1: entry2: entry3: entry4:
+                                    entry5: entry6:
+                                    entry6f0: entry6f1: entry6f2: entry6f3:
+                                    entry6f4: entry6f5: entry6f6: entry6f7:)
+                                 effective-nargs)])
             (let loop ([args args] [icount 0] [fcount 0] [scount 0]
                        [named '()] [spill-params '()])
               (if (null? args)
                 (let* ([align-pad (if (even? num-spills) 8 0)]
                        [spill-area-bytes (* 8 num-spills)])
-                  (receive [bytes _]
+                  (receive [bytes lbs]
                       (link-tmpl (list tmpl)
                                  `((:func ,<void*> ,ptr)
                                    (:num-fargs ,<uint8> ,num-fargs)
@@ -250,15 +250,16 @@
                                    0     ;tend (no zero fill)
                                    bytes ;code
                                    0     ;start
-                                   (+ spill-base spill-area-bytes) ;end
-                                   entry ;entry
+                                   (+ (lbl-off lbs 'spill:) spill-area-bytes) ;end
+                                   (lbl-off lbs entry-label)                  ;entry
                                    rettype
                                    0 0)))
                 (cond [(%iarg-type? (caar args))
                        (if (< icount 6)
                          (loop (cdr args) (+ icount 1) fcount scount
-                               (cons `(,(~ '(:iarg0 :iarg1 :iarg2
-                                            :iarg3 :iarg4 :iarg5) icount)
+                               (cons `(,(~ '#(:iarg0 :iarg1 :iarg2
+                                             :iarg3 :iarg4 :iarg5)
+                                           icount)
                                        ,@(car args))
                                      named)
                                spill-params)
@@ -269,12 +270,14 @@
                                      spill-params)))]
                       [(%farg-type? (caar args))
                        (if (< fcount 8)
-                         (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3
-                                         :farg4 :farg5 :farg6 :farg7) fcount)]
-                               [vkey (~ '(:farg0-variant :farg1-variant
-                                          :farg2-variant :farg3-variant
-                                          :farg4-variant :farg5-variant
-                                          :farg6-variant :farg7-variant) fcount)])
+                         (let ([fkey (~ '#(:farg0 :farg1 :farg2 :farg3
+                                           :farg4 :farg5 :farg6 :farg7)
+                                        fcount)]
+                               [vkey (~ '#(:farg0-variant :farg1-variant
+                                           :farg2-variant :farg3-variant
+                                           :farg4-variant :farg5-variant
+                                           :farg6-variant :farg7-variant)
+                                        fcount)])
                            (loop (cdr args) icount (+ fcount 1) scount
                                  (if (eq? (caar args) <float>)
                                    (list* `(,vkey ,<uint8> movss)
@@ -382,22 +385,13 @@
   (pprint
    `(define call-winx64-regs
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (entry-offsets #f) (end-addr #f)
-            (win-prolog-end #f))
+            (tmpl #f) (link-tmpl #f) (lbl-off #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
-                       *winx64-call-reg-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
-            (receive (_ lbs) (lnk (list t) '())
-              (set! tmpl t)
-              (set! link-tmpl lnk)
-              (set! entry-offsets
-                    (map (^k (cdr (assq k lbs)))
-                         '(entry0: entry1: entry2: entry3: entry4:
-                           entry4f0: entry4f1: entry4f2: entry4f3:)))
-              (set! end-addr (cdr (assq 'end: lbs)))
-              ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
-              (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4)))))
+          (set! tmpl ((module-binding-ref 'lang.asm.linker
+                                          'deserialize-obj-template)
+                      *winx64-call-reg-tmpl*))
+          (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
+          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-args num-fargs rettype]
           (when (not tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
@@ -407,22 +401,26 @@
                  [effective-nargs (if (zero? num-fargs)
                                     num-args
                                     (+ 4 num-args))]
-                 [entry (~ entry-offsets effective-nargs)]
+                 [entry-label (~ '#(entry0: entry1: entry2: entry3: entry4:
+                                    entry4f0: entry4f1: entry4f2: entry4f3:)
+                                 effective-nargs)]
                  [params
                   (let loop ([args args] [count 0] [r '()])
                     (cond [(null? args) r]
                           [(%iarg-type? (caar args))
                            (loop (cdr args) (+ count 1)
-                                 (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)
+                                 (cons `(,(~ '#(:iarg0 :iarg1 :iarg2 :iarg3)
+                                             count)
                                          ,@(car args))
                                        r))]
                           [(%farg-type? (caar args))
                            ;; We load both integer regs and flonum regs.
                            ;; It matters for variadic function call.
-                           (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3) count)]
-                                 [ikey (~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)]
-                                 [vkey (~ '(:farg0-variant :farg1-variant
-                                            :farg2-variant :farg3-variant) count)])
+                           (let ([fkey (~ '#(:farg0 :farg1 :farg2 :farg3) count)]
+                                 [ikey (~ '#(:iarg0 :iarg1 :iarg2 :iarg3) count)]
+                                 [vkey (~ '#(:farg0-variant :farg1-variant
+                                             :farg2-variant :farg3-variant)
+                                          count)])
                              (loop (cdr args) (+ count 1)
                                    (if (eq? (caar args) <float>)
                                      (list* `(,vkey ,<uint8> movss)
@@ -431,38 +429,37 @@
                                      (list* `(,fkey ,@(car args))
                                             `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
-            (receive [bytes _]
+            (receive [bytes lbs]
                 (link-tmpl (list tmpl)
                            (list* `(:func ,<void*> ,ptr)
                                   params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
-              (%%call-native 0 0 bytes 0 end-addr entry rettype
-                             win-prolog-end 40))))))
+              ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
+              (%%call-native 0 0 bytes 0
+                             (lbl-off lbs 'end:)
+                             (lbl-off lbs entry-label)
+                             rettype
+                             (+ (lbl-off lbs 'entry0:) 4)
+                             40))))))
    :port port)
 
   (pprint
    `(define call-winx64-spill
       (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (entry-addr #f) (spill-base #f)
-            (win-prolog-end #f))
+            (tmpl #f) (link-tmpl #f) (lbl-off #f))
         (define (init!)
-          (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
-                       *winx64-call-spill-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
-            (receive (_ lbs) (lnk (list t) '())
-              (set! tmpl t)
-              (set! link-tmpl lnk)
-              (set! entry-addr (cdr (assq 'entry: lbs)))
-              (set! spill-base (cdr (assq 'spill: lbs)))
-              ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
-              (set! win-prolog-end (+ (cdr (assq 'entry0: lbs)) 4)))))
+          (set! tmpl ((module-binding-ref 'lang.asm.linker
+                                          'deserialize-obj-template)
+                      *winx64-call-spill-tmpl*))
+          (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
+          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-args num-fargs num-spills rettype]
           (when (not tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill-params '()])
             (if (null? args)
               (let* ([align-pad (if (even? num-spills) 8 0)]
                      [spill-area-bytes (* 8 num-spills)])
-                (receive [bytes _]
+                (receive [bytes lbs]
                     (link-tmpl (list tmpl)
                                `((:func ,<void*> ,ptr)
                                  (:init-spill-size
@@ -476,19 +473,20 @@
                                  ,@spill-params)
                                :postamble spill-area-bytes)
                   ;; win-frame-size = shadow space (32) + spill args (8*N)
+                  ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
                   (%%call-native 0      ;tstart
                                  0      ;tend (no zero fill needed)
                                  bytes  ;code
                                  0      ;start
-                                 (+ spill-base spill-area-bytes) ;end
-                                 entry-addr                      ;entry
+                                 (+ (lbl-off lbs 'spill:) spill-area-bytes) ;end
+                                 (lbl-off lbs 'entry:)                      ;entry
                                  rettype
-                                 win-prolog-end
+                                 (+ (lbl-off lbs 'entry0:) 4)
                                  (+ spill-area-bytes align-pad 32))))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount
-                             (cons `(,(~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)
+                             (cons `(,(~ '#(:iarg0 :iarg1 :iarg2 :iarg3) count)
                                      ,@(car args))
                                    named)
                              spill-params)
@@ -501,10 +499,10 @@
                      ;; We load both integer regs and flonum regs.
                      ;; It matters for variadic function call.
                      (if (< count 4)
-                       (let ([fkey (~ '(:farg0 :farg1 :farg2 :farg3) count)]
-                             [ikey (~ '(:iarg0 :iarg1 :iarg2 :iarg3) count)]
-                             [vkey (~ '(:farg0-variant :farg1-variant
-                                        :farg2-variant :farg3-variant) count)])
+                       (let ([fkey (~ '#(:farg0 :farg1 :farg2 :farg3) count)]
+                             [ikey (~ '#(:iarg0 :iarg1 :iarg2 :iarg3) count)]
+                             [vkey (~ '#(:farg0-variant :farg1-variant
+                                         :farg2-variant :farg3-variant) count)])
                          (loop (cdr args) (+ count 1) scount
                                (if (eq? (caar args) <float>)
                                  (list* `(,vkey ,<uint8> movss)
