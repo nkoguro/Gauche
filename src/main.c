@@ -811,6 +811,7 @@ int enter_repl()
     }
 
     if (batch_mode || (!has_terminal() && !interactive_mode)) {
+        SCM_DEFINE(Scm_UserModule(), "*batch-mode*", SCM_TRUE);
         Scm_LoadFromPort(SCM_PORT(Scm_Stdin()), SCM_LOAD_PROPAGATE_ERROR, NULL);
     } else {
         Scm_SetRuntimeReplState(full_mode);

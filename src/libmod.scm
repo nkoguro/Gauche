@@ -260,17 +260,45 @@
            args)
     `((with-module gauche import) ,@args)
     (begin
-      ;; Some black magic needed here to inject the imported module to
-      ;; r7rs.user.  We do this here instead of expanding into forms
-      ;; to do the work, for "select-module" thingy is tricky.
       (unless (provided? "r7rs-setup")
         (load "r7rs-setup")
         (provide "r7rs-setup"))
+      ;; Some black magic needed here to inject the imported module to
+      ;; r7rs.user.  We do this here instead of expanding into forms
+      ;; to do the work, for "select-module" thingy is tricky.
       (eval `(import ,@args) (find-module 'r7rs.user))
+      ;; If we're in REPL, notify the user about switching the mode.
+      ;; (We may need better way to detect if we're on REPL).
+      (when (and (not (current-load-path))
+                 (module-binds? 'gauche.interactive 'setup-r7rs-repl)
+                 (not (module-binding-ref 'user '*batch-mode* #f)))
+        (%setup-r7rs-repl))
       '(select-module r7rs.user))))
+
+;; If a user is on REPL and switch from Gauche default mode to R7RS
+;; first time, we notify the switching to the user, and import basic
+;; modules.  That's what most users expect.
+;; https://github.com/shirok/Gauche/issues/1260
+(define %setup-r7rs-repl
+  (let ([notified #f])
+    (^[]
+      (unless notified
+        (print
+         "NOTE: You're switching into R7RS REPL mode.  Basic R7RS libraries are")
+        (print
+         "automatically loaded.")
+        (print
+         "To use Gauche built-in functions, evaluate (import (gauche base)).  To get")
+        (print
+         "back to Gauche REPL mode, after evaluating (import (gauche base)), evaluate")
+        (print
+         "(select-module user).")
+        ((module-binding-ref 'gauche.interactive 'setup-r7rs-repl))
+        (set! notified #t)))))
 
 (select-module user)
 
+;; user#import - dispatches to either gauche#import or r7rs#import
 (define-macro (import . import-specs)
   ((with-module gauche.internal %expand-user-import) import-specs))
 

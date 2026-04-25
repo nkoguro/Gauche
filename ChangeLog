@@ -1,3 +1,15 @@
+2026-04-25  Shiro Kawai  <shiro@acm.org>
+
+	* src/libmod.scm (%expand-user-import): If the user uses R7RS-style
+	  import on Gauche default REPL and switches to R7RS REPL mode
+	  first time, we notify the user about it and loads basic R7RS
+	  libraries.  https://github.com/shirok/Gauche/issues/1260
+	* lib/gauche/interactive/init.scm (setup-r7rs-repl): Make it
+	  a function so that it can be called when the above happens.
+	* src/main.scm (*batch-mode*): Define this variable when
+	  gosh is run with -b option.  We use this to suppress the note
+	  above.
+
 2026-04-22  Shiro Kawai  <shiro@acm.org>
 
 	* lib/lang/asm/linker.scm: Renamed from object.  The main function
