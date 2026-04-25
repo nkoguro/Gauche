@@ -148,9 +148,8 @@
 (define (register-patch-handler! key handler)
   (hash-table-set! *patch-handlers* key handler))
 
-;; link-template :: <obj-template>, [(keyword native-type value [extra-offset])]
-;;                  [#:postamble <int>]
-;;                  -> u8vector, AList
+;; apply-patches! :: u8vector, symbol, patches, params -> ()
+;;   Core patch application loop shared by link-template and link-templates.
 ;;   Applies patches from PARAMS and returns the finalized byte vector and
 ;;   label alist.  The template is never mutated; a fresh u8vector is returned.
 ;;   If POSTAMBLE > 0, the returned vector is extended by that many zero bytes
@@ -164,8 +163,6 @@
 ;;   The offset form lets callers fill locations derived from a named anchor.
 ;;   The <integer> type form is used by link-templates for local-variable offsets
 ;;   and anywhere a plain signed integer suffices without an FFI native-type object.
-;; apply-patches! :: u8vector, symbol, patches, params -> ()
-;;   Core patch application loop shared by link-template and link-templates.
 (define (apply-patches! bytes endian patches params labels)
   (let1 len (uvector-size bytes)
     (define (checked-fill! kw actual ntype val)
@@ -215,9 +212,20 @@
              (handler bytes offset (assoc-ref params kw))
              (error "unknown patch handler:" handler-key)))]))))
 
-;; link-templates :: (listof <obj-template>), params :key postamble -> u8vector, alist
-;;   Merges fragments from all templates, grouped by section in first-seen order
-;;   (A+C+B+D), rebases all label/patch offsets, applies params, and returns
+;; uniq-slot-ref : (template ...), slot -> value
+;;   Returns (~ template slot).  Additionally, checks if all other templates
+;;   have the same value.
+(define (uniq-slot-ref tmpls slot)
+  (assume-type tmpls (<List> <obj-template> 1))
+  (rlet1 v (~ (car tmpls) slot)
+    (unless (every (^t (eq? (~ t slot) v)) (cdr tmpls))
+      (errorf "templates with mixed value of ~a can't be linked: ~s"
+              slot tmpls))))
+
+;; link-templates :: (listof <obj-template>), params :key postamble
+;;                   -> u8vector, dict
+;;   Merges fragments from all templates, grouped by section in first-seen order,
+;;   rebases all label/patch offsets, applies params, and returns
 ;;   the finalized byte vector and merged label alist.
 ;;   Local variables declared in fragment 'locals slots are collected, assigned
 ;;   consecutive SP-relative offsets (slot 0 : -word, slot 1 : -2*word, ...)
@@ -229,33 +237,38 @@
 (define (link-templates tmpls params :key (postamble 0))
   (unless (pair? tmpls)
     (error "link-templates: template list must not be empty"))
-  (let* ([endian (~ (car tmpls) 'endian)]
-         [word   (~ (car tmpls) 'stack-word-size)]
-         [_      (for-each (^t (unless (eq? (~ t 'endian) endian)
-                                 (error "link-templates: templates have mismatched endianness")))
-                           (cdr tmpls))]
+  (let* ([endian (uniq-slot-ref tmpls 'endian)]
+         [word   (uniq-slot-ref tmpls 'stack-word-size)]
          ;; All fragments in input order.
          [frags    (append-map (^t (~ t 'fragments)) tmpls)]
-         ;; Collect unique local-variable keywords across all fragments, first-seen order.
+         ;; Collect unique local-variable keywords across all fragments,
+         ;; first-seen order.
          [local-vars (delete-duplicates
                       (append-map (^f (~ f 'locals)) frags)
                       eq?)]
-         ;; Build (kw <integer> signed-sp-offset) entries and prepend to caller params.
+         ;; Build (kw <integer> signed-sp-offset) entries and prepend to
+         ;; caller params.
          [local-params (map-with-index
                         (^[i kw] (list kw <integer> (* (- (+ i 1)) word)))
                         local-vars)]
          [nlocals    (length local-vars)]
-         ;; Prepend :nbytes-local so prolog/epilog fragments can patch stack allocation size.
-         [all-params (append (list (list :nbytes-local <integer> (* nlocals word)))
-                             local-params params)]
-         ;; Section order: prolog first, epilog after text-like sections, then data, then rest.
+         ;; Prepend :nbytes-local so prolog/epilog fragments can patch
+         ;; stack allocation size.
+         [all-params `((:nbytes-local ,<integer> ,(* nlocals word))
+                       ,@local-params
+                       ,@params)]
+         ;; Section order: prolog first, epilog after text-like sections,
+         ;; then data, then rest.
          [raw-sections (delete-duplicates (map (^f (~ f 'section)) frags) eq?)]
          [sections
-          (let* ([has? (^s (memq s raw-sections))]
-                 [fixed '(prolog text epilog data)]
-                 [fixed-present (filter has? fixed)]
-                 [rest (filter (^s (not (memq s fixed))) raw-sections)])
-            (append fixed-present rest))])
+          (cond-list [(memq 'prolog raw-sections) => car]
+                     [(memq 'text raw-sections) => car]
+                     [(memq 'epilog raw-sections) => car]
+                     [(memq 'data raw-sections) => car]
+                     [#t @ (filter
+                            (^s (not (memq s '(prolog text epilog data))))
+                            raw-sections)])]
+         )
     ;; Walk sections in order.  For each section, walk all fragments (in order)
     ;; and pick those matching the current section, accumulating bytes, labels,
     ;; and patches with rebased offsets.
