@@ -16,7 +16,7 @@
 (define (t-asm name insns expected-bytes expected-labels)
   (test* name
          (cons expected-bytes expected-labels)
-         (receive (bytes labels) (link-template (x86_64-asm insns) '())
+         (receive (bytes labels) (link-templates (list (x86_64-asm insns)) '())
            (cons (u8vector->list bytes)
                  (sort labels (^[a b] (< (cdr a) (cdr b))))))))
 
@@ -295,7 +295,7 @@
 (let ()
   (define tmpl (x86_64-asm '((movq %rax %rcx))))
   (test* "x86_64-asm type" #t (is-a? tmpl <obj-template>))
-  (receive (bytes labels) (link-template tmpl '())
+  (receive (bytes labels) (link-templates (list tmpl)'())
     (test* "x86_64-asm round-trip bytes"  '(#x48 #x89 #xc1) (u8vector->list bytes))
     (test* "x86_64-asm round-trip labels" '() labels)))
 
@@ -304,7 +304,7 @@
                              (push %rbp)
                              (movq %rsp %rbp)
                              (ret))))
-  (receive (bytes labels) (link-template tmpl '())
+  (receive (bytes labels) (link-templates (list tmpl)'())
     (test* "x86_64-asm with labels bytes"
            '(#x55 #x48 #x89 #xe5 #xc3)
            (u8vector->list bytes))
@@ -316,9 +316,9 @@
 ;; (same template can be instantiated multiple times).
 (let ()
   (define tmpl (x86_64-asm '((ret))))
-  (receive (b1 _) (link-template tmpl '())
-    (receive (b2 _) (link-template tmpl '())
-      (test* "link-template returns fresh vector"
+  (receive (b1 _) (link-templates (list tmpl)'())
+    (receive (b2 _) (link-templates (list tmpl)'())
+      (test* "link-templates returns fresh vector"
              #f
              (eq? b1 b2)))))
 
@@ -329,17 +329,17 @@
 (let ()
   (define tmpl (x86_64-asm '((movq (imm64 :val) %rax))))
   ;; Default instantiation (zero)
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "imm64 placeholder default"
            '(#x48 #xb8 0 0 0 0 0 0 0 0)
            (u8vector->list b)))
   ;; Instantiate with a real 64-bit value
-  (receive (b _) (link-template tmpl `((:val ,<uint64> #x0102030405060708)))
+  (receive (b _) (link-templates (list tmpl)`((:val ,<uint64> #x0102030405060708)))
     (test* "imm64 placeholder filled"
            '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b)))
   ;; Re-instantiate with a different value to confirm immutability of template
-  (receive (b _) (link-template tmpl `((:val ,<uint64> 1)))
+  (receive (b _) (link-templates (list tmpl)`((:val ,<uint64> 1)))
     (test* "imm64 placeholder re-instantiate"
            '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
            (u8vector->list b))))
@@ -348,7 +348,7 @@
 ;; Encoding: REX.W+B(49) BA <8 bytes> -- 10 bytes
 (let ()
   (define tmpl (x86_64-asm '((movq (imm64 :v) %r10))))
-  (receive (b _) (link-template tmpl `((:v ,<uint64> #x0102030405060708)))
+  (receive (b _) (link-templates (list tmpl)`((:v ,<uint64> #x0102030405060708)))
     (test* "imm64 placeholder %r10"
            '(#x49 #xba #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
@@ -357,11 +357,11 @@
 ;; Encoding: REX.W(48) C7 /0 ModRM(C3) <4 bytes> -- 7 bytes total
 (let ()
   (define tmpl (x86_64-asm '((movq (imm32 :x) %rbx))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "imm32 placeholder default"
            '(#x48 #xc7 #xc3 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:x ,<uint32> 1000)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<uint32> 1000)))
     (test* "imm32 placeholder filled"
            '(#x48 #xc7 #xc3 #xe8 #x03 #x00 #x00)
            (u8vector->list b))))
@@ -370,11 +370,11 @@
 ;; Encoding: B0 <1 byte> -- 2 bytes total
 (let ()
   (define tmpl (x86_64-asm '((movb (imm8 :n) %al))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "imm8 placeholder default"
            '(#xb0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:n ,<uint8> 42)))
+  (receive (b _) (link-templates (list tmpl)`((:n ,<uint8> 42)))
     (test* "imm8 placeholder filled"
            '(#xb0 #x2a)
            (u8vector->list b))))
@@ -384,7 +384,7 @@
   (define tmpl (x86_64-asm '((movq (imm64 :fn) %rax)
                              (movb (imm8  :nb) %cl)
                              (ret))))
-  (receive (b _) (link-template tmpl `((:fn ,<uint64> #xdeadbeef00112233)
+  (receive (b _) (link-templates (list tmpl)`((:fn ,<uint64> #xdeadbeef00112233)
                                        (:nb ,<uint8> 7)))
     (test* "multiple placeholders"
            (append '(#x48 #xb8 #x33 #x22 #x11 #x00 #xef #xbe #xad #xde)
@@ -392,7 +392,7 @@
                    '(#xc3))
            (u8vector->list b)))
   ;; Partial instantiation: only :fn supplied, :nb stays 0
-  (receive (b _) (link-template tmpl `((:fn ,<uint64> 1)))
+  (receive (b _) (link-templates (list tmpl)`((:fn ,<uint64> 1)))
     (test* "partial instantiation"
            (append '(#x48 #xb8 #x01 0 0 0 0 0 0 0)
                    '(#xb1 0)
@@ -406,7 +406,7 @@
                              (movq (imm64 :a) %rax)
                              (movb (imm8  :b) %cl)
                              (ret))))
-  (receive (b _) (link-template tmpl `((:a ,<uint64> #xcafebabe01234567)
+  (receive (b _) (link-templates (list tmpl)`((:a ,<uint64> #xcafebabe01234567)
                                        (:b ,<uint8> #xfe)))
     (test* "placeholders appear multiple times"
            (append '(#x48 #xb8 #x67 #x45 #x23 #x01 #xbe #xba #xfe #xca)
@@ -421,7 +421,7 @@
   (define tmpl (x86_64-asm '(start:
                              (movq (imm64 :ptr) %rax)
                              (ret))))
-  (receive (b labels) (link-template tmpl `((:ptr ,<uint64> #xff)))
+  (receive (b labels) (link-templates (list tmpl)`((:ptr ,<uint64> #xff)))
     (test* "placeholder with label bytes"
            '(#x48 #xb8 #xff 0 0 0 0 0 0 0 #xc3)
            (u8vector->list b))
@@ -434,11 +434,11 @@
 ;; .dataq placeholder: 8-byte hole
 (let ()
   (define tmpl (x86_64-asm '((.dataq :addr))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* ".dataq placeholder default"
            '(0 0 0 0 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:addr ,<uint64> #x0102030405060708)))
+  (receive (b _) (link-templates (list tmpl)`((:addr ,<uint64> #x0102030405060708)))
     (test* ".dataq placeholder filled"
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
@@ -446,7 +446,7 @@
 ;; .datal placeholder: 4-byte hole
 (let ()
   (define tmpl (x86_64-asm '((.datal :v))))
-  (receive (b _) (link-template tmpl `((:v ,<uint32> #xdeadbeef)))
+  (receive (b _) (link-templates (list tmpl)`((:v ,<uint32> #xdeadbeef)))
     (test* ".datal placeholder filled"
            '(#xef #xbe #xad #xde)
            (u8vector->list b))))
@@ -454,19 +454,19 @@
 ;; .datab placeholder: 1-byte hole
 (let ()
   (define tmpl (x86_64-asm '((.datab :b))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* ".datab placeholder default" '(0) (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:b ,<uint8> #xa5)))
+  (receive (b _) (link-templates (list tmpl)`((:b ,<uint8> #xa5)))
     (test* ".datab placeholder filled" '(#xa5) (u8vector->list b))))
 
 ;; .datal placeholder with <float>
 (let ()
   (define tmpl (x86_64-asm '((.datal :x))))
-  (receive (b _) (link-template tmpl `((:x ,<float> 1.0)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<float> 1.0)))
     (test* ".datal <float> 1.0"
            '(#x00 #x00 #x80 #x3f)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:x ,<float> -2.5)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<float> -2.5)))
     (test* ".datal <float> -2.5"
            '(#x00 #x00 #x20 #xc0)
            (u8vector->list b))))
@@ -474,19 +474,19 @@
 ;; .dataq placeholder with <float> and <double>
 (let ()
   (define tmpl (x86_64-asm '((.dataq :x))))
-  (receive (b _) (link-template tmpl `((:x ,<float> 1.0)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<float> 1.0)))
     (test* ".datal <float> 1.0"
            '(#x00 #x00 #x80 #x3f 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:x ,<float> -2.5)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<float> -2.5)))
     (test* ".datal <float> -2.5"
            '(#x00 #x00 #x20 #xc0 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:x ,<double> 1.0)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<double> 1.0)))
     (test* ".dataq <double> 1.0"
            '(#x00 #x00 #x00 #x00 #x00 #x00 #xf0 #x3f)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:x ,<double> 3.14)))
+  (receive (b _) (link-templates (list tmpl)`((:x ,<double> 3.14)))
     (test* ".dataq <double> 3.14"
            '(#x1f #x85 #xeb #x51 #xb8 #x1e #x09 #x40)
            (u8vector->list b))))
@@ -494,7 +494,7 @@
 ;; Mix: placeholder data following a real instruction
 (let ()
   (define tmpl (x86_64-asm '((ret) (.datal :v))))
-  (receive (b _) (link-template tmpl `((:v ,<uint32> #xdeadbeef)))
+  (receive (b _) (link-templates (list tmpl)`((:v ,<uint32> #xdeadbeef)))
     (test* ".datal placeholder after ret"
            '(#xc3 #xef #xbe #xad #xde)
            (u8vector->list b))))
@@ -504,7 +504,7 @@
   (define tmpl (x86_64-asm '((.dataq :fn-ptr)
                              (movq (imm64 :fn-ptr) %rax)
                              (ret))))
-  (receive (b _) (link-template tmpl `((:fn-ptr ,<uint64> #x0102030405060708)))
+  (receive (b _) (link-templates (list tmpl)`((:fn-ptr ,<uint64> #x0102030405060708)))
     (test* "data and imm64 placeholder same keyword"
            (append '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; .dataq
                    '(#x48 #xb8 #x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01) ; movq
@@ -514,7 +514,7 @@
 ;; Existing literal data forms still work unchanged
 (let ()
   (define tmpl (x86_64-asm '((.dataq (imm64 #x0102030405060708)))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* ".dataq literal unchanged"
            '(#x08 #x07 #x06 #x05 #x04 #x03 #x02 #x01)
            (u8vector->list b))))
@@ -523,18 +523,18 @@
 
 ;; :postamble 0: no change to output size.
 (let ([tmpl (x86_64-asm '((ret)))])
-  (receive (b _) (link-template tmpl '() :postamble 0)
-    (test* "link-template :postamble 0"
+  (receive (b _) (link-templates (list tmpl)'() :postamble 0)
+    (test* "link-templates :postamble 0"
            '(#xc3)
            (u8vector->list b))))
 
 ;; :postamble 8: eight zero bytes appended after the linked bytes.
 (let ([tmpl (x86_64-asm '((ret)))])
-  (receive (b _) (link-template tmpl '() :postamble 8)
-    (test* "link-template :postamble 8 size"
+  (receive (b _) (link-templates (list tmpl)'() :postamble 8)
+    (test* "link-templates :postamble 8 size"
            9
            (uvector-size b))
-    (test* "link-template :postamble 8 content"
+    (test* "link-templates :postamble 8 content"
            '(#xc3 0 0 0 0 0 0 0 0)
            (u8vector->list b))))
 
@@ -542,18 +542,18 @@
 ;; Template: (.dataq :anchor) at offset 0 (8 bytes); postamble adds 8 more.
 ;; Offset 8 from :anchor reaches into the postamble.
 (let ([tmpl (x86_64-asm '((.dataq :anchor)))])
-  (receive (b _) (link-template tmpl `((:anchor ,<uint64> #xfeedface00000000 0)
+  (receive (b _) (link-templates (list tmpl)`((:anchor ,<uint64> #xfeedface00000000 0)
                                        (:anchor ,<uint32> #xdeadbeef         8))
                                 :postamble 8)
-    (test* "link-template :postamble filled via offset form"
+    (test* "link-templates :postamble filled via offset form"
            (append '(#x00 #x00 #x00 #x00 #xce #xfa #xed #xfe)
                    '(#xef #xbe #xad #xde 0 0 0 0))
            (u8vector->list b))))
 
 ;; labels are unchanged regardless of :postamble.
 (let ([tmpl (x86_64-asm '(entry: (ret)))])
-  (receive (_ labels) (link-template tmpl '() :postamble 4)
-    (test* "link-template :postamble labels unchanged"
+  (receive (_ labels) (link-templates (list tmpl)'() :postamble 4)
+    (test* "link-templates :postamble labels unchanged"
            '((entry: . 0))
            labels)))
 
@@ -564,17 +564,17 @@
               (list (make-obj-fragment (make-u8vector 16 0) '() '((:base 0 8)) 'text))
               'little-endian)])
   ;; extra-offset 0: fills at the patch's own offset (same as scalar form)
-  (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 0)))
+  (receive (b _) (link-templates (list tmpl)`((:base ,<uint32> #x01020304 0)))
     (test* "offset form extra=0"
            '(#x04 #x03 #x02 #x01 0 0 0 0 0 0 0 0 0 0 0 0)
            (u8vector->list b)))
   ;; extra-offset 4: fills 4 bytes starting at offset 4
-  (receive (b _) (link-template tmpl `((:base ,<uint32> #x01020304 4)))
+  (receive (b _) (link-templates (list tmpl)`((:base ,<uint32> #x01020304 4)))
     (test* "offset form extra=4"
            '(0 0 0 0 #x04 #x03 #x02 #x01 0 0 0 0 0 0 0 0)
            (u8vector->list b)))
   ;; two offset params referencing the same keyword
-  (receive (b _) (link-template tmpl `((:base ,<uint32> #xdeadbeef 0)
+  (receive (b _) (link-templates (list tmpl)`((:base ,<uint32> #xdeadbeef 0)
                                        (:base ,<uint32> #x12345678 8)))
     (test* "offset form two fills from same base"
            '(#xef #xbe #xad #xde 0 0 0 0 #x78 #x56 #x34 #x12 0 0 0 0)
@@ -583,7 +583,7 @@
   (test* "offset form out-of-bounds error"
          (test-error)
          (receive (b _)
-           (link-template tmpl `((:base ,<uint32> 0 16)))
+           (link-templates (list tmpl)`((:base ,<uint32> 0 16)))
            b)))
 
 ;; --- c-array parameter ---
@@ -592,23 +592,23 @@
       [tmpl (make-obj-template
              (list (make-obj-fragment (make-u8vector 12 0) '() '((:data 0 0)) 'text))
              'little-endian)])
-  (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30))))
+  (receive (b _) (link-templates (list tmpl)`((:data ,(make-array-type <uint8> '(4)) (10 20 30))))
     (test* "c-array <uint8>"
            '(10 20 30 0 0 0 0 0 0 0 0 0)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl `((:data ,(make-array-type <int32> '(3)) (1 2 3))))
+  (receive (b _) (link-templates (list tmpl)`((:data ,(make-array-type <int32> '(3)) (1 2 3))))
     (test* "c-array <int32>"
            '(1 0 0 0 2 0 0 0 3 0 0 0)
            (u8vector->list b)))
   ;; c-array with extra-offset: fill starting at base + 4
-  (receive (b _) (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) (10 20 30) 4)))
+  (receive (b _) (link-templates (list tmpl)`((:data ,(make-array-type <uint8> '(4)) (10 20 30) 4)))
     (test* "c-array <uint8> with extra-offset"
            '(0 0 0 0 10 20 30 0 0 0 0 0)
            (u8vector->list b)))
   (test* "c-array non-list error"
          (test-error)
          (receive (b _)
-           (link-template tmpl `((:data ,(make-array-type <uint8> '(4)) not-a-list)))
+           (link-templates (list tmpl)`((:data ,(make-array-type <uint8> '(4)) not-a-list)))
            b)))
 
 ;; --- movs_ instruction-variant placeholder ---
@@ -619,22 +619,22 @@
 (let ()
   (define tmpl (x86_64-asm '(((movs_ :op) %xmm0 %xmm1))))
   ;; Default is movsd
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "movs_ sse->sse default (movsd)"
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Explicit movsd
-  (receive (b _) (link-template tmpl '((:op #f movsd)))
+  (receive (b _) (link-templates (list tmpl)'((:op #f movsd)))
     (test* "movs_ sse->sse explicit movsd"
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Switch to movss
-  (receive (b _) (link-template tmpl '((:op #f movss)))
+  (receive (b _) (link-templates (list tmpl)'((:op #f movss)))
     (test* "movs_ sse->sse switched to movss"
            '(#xf3 #x0f #x10 #xc9)
            (u8vector->list b)))
   ;; Re-instantiate as movsd again (template not mutated)
-  (receive (b _) (link-template tmpl '((:op #f movsd)))
+  (receive (b _) (link-templates (list tmpl)'((:op #f movsd)))
     (test* "movs_ sse->sse back to movsd"
            '(#xf2 #x0f #x10 #xc9)
            (u8vector->list b))))
@@ -644,11 +644,11 @@
 ;; ModRM: mod=0, reg=1(xmm1/dst), r/m=0(%rax) -> 0b00_001_000 = #x08
 (let ()
   (define tmpl (x86_64-asm '(((movs_ :op) (%rax) %xmm1))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "movs_ mem->sse default (movsd)"
            '(#xf2 #x0f #x10 #x08)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl '((:op #f movss)))
+  (receive (b _) (link-templates (list tmpl)'((:op #f movss)))
     (test* "movs_ mem->sse switched to movss"
            '(#xf3 #x0f #x10 #x08)
            (u8vector->list b))))
@@ -658,11 +658,11 @@
 ;; ModRM: mod=0, reg=0(xmm0/src), r/m=0(%rax) -> #x00
 (let ()
   (define tmpl (x86_64-asm '(((movs_ :op) %xmm0 (%rax)))))
-  (receive (b _) (link-template tmpl '())
+  (receive (b _) (link-templates (list tmpl)'())
     (test* "movs_ sse->mem default (movsd)"
            '(#xf2 #x0f #x11 #x00)
            (u8vector->list b)))
-  (receive (b _) (link-template tmpl '((:op #f movss)))
+  (receive (b _) (link-templates (list tmpl)'((:op #f movss)))
     (test* "movs_ sse->mem switched to movss"
            '(#xf3 #x0f #x11 #x00)
            (u8vector->list b))))
@@ -672,7 +672,7 @@
   (define tmpl (x86_64-asm '((.dataq :fn-ptr)
                              ((movs_ :variant) (%rax) %xmm0)
                              (ret))))
-  (receive (b _) (link-template tmpl `((:fn-ptr ,<uint64> #xdeadbeef) (:variant #f movss)))
+  (receive (b _) (link-templates (list tmpl)`((:fn-ptr ,<uint64> #xdeadbeef) (:variant #f movss)))
     (test* "movs_ combined with .dataq placeholder"
            (append '(#xef #xbe #xad #xde 0 0 0 0) ; .dataq :fn-ptr
                    '(#xf3 #x0f #x10 #x00)          ; movss (%rax),%xmm0
@@ -747,14 +747,6 @@
            '(1 2 3 4 3 2 1)
            (u8vector->list bytes))))
 
-;; --- link-template still works as a single-template wrapper ---
-
-(let* ([tmpl (x86_64-asm '(entry: (movq %rax %rcx) (ret)))])
-  (receive (b1 lbs1) (link-template  tmpl '())
-    (receive (b2 lbs2) (link-templates (list tmpl) '())
-      (test* "link-template wrapper: bytes match"  (u8vector->list b1) (u8vector->list b2))
-      (test* "link-template wrapper: labels match" lbs1 lbs2))))
-
 ;; --- Mismatched endianness error ---
 
 (let* ([t1 (make-obj-template (list (make-obj-fragment #u8(1) '() '() 'text)) 'little-endian)]
@@ -806,7 +798,7 @@
   ;; patch offset within data fragment should be 0
   (test* ".section data patch offset" 0 (cadr dpatch))
   ;; applying the param should fill the data word; text(3) + data(8) = 11 bytes
-  (receive (bytes _) (link-template tmpl `((:myval ,<uint64> #xcafebabe)))
+  (receive (bytes _) (link-templates (list tmpl)`((:myval ,<uint64> #xcafebabe)))
     (test* ".section data param fill"
            '(#x48 #x89 #xf8 #xbe #xba #xfe #xca 0 0 0 0)
            (u8vector->list bytes))))
@@ -849,7 +841,7 @@
                            (.dataq (imm64 0))
                            data-target:
                            (.dataq (imm64 0))))])
-  (receive (bytes _) (link-template tmpl '())
+  (receive (bytes _) (link-templates (list tmpl)'())
     (test* "label-rel resolved: full bytes"
            (append '(#xc3 #xe9 #x0a #x00 #x00 #x00)  ; text: ret + jmpl disp=8+2
                    '(#x00 #x00)                      ; alignment padding

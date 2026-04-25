@@ -42,7 +42,7 @@
   (use util.match)
   (export <obj-fragment> make-obj-fragment obj-fragment?
           <obj-template> make-obj-template obj-template?
-          link-template link-templates
+          link-templates
           serialize-obj-template dump-obj-template deserialize-obj-template
           ))
 (select-module lang.asm.linker)
@@ -98,7 +98,7 @@
 ;;   of exactly SIZE bytes, without requiring an FFI native-type object.
 (define (fill-native-value! bytes offset size type value endian)
   (define (bad)
-    (error "Unsupported type to use in link-template:" type))
+    (error "Unsupported type to use in link-templates:" type))
   (cond
    [(eq? type <integer>)
     (case size
@@ -297,11 +297,6 @@
                                         (~ frag 'patches)))))
                   (floop (cdr fs) off
                          sec-blist sec-labels sec-patches))))))))))
-
-;; link-template :: <obj-template>, params :key postamble -> u8vector, alist
-;;   Single-template convenience wrapper around link-templates.
-(define (link-template tmpl params :key (postamble 0))
-  (link-templates (list tmpl) params :postamble postamble))
 
 ;; serialize-obj-template :: <obj-template> -> list
 ;;  Convert an obj-template to a nested keyword-value list for serialization.

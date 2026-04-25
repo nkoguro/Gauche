@@ -147,7 +147,7 @@
                               num-spills rettype)))))
    :port port)
 
-  ;; call-amd64-regs: uses link-template to apply all named patches; passes
+  ;; call-amd64-regs: uses link-templates to apply all named patches; passes
   ;; the fully-patched bytes to %%call-native with an empty patcher list.
   (pprint
    `(define call-amd64-regs
@@ -156,8 +156,8 @@
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *amd64-call-reg-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
-            (receive (_ lbs) (lnk t '())
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
+            (receive (_ lbs) (lnk (list t) '())
               (set! tmpl t)
               (set! link-tmpl lnk)
               (set! entry-offsets
@@ -195,14 +195,14 @@
                                      (cons `(,fkey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
             (receive [bytes _]
-                (link-tmpl tmpl
+                (link-tmpl (list tmpl)
                            `((:func ,<void*> ,ptr)
                              (:num-fargs ,<uint8> ,num-fargs)
                              ,@params))
               (%%call-native 0 0 bytes 0 end-addr entry rettype 0 0))))))
    :port port)
 
-  ;; call-amd64-spill: named patches handled by link-template; only raw
+  ;; call-amd64-spill: named patches handled by link-templates; only raw
   ;; spill-slot offsets remain in the %%call-native patcher list.
   (pprint
    `(define call-amd64-spill
@@ -211,8 +211,8 @@
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *amd64-call-spill-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
-            (receive (_ lbs) (lnk t '())
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
+            (receive (_ lbs) (lnk (list t) '())
               (set! tmpl t)
               (set! link-tmpl lnk)
               (set! entry-offsets
@@ -233,7 +233,7 @@
                 (let* ([align-pad (if (even? num-spills) 8 0)]
                        [spill-area-bytes (* 8 num-spills)])
                   (receive [bytes _]
-                      (link-tmpl tmpl
+                      (link-tmpl (list tmpl)
                                  `((:func ,<void*> ,ptr)
                                    (:num-fargs ,<uint8> ,num-fargs)
                                    (:init-spill-size
@@ -387,8 +387,8 @@
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *winx64-call-reg-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
-            (receive (_ lbs) (lnk t '())
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
+            (receive (_ lbs) (lnk (list t) '())
               (set! tmpl t)
               (set! link-tmpl lnk)
               (set! entry-offsets
@@ -432,7 +432,7 @@
                                             `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
             (receive [bytes _]
-                (link-tmpl tmpl
+                (link-tmpl (list tmpl)
                            (list* `(:func ,<void*> ,ptr)
                                   params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
@@ -448,8 +448,8 @@
         (define (init!)
           (let* ([t   ((module-binding-ref 'lang.asm.linker 'deserialize-obj-template)
                        *winx64-call-spill-tmpl*)]
-                 [lnk (module-binding-ref 'lang.asm.linker 'link-template)])
-            (receive (_ lbs) (lnk t '())
+                 [lnk (module-binding-ref 'lang.asm.linker 'link-templates)])
+            (receive (_ lbs) (lnk (list t) '())
               (set! tmpl t)
               (set! link-tmpl lnk)
               (set! entry-addr (cdr (assq 'entry: lbs)))
@@ -463,7 +463,7 @@
               (let* ([align-pad (if (even? num-spills) 8 0)]
                      [spill-area-bytes (* 8 num-spills)])
                 (receive [bytes _]
-                    (link-tmpl tmpl
+                    (link-tmpl (list tmpl)
                                `((:func ,<void*> ,ptr)
                                  (:init-spill-size
                                   ,<int32>
