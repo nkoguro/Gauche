@@ -937,8 +937,12 @@
     ;; 'c-' prefix.  This will go after 0.9.16 release.
     (define name-sans-c ($ string->symbol
                            $ regexp-replace #/^<c-/ (symbol->string name) "<"))
+    (define cvar-str (symbol->string cvar))
+    (define priv-str (string-append cvar-str "_"))
+    (define priv-sym (string->symbol priv-str))
 
-    (cgen-decl #"ScmObj ~(symbol->string cvar);")
+    (cgen-decl #"static ScmObj ~priv-str;")
+    (cgen-decl #"ScmObj ~cvar-str(void) { return ~priv-str; }")
     (cgen-decl
      (cise-render-to-string
       `(define-cfn ,c-of-type-name (_::ScmNativeType* obj) ::int :static
@@ -969,7 +973,7 @@
                                  ,(x->string box)
                                  ,(x->string unbox)
                                  ,unsignedp)])
-       (set! ,cvar z)
+       (set! ,priv-sym z)
        (Scm_HashTableSet (SCM_HASH_TABLE builtin-native-types)
                          ',ctype (SCM_OBJ z) 0)
        (Scm_MakeBinding (Scm_GaucheModule)
@@ -987,9 +991,11 @@
  (define-cfn native_voidP (_::ScmNativeType* obj) ::int :static
    (return (SCM_UNDEFINEDP obj)))
 
- ;; Singleton of those types
- (define-cvar Scm_NativeVoidType)
- (define-cvar Scm_NativeVoidPointerType)
+ ;; Singleton of those types (static private vars + public accessor functions)
+ (define-cvar Scm_NativeVoidType_ ::ScmObj :static)
+ (define-cfn Scm_NativeVoidType () ::ScmObj (return Scm_NativeVoidType_))
+ (define-cvar Scm_NativeVoidPointerType_ ::ScmObj :static)
+ (define-cfn Scm_NativeVoidPointerType () ::ScmObj (return Scm_NativeVoidPointerType_))
 
  (initcode
   (define-native-type <fixnum>  Scm_NativeFixnumType  SCM_CLASS_INTEGER ScmSmallInt
@@ -1055,7 +1061,7 @@
   (let* ([z (make_native_type "<void>" (SCM_OBJ SCM_CLASS_TOP) "void"
                               0 1 native_voidP NULL NULL
                               "" "SCM_VOID_RETURN_VALUE" "" FALSE)])
-    (set! Scm_NativeVoidType z)
+    (set! Scm_NativeVoidType_ z)
     (Scm_HashTableSet (SCM_HASH_TABLE builtin-native-types)
                       'void z 0)
     (Scm_MakeBinding (Scm_GaucheModule) (SCM_SYMBOL '<void>) z
@@ -1181,7 +1187,7 @@
  (define-cfn native_handle_typeP (t::ScmNativeType* obj) ::int :static
    (unless (SCM_NATIVE_HANDLE_P obj) (return FALSE))
    (when (Scm_NativeTypeEqualP (-> (SCM_NATIVE_HANDLE obj) type)
-                               (SCM_NATIVE_TYPE Scm_NativeVoidPointerType))
+                               (SCM_NATIVE_TYPE (Scm_NativeVoidPointerType)))
      ;; void* pointer can be used in any pointer context; it's caller's
      ;; responsibility.
      (return TRUE))                     ;
@@ -1236,8 +1242,8 @@
   ;; Special treatment of void*; it's convenient to have it as a singleton.
   ;; TODO: We can make single-level indiration all singletons by caching it,
   ;; for thye appeare frequently.
-  (if (SCM_EQ pointee-type Scm_NativeVoidType)
-    (return Scm_NativeVoidPointerType)
+  (if (SCM_EQ pointee-type (Scm_NativeVoidType))
+    (return (Scm_NativeVoidPointerType))
     (return (%make-c-pointer-type-fn pointer-type-name pointee-type))))
 
 (define (make-c-pointer-type pointee-type)
@@ -1273,10 +1279,10 @@
 
 (inline-stub
  (initcode
-  (set! Scm_NativeVoidPointerType
-        (%make-c-pointer-type-fn "void*" Scm_NativeVoidType))
+  (set! Scm_NativeVoidPointerType_
+        (%make-c-pointer-type-fn "void*" Scm_NativeVoidType_))
   (Scm_MakeBinding (Scm_GaucheModule) (SCM_SYMBOL '<void*>)
-                   Scm_NativeVoidPointerType
+                   (Scm_NativeVoidPointerType)
                    SCM_BINDING_INLINABLE)))
 
 ;; Argument-types are list of native types, optionally end with

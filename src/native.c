@@ -289,19 +289,19 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
          * Call the code
          */
         void *entryPtr = get_entry_address(vm->codeCache, codepad + entry);
-        if (SCM_EQ(rettype, Scm_NativeDoubleType)) {
+        if (SCM_EQ(rettype, Scm_NativeDoubleType())) {
             double r = ((double (*)())entryPtr)();
             result = Scm_VMReturnFlonum(r);
-        } else if (SCM_EQ(rettype, Scm_NativeFloatType)) {
+        } else if (SCM_EQ(rettype, Scm_NativeFloatType())) {
             float r = ((float (*)())entryPtr)();
             result = Scm_VMReturnFlonum((double)r);
-        } else if (SCM_EQ(rettype, Scm_NativeCStringType)) {
+        } else if (SCM_EQ(rettype, Scm_NativeCStringType())) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = SCM_MAKE_STR_COPYING((const char*)r);
-        } else if (SCM_EQ(rettype, Scm_NativeIntptrtType)) {
+        } else if (SCM_EQ(rettype, Scm_NativeIntptrtType())) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = Scm_IntptrToInteger(r);
-        } else if (SCM_EQ(rettype, Scm_NativeUint8Type)) {
+        } else if (SCM_EQ(rettype, Scm_NativeUint8Type())) {
             uint8_t r = ((uint8_t (*)())entryPtr)();
             result = SCM_MAKE_INT(r);
         } else if (SCM_C_POINTER_P(rettype) || SCM_C_ARRAY_P(rettype)) {
@@ -310,7 +310,7 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
         } else if (SCM_EQ(rettype, SCM_OBJ(SCM_CLASS_TOP))) {
             intptr_t r = ((intptr_t (*)())entryPtr)();
             result = SCM_OBJ(r);      /* trust the caller */
-        } else if (SCM_EQ(rettype, Scm_NativeVoidType)) {
+        } else if (SCM_EQ(rettype, Scm_NativeVoidType())) {
             ((void (*)())entryPtr)();
         } else {
             Scm_Error("unknown return type: %S", rettype);

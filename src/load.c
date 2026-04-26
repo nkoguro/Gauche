@@ -635,7 +635,7 @@ static ScmObj load_dlo(ScmDLObj *dlo)
    to release the lock even when this fn throws an error. */
 static void call_initfn(ScmDLObj *dlo, ScmString *name)
 {
-    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType);
+    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType());
     ScmObj handle = lookup_entry(dlo, name, voidptr);
 
     if (!SCM_NATIVE_HANDLE_P(handle)) {
@@ -697,7 +697,7 @@ void Scm_RegisterPrelinked(ScmString *dsoname,
     ScmDLObj *dlo = find_dlobj(SCM_STRING(path));
     dlo->state = DLOBJ_LOADED;
 
-    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType);
+    ScmNativeType *voidptr = SCM_NATIVE_TYPE(Scm_NativeVoidPointerType());
     (void)SCM_INTERNAL_MUTEX_LOCK(ldinfo.dso_mutex);
     for (int i=0; initfns[i] && initfn_names[i]; i++) {
         add_entry(dlo, SCM_STRING(SCM_MAKE_STR_IMMUTABLE(initfn_names[i])),
@@ -885,7 +885,7 @@ ScmObj Scm_DLObjs()
    Returns a <native-handle> or #f. */
 ScmObj Scm_DLOGetEntryAddress(ScmDLObj *dlo, ScmString *name, ScmObj type)
 {
-    if (SCM_FALSEP(type)) type = Scm_NativeVoidPointerType;
+    if (SCM_FALSEP(type)) type = Scm_NativeVoidPointerType();
     else if (!SCM_NATIVE_TYPE_P(type)) {
         SCM_TYPE_ERROR(type, "native-type or #f");
     }

@@ -127,7 +127,7 @@
 
 (define-cproc null-pointer-handle (:optional (type::<native-type>? #f))
   (let* ([t::ScmNativeType*
-          (?: type type (SCM_NATIVE_TYPE Scm_NativeVoidPointerType))])
+          (?: type type (SCM_NATIVE_TYPE (Scm_NativeVoidPointerType)))])
     (return
      (Scm__MakeNativeHandle NULL
                             t

@@ -77,35 +77,35 @@ SCM_EXTERN int Scm_NativeTypeEqualP(ScmNativeType *a, ScmNativeType *b);
 SCM_EXTERN int Scm_NativeTypeIntegralP(ScmNativeType *np);
 SCM_EXTERN int Scm_NativeTypeUnsignedP(ScmNativeType *np);
 
-/* Primitive native type singletons, set up during initialization */
-SCM_EXTERN ScmObj Scm_NativeFixnumType;
-SCM_EXTERN ScmObj Scm_NativeUfixnumType;
-SCM_EXTERN ScmObj Scm_NativeShortType;
-SCM_EXTERN ScmObj Scm_NativeUshortType;
-SCM_EXTERN ScmObj Scm_NativeIntType;
-SCM_EXTERN ScmObj Scm_NativeUintType;
-SCM_EXTERN ScmObj Scm_NativeLongType;
-SCM_EXTERN ScmObj Scm_NativeUlongType;
-SCM_EXTERN ScmObj Scm_NativeInt8Type;
-SCM_EXTERN ScmObj Scm_NativeUint8Type;
-SCM_EXTERN ScmObj Scm_NativeInt16Type;
-SCM_EXTERN ScmObj Scm_NativeUint16Type;
-SCM_EXTERN ScmObj Scm_NativeInt32Type;
-SCM_EXTERN ScmObj Scm_NativeUint32Type;
-SCM_EXTERN ScmObj Scm_NativeInt64Type;
-SCM_EXTERN ScmObj Scm_NativeUint64Type;
-SCM_EXTERN ScmObj Scm_NativeSizetType;
-SCM_EXTERN ScmObj Scm_NativeSsizetType;
-SCM_EXTERN ScmObj Scm_NativePtrdifftType;
-SCM_EXTERN ScmObj Scm_NativeOfftType;
-SCM_EXTERN ScmObj Scm_NativeIntptrtType;
-SCM_EXTERN ScmObj Scm_NativeUintptrtType;
-SCM_EXTERN ScmObj Scm_NativeFloatType;
-SCM_EXTERN ScmObj Scm_NativeDoubleType;
-SCM_EXTERN ScmObj Scm_NativeCCharType;
-SCM_EXTERN ScmObj Scm_NativeCStringType;
-SCM_EXTERN ScmObj Scm_NativeVoidType;
-SCM_EXTERN ScmObj Scm_NativeVoidPointerType;
+/* Primitive native type singletons, accessed via functions (DLL-safe) */
+SCM_EXTERN ScmObj Scm_NativeFixnumType(void);
+SCM_EXTERN ScmObj Scm_NativeUfixnumType(void);
+SCM_EXTERN ScmObj Scm_NativeShortType(void);
+SCM_EXTERN ScmObj Scm_NativeUshortType(void);
+SCM_EXTERN ScmObj Scm_NativeIntType(void);
+SCM_EXTERN ScmObj Scm_NativeUintType(void);
+SCM_EXTERN ScmObj Scm_NativeLongType(void);
+SCM_EXTERN ScmObj Scm_NativeUlongType(void);
+SCM_EXTERN ScmObj Scm_NativeInt8Type(void);
+SCM_EXTERN ScmObj Scm_NativeUint8Type(void);
+SCM_EXTERN ScmObj Scm_NativeInt16Type(void);
+SCM_EXTERN ScmObj Scm_NativeUint16Type(void);
+SCM_EXTERN ScmObj Scm_NativeInt32Type(void);
+SCM_EXTERN ScmObj Scm_NativeUint32Type(void);
+SCM_EXTERN ScmObj Scm_NativeInt64Type(void);
+SCM_EXTERN ScmObj Scm_NativeUint64Type(void);
+SCM_EXTERN ScmObj Scm_NativeSizetType(void);
+SCM_EXTERN ScmObj Scm_NativeSsizetType(void);
+SCM_EXTERN ScmObj Scm_NativePtrdifftType(void);
+SCM_EXTERN ScmObj Scm_NativeOfftType(void);
+SCM_EXTERN ScmObj Scm_NativeIntptrtType(void);
+SCM_EXTERN ScmObj Scm_NativeUintptrtType(void);
+SCM_EXTERN ScmObj Scm_NativeFloatType(void);
+SCM_EXTERN ScmObj Scm_NativeDoubleType(void);
+SCM_EXTERN ScmObj Scm_NativeCCharType(void);
+SCM_EXTERN ScmObj Scm_NativeCStringType(void);
+SCM_EXTERN ScmObj Scm_NativeVoidType(void);
+SCM_EXTERN ScmObj Scm_NativeVoidPointerType(void);
 
 /* <native-pointer> - a pointer to another native type */
 typedef struct ScmCPointerRec {

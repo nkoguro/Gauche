@@ -75,7 +75,7 @@
        (cond
         [(SCM_EQ type (SCM_OBJ SCM_CLASS_TOP))
          (set! ptr-val (cast intptr_t obj))]
-        [(SCM_EQ type Scm_NativeCStringType)
+        [(SCM_EQ type (Scm_NativeCStringType))
          (unless (SCM_STRINGP obj)
            (Scm_Error "%%native-ptr-fill!: string required for <c-string>, \
                        but got: %S" obj))
