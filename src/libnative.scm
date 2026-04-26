@@ -50,7 +50,8 @@
            "gauche/priv/typeP.h"
            "gauche/vminsn.h")
 
- ;; For FFI
+ ;; This procedure is accessible via gauche.libtype#native-ptr-fill!,
+ ;; with dynamic scope restriction to prevent misuse.
  (define-cproc %%native-ptr-fill! (target::<u8vector>
                                    tstart::<fixnum>
                                    size::<fixnum>

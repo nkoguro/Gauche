@@ -68,7 +68,7 @@
       entry4:     (movq (imm64 :iarg3) %rcx)
       entry3:     (movq (imm64 :iarg2) %rdx)
       init:       (movq (imm32 :init-spill-size) %rax)
-                  (leaq (spill: %rip) %rsi)
+                  (leaq (spill:) %rsi)
                   (subq (imm8 :align-pad) %rsp)
       loop:       (movq (%rsi) %rdi)
                   (push %rdi)
@@ -79,8 +79,7 @@
       entry1:     (movq (imm64 :iarg0) %rdi)
       entry0:     (movb (imm8 :num-fargs) %al)
                   (call (func:))
-      epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
-                  (ret)
+                  ;; Epilog code follows
                   (.section data)
       func:       (.dataq :func)
       farg0:      (.dataq :farg0)
@@ -94,6 +93,13 @@
       spill:      (.dataq :spill)))
   (define spill-tmpl (x86_64-asm spill-src))
 
+  (define epilog-src
+    '(            (.section epilog)
+      epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
+                  (ret)))
+  (define epilog-tmpl (x86_64-asm epilog-src))
+
+
   (display ";; Register-only calling\n" port)
   (display "#|\n" port)
   (with-output-to-port port (cut x86_64-dump reg-src))
@@ -102,9 +108,14 @@
 
   (display ";; Spill-to-stack case\n" port)
   (display "#|\n" port)
-  (with-output-to-port port (cut x86_64-dump spill-src))
+  (with-output-to-port port
+    (^[]
+      (x86_64-dump spill-src)
+      (print)
+      (x86_64-dump epilog-src)))
   (display "|#\n" port)
   (dump-obj-template spill-tmpl '*amd64-call-spill-tmpl* port)
+  (dump-obj-template epilog-tmpl '*amd64-call-epilog-tmpl* port)
 
   (pprint
    `(define (%iarg-type? t)
@@ -210,15 +221,18 @@
   (pprint
    `(define call-amd64-spill
       (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [tmpl #f] [link-tmpl #f] [lbl-off #f])
+            [tmpl1 #f] [tmpl2 #f] [link-tmpl #f] [lbl-off #f])
         (define (init!)
-          (set! tmpl ((module-binding-ref 'lang.asm.linker
-                                          'deserialize-obj-template)
-                      *amd64-call-spill-tmpl*))
+          (set! tmpl1 ((module-binding-ref 'lang.asm.linker
+                                           'deserialize-obj-template)
+                       *amd64-call-spill-tmpl*))
+          (set! tmpl2 ((module-binding-ref 'lang.asm.linker
+                                           'deserialize-obj-template)
+                       *amd64-call-epilog-tmpl*))
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
           (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-iargs num-fargs num-spills rettype]
-          (when (not tmpl) (init!))
+          (when (not tmpl1) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
@@ -233,7 +247,7 @@
                 (let* ([align-pad (if (even? num-spills) 8 0)]
                        [spill-area-bytes (* 8 num-spills)])
                   (receive [bytes lbs]
-                      (link-tmpl (list tmpl)
+                      (link-tmpl (list tmpl1 tmpl2)
                                  `((:func ,<void*> ,ptr)
                                    (:num-fargs ,<uint8> ,num-fargs)
                                    (:init-spill-size
