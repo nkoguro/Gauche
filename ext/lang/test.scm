@@ -194,6 +194,32 @@
 ;; incq mem: REX.W FF /0 with memory operand
 (t-asm "incq (%rdi)" '((incq (%rdi))) '(#x48 #xff #x07) '())
 
+;; --- FP conversion ---
+
+;; cvtss2sd xmm->xmm: F3 0F 5A /r  ModRM(11 dst src)
+(t-asm "cvtss2sd %xmm0,%xmm1" '((cvtss2sd %xmm0 %xmm1)) '(#xf3 #x0f #x5a #xc8) '())
+(t-asm "cvtss2sd %xmm2,%xmm0" '((cvtss2sd %xmm2 %xmm0)) '(#xf3 #x0f #x5a #xc2) '())
+
+;; cvtss2sd mem->xmm: F3 0F 5A /r  ModRM(00 dst 100) SIB(00 100 101) disp32
+(t-asm "cvtss2sd (%rax),%xmm0"
+       '((cvtss2sd (%rax) %xmm0))
+       '(#xf3 #x0f #x5a #x00) '())
+(t-asm "cvtss2sd (#x1000),%xmm0"
+       '((cvtss2sd (#x1000) %xmm0))
+       '(#xf3 #x0f #x5a #x04 #x25 #x00 #x10 #x00 #x00) '())
+
+;; cvtsd2ss xmm->xmm: F2 0F 5A /r  ModRM(11 dst src)
+(t-asm "cvtsd2ss %xmm0,%xmm1" '((cvtsd2ss %xmm0 %xmm1)) '(#xf2 #x0f #x5a #xc8) '())
+(t-asm "cvtsd2ss %xmm3,%xmm2" '((cvtsd2ss %xmm3 %xmm2)) '(#xf2 #x0f #x5a #xd3) '())
+
+;; cvtsd2ss mem->xmm: F2 0F 5A /r
+(t-asm "cvtsd2ss (%rax),%xmm1"
+       '((cvtsd2ss (%rax) %xmm1))
+       '(#xf2 #x0f #x5a #x08) '())
+(t-asm "cvtsd2ss (#x2000),%xmm1"
+       '((cvtsd2ss (#x2000) %xmm1))
+       '(#xf2 #x0f #x5a #x0c #x25 #x00 #x20 #x00 #x00) '())
+
 ;; --- Embedded data directives ---
 
 ;; .datab: emit raw bytes

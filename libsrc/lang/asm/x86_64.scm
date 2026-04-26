@@ -390,6 +390,12 @@
     [('incq _)                     (op-inc pinsn 0)]
     [('decq _)                     (op-inc pinsn 1)]
 
+    ;; FP conversion
+    [`(cvtss2sd (sse ,src) (sse ,dst)) (! (opc '(#xf3 #x0f #x5a)) (reg dst) (r/m-reg src))]
+    [`(cvtss2sd (mem . ,v) (sse ,dst)) (! (opc '(#xf3 #x0f #x5a)) (reg dst) (mem v))]
+    [`(cvtsd2ss (sse ,src) (sse ,dst)) (! (opc '(#xf2 #x0f #x5a)) (reg dst) (r/m-reg src))]
+    [`(cvtsd2ss (mem . ,v) (sse ,dst)) (! (opc '(#xf2 #x0f #x5a)) (reg dst) (mem v))]
+
     ;; embedded data -- placeholder forms (single keyword argument)
     [`(.datab (hole ,kw))          (data-hole kw 1)]
     [`(.datal (hole ,kw))          (data-hole kw 4)]
@@ -645,8 +651,8 @@
 (define (r/m-reg r)
   (^[s a t] `(,@(if (>= r 8) `(:rex.b #t) '()) :mode 3 :r/m ,r ,@s)))
 
-(define (mem-addr a)
-  (^[s a t] `(:mode 0 :r/m 4 :index 4 :base 5 :displacement ,(int8/32 a) ,@s)))
+(define (mem-addr memaddr)
+  (^[s a t] `(:mode 0 :r/m 4 :index 4 :base 5 :displacement ,(int32 memaddr) ,@s)))
 
 (define (mem-base b)
   (^[s a t]
