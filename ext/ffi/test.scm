@@ -619,6 +619,10 @@
                  (native. data-s 'b))))
   )
 
+;;; null pointer dereference
+(test* "native* null pointer" (test-error <error> #/NULL pointer/)
+       (native* (null-pointer-handle (make-c-pointer-type <int>))))
+
 ;;;
 ;;; native-type: type signature parser
 ;;;
@@ -1111,6 +1115,9 @@
                      (define-c-function Fs-i '(c-string) 'int)
                      (define-c-function Fi-s '(int) 'c-string)
 
+                     ;; null pointer passing
+                     (define-c-function Fpnull-i '(void*) 'int)
+
                      ;; struct pointer passing
                      (define-c-function F-pstruct-c-pstruct `(,foo* char) foo*)
                      (define-c-function F-pstruct-s-pstruct `(,foo* short) foo*)
@@ -1159,6 +1166,12 @@
          ;; c-string passing and returning
          (t 5 (Fs-i "hello"))
          (t "two" (Fi-s 2))
+
+         ;; null pointer passing
+         (t 1 (Fpnull-i (null-pointer-handle)))
+         (t 1 (Fpnull-i (null-pointer-handle (native-type 'int*))))
+         (t 0 (let1 data (make-u8vector (~ foo'size))
+                (Fpnull-i (uvector->native-handle data foo*))))
 
          (let* ([p (uvector->native-handle
                     (make-u8vector (~ foo'size))

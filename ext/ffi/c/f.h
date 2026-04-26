@@ -42,3 +42,4 @@ extern double Fiiiiiiidddd_d(int, int, int, int, int, int, int, double, double, 
 extern int Fs_i(const char *);
 extern const char *Fi_s(int);
 extern double Fidfvar(int cnt, ...);
+extern int Fpnull_i(void *);

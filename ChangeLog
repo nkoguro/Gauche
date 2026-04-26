@@ -1,5 +1,7 @@
 2026-04-25  Shiro Kawai  <shiro@acm.org>
 
+	* ext/ffi/btype.scm (null-pointer-handle): Added.
+
 	* src/libmod.scm (%expand-user-import): If the user uses R7RS-style
 	  import on Gauche default REPL and switches to R7RS REPL mode
 	  first time, we notify the user about it and loads basic R7RS

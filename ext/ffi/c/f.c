@@ -181,6 +181,12 @@ const char *Fi_s(int n)
     return "";
 }
 
+/* Returns 1 if pointer is NULL, 0 otherwise */
+int Fpnull_i(void *p)
+{
+    return p == NULL ? 1 : 0;
+}
+
 /* Mixed varargs: cnt pairs of (int n, double x); returns sum of n*x */
 double Fidfvar(int cnt, ...)
 {
