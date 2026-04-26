@@ -46,6 +46,7 @@
 
           uvector->native-handle
           null-pointer-handle
+          null-pointer-handle?
 
           ;; TRANSIENT: We want better (more concise, but distinct) names
           ;; for these.  At the moment, we just reexport them from
@@ -128,6 +129,9 @@
 (define-cproc null-pointer-handle (:optional (type::<native-type>? #f))
   (let* ([t::ScmNativeType*
           (?: type type (SCM_NATIVE_TYPE (Scm_NativeVoidPointerType)))])
+    (unless (or (SCM_C_POINTER_P t)
+                (SCM_C_ARRAY_P t))
+      (Scm_Error "Invalid type for a null pointer: %S" t))
     (return
      (Scm__MakeNativeHandle NULL
                             t
@@ -137,6 +141,11 @@
                             SCM_FALSE
                             SCM_NIL
                             0))))
+
+(define-cproc null-pointer-handle? (h::<native-handle>) ::<boolean>
+  (return (and (or (SCM_C_POINTER_P (-> h type))
+                   (SCM_C_ARRAY_P (-> h type)))
+               (== (-> h ptr) NULL))))
 
 ;;;
 ;;; Low-level accessor/modifier

@@ -619,9 +619,23 @@
                  (native. data-s 'b))))
   )
 
-;;; null pointer dereference
-(test* "native* null pointer" (test-error <error> #/NULL pointer/)
+;;; null pointers
+(test* "null pointer dereference" (test-error <error> #/NULL pointer/)
        (native* (null-pointer-handle (make-c-pointer-type <int>))))
+
+(test* "null pointer constructor check" (test-error <error> #/Invalid type for/)
+       (null-pointer-handle (native-type '(.struct (a::int b::int)))))
+
+(test* "null pointer predicate" '(#t #t #f #f)
+       (list
+        (null-pointer-handle? (null-pointer-handle))
+        (null-pointer-handle? (null-pointer-handle
+                               (native-type '(.array char (16)))))
+        (null-pointer-handle? (uvector->native-handle (make-u8vector 16)
+                                                      <void*>))
+        (null-pointer-handle? (uvector->native-handle
+                               (make-u8vector 16)
+                               (native-type '(.array char (16)))))))
 
 ;;;
 ;;; native-type: type signature parser
