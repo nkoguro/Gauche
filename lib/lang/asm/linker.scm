@@ -100,7 +100,7 @@
 (define (add-label! labels sym offset)
   (when (hash-table-contains? (~ labels 'table) sym)
     (error "duplicate label:" sym))
-  (hash-table-set! (~ labels 'table) sym offset)
+  (hash-table-put! (~ labels 'table) sym offset)
   labels)
 
 ;; get-label-offset :: <obj-template-labels>, symbol -> integer or #f
@@ -181,7 +181,7 @@
 (define *patch-handlers* (make-hash-table 'eq?))
 
 (define (register-patch-handler! key handler)
-  (hash-table-set! *patch-handlers* key handler))
+  (hash-table-put! *patch-handlers* key handler))
 
 ;; apply-patches! :: u8vector, symbol, patches, params -> ()
 ;;   Core patch application loop shared by link-template and link-templates.

@@ -141,6 +141,21 @@
 
 (select-module gauche.internal)
 
+;; Returns a function that lookup the bootstrap functions.
+;;  - This should be called during bootstrapping
+;;  - Do not save the resulting closure in globally accessible space.
+;; The definiton of tab is written in this way so that reference to mod
+;; won't be in the closure's env.
+(define (%%make-bootstrap-function-table names)
+  (let1 tab (rlet1 tab (make-hash-table 'eq?)
+              (let1 mod (find-module 'gauche.bootstrap)
+                (unless mod
+                  (error "You can't call me after the system is fully booted"))
+                (dolist [name names]
+                  (hash-table-put! tab name (module-binding-ref mod name)))))
+    (^[n] (or (hash-table-get tab n #f)
+              (error "Unknown procedure:" n)))))
+
 ;; Stub for FFI
 (include "native-supp.scm")
 

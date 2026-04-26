@@ -151,8 +151,8 @@
   ;; the fully-patched bytes to %%call-native with an empty patcher list.
   (pprint
    `(define call-amd64-regs
-      (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (lbl-off #f))
+      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
+            [tmpl #f] [link-tmpl #f] [lbl-off #f])
         (define (init!)
           (set! tmpl ((module-binding-ref 'lang.asm.linker
                                           'deserialize-obj-template)
@@ -199,18 +199,18 @@
                            `((:func ,<void*> ,ptr)
                              (:num-fargs ,<uint8> ,num-fargs)
                              ,@params))
-              (%%call-native 0 0 bytes 0
-                             (lbl-off lbs 'end:)
-                             (lbl-off lbs entry-label)
-                             rettype 0 0))))))
+              ((% '%%call-native) 0 0 bytes 0
+                                  (lbl-off lbs 'end:)
+                                  (lbl-off lbs entry-label)
+                                  rettype 0 0))))))
    :port port)
 
   ;; call-amd64-spill: named patches handled by link-templates; only raw
   ;; spill-slot offsets remain in the %%call-native patcher list.
   (pprint
    `(define call-amd64-spill
-      (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (lbl-off #f))
+      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
+            [tmpl #f] [link-tmpl #f] [lbl-off #f])
         (define (init!)
           (set! tmpl ((module-binding-ref 'lang.asm.linker
                                           'deserialize-obj-template)
@@ -246,14 +246,15 @@
                                    ,@named
                                    ,@spill-params)
                                  :postamble spill-area-bytes)
-                    (%%call-native 0     ;tstart
-                                   0     ;tend (no zero fill)
-                                   bytes ;code
-                                   0     ;start
-                                   (+ (lbl-off lbs 'spill:) spill-area-bytes) ;end
-                                   (lbl-off lbs entry-label)                  ;entry
-                                   rettype
-                                   0 0)))
+                    ((% '%%call-native) 0     ;tstart
+                                        0     ;tend (no zero fill)
+                                        bytes ;code
+                                        0     ;start
+                                        (+ (lbl-off lbs 'spill:)
+                                           spill-area-bytes) ;end
+                                        (lbl-off lbs entry-label) ;entry
+                                        rettype
+                                        0 0)))
                 (cond [(%iarg-type? (caar args))
                        (if (< icount 6)
                          (loop (cdr args) (+ icount 1) fcount scount
@@ -384,8 +385,8 @@
 
   (pprint
    `(define call-winx64-regs
-      (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (lbl-off #f))
+      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
+            [tmpl #f] [link-tmpl #f] [lbl-off #f])
         (define (init!)
           (set! tmpl ((module-binding-ref 'lang.asm.linker
                                           'deserialize-obj-template)
@@ -435,18 +436,18 @@
                                   params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
               ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
-              (%%call-native 0 0 bytes 0
-                             (lbl-off lbs 'end:)
-                             (lbl-off lbs entry-label)
-                             rettype
-                             (+ (lbl-off lbs 'entry0:) 4)
-                             40))))))
+              ((% '%%call-native) 0 0 bytes 0
+                                  (lbl-off lbs 'end:)
+                                  (lbl-off lbs entry-label)
+                                  rettype
+                                  (+ (lbl-off lbs 'entry0:) 4)
+                                  40))))))
    :port port)
 
   (pprint
    `(define call-winx64-spill
-      (let ((%%call-native (module-binding-ref 'gauche.bootstrap '%%call-native))
-            (tmpl #f) (link-tmpl #f) (lbl-off #f))
+      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
+            [tmpl #f] [link-tmpl #f] [lbl-off #f])
         (define (init!)
           (set! tmpl ((module-binding-ref 'lang.asm.linker
                                           'deserialize-obj-template)
@@ -474,15 +475,16 @@
                                :postamble spill-area-bytes)
                   ;; win-frame-size = shadow space (32) + spill args (8*N)
                   ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
-                  (%%call-native 0      ;tstart
-                                 0      ;tend (no zero fill needed)
-                                 bytes  ;code
-                                 0      ;start
-                                 (+ (lbl-off lbs 'spill:) spill-area-bytes) ;end
-                                 (lbl-off lbs 'entry:)                      ;entry
-                                 rettype
-                                 (+ (lbl-off lbs 'entry0:) 4)
-                                 (+ spill-area-bytes align-pad 32))))
+                  ((% '%%call-native) 0      ;tstart
+                                      0      ;tend (no zero fill needed)
+                                      bytes  ;code
+                                      0      ;start
+                                      (+ (lbl-off lbs 'spill:)
+                                         spill-area-bytes)  ;end
+                                      (lbl-off lbs 'entry:) ;entry
+                                      rettype
+                                      (+ (lbl-off lbs 'entry0:) 4)
+                                      (+ spill-area-bytes align-pad 32))))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount
