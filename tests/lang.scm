@@ -16,6 +16,8 @@
 (test-module 'lang.asm.regset)
 (use lang.asm.linker)
 (test-module 'lang.asm.linker)
+(use lang.asm.fragment)
+(test-module 'lang.asm.fragment)
 
 (let ()
   (define (link-single-frag frag)

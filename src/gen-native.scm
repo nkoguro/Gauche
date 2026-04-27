@@ -8,6 +8,7 @@
 (use file.util)
 (use lang.asm.linker)
 (use lang.asm.x86_64)
+(use lang.asm.fragment)
 
 ;;;
 ;;; Common Prologue
@@ -21,103 +22,149 @@
 ;;; For SYSV AMD64 calling convention: Section 3.2 of
 ;;; http://refspecs.linux-foundation.org/elf/x86_64-abi-0.95.pdf
 
+(define-asm-fragment amd64-call-reg x86_64
+  '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
+    entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
+    entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
+    entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
+    entry6f3:   ((movs_ :farg3-variant) (farg3:) %xmm3)
+    entry6f2:   ((movs_ :farg2-variant) (farg2:) %xmm2)
+    entry6f1:   ((movs_ :farg1-variant) (farg1:) %xmm1)
+    entry6f0:   ((movs_ :farg0-variant) (farg0:) %xmm0)
+    entry6:     (movq (imm64 :iarg5) %r9)
+    entry5:     (movq (imm64 :iarg4) %r8)
+    entry4:     (movq (imm64 :iarg3) %rcx)
+    entry3:     (movq (imm64 :iarg2) %rdx)
+    entry2:     (movq (imm64 :iarg1) %rsi)
+    entry1:     (movq (imm64 :iarg0) %rdi)
+    entry0:     (movb (imm8 :num-fargs) %al)
+                (jmp (func:))
+                (.section data)
+    func:       (.dataq :func)
+    farg0:      (.dataq :farg0)
+    farg1:      (.dataq :farg1)
+    farg2:      (.dataq :farg2)
+    farg3:      (.dataq :farg3)
+    farg4:      (.dataq :farg4)
+    farg5:      (.dataq :farg5)
+    farg6:      (.dataq :farg6)
+    farg7:      (.dataq :farg7)
+    end:))
+
+(define-asm-fragment amd64-call-spill x86_64
+  '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
+    entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
+    entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
+    entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
+    entry6f3:   ((movs_ :farg3-variant) (farg3:) %xmm3)
+    entry6f2:   ((movs_ :farg2-variant) (farg2:) %xmm2)
+    entry6f1:   ((movs_ :farg1-variant) (farg1:) %xmm1)
+    entry6f0:   ((movs_ :farg0-variant) (farg0:) %xmm0)
+    entry6:     (movq (imm64 :iarg5) %r9)
+    entry5:     (movq (imm64 :iarg4) %r8)
+    entry4:     (movq (imm64 :iarg3) %rcx)
+    entry3:     (movq (imm64 :iarg2) %rdx)
+    init:       (movq (imm32 :init-spill-size) %rax)
+                (leaq (spill:) %rsi)
+                (subq (imm8 :align-pad) %rsp)
+    loop:       (movq (%rsi) %rdi)
+                (push %rdi)
+                (addq 8 %rsi)
+                (subq 8 %rax)
+                (jnz loop:)
+    entry2:     (movq (imm64 :iarg1) %rsi)
+    entry1:     (movq (imm64 :iarg0) %rdi)
+    entry0:     (movb (imm8 :num-fargs) %al)
+                (call (func:))
+                ;; Epilog code follows
+                (.section data)
+    func:       (.dataq :func)
+    farg0:      (.dataq :farg0)
+    farg1:      (.dataq :farg1)
+    farg2:      (.dataq :farg2)
+    farg3:      (.dataq :farg3)
+    farg4:      (.dataq :farg4)
+    farg5:      (.dataq :farg5)
+    farg6:      (.dataq :farg6)
+    farg7:      (.dataq :farg7)
+    spill:      (.dataq :spill)))
+
+(define-asm-fragment amd64-call-epilog x86_64
+  '(            (.section epilog)
+    epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
+                (ret)))
+
+;;; For Windows x86_64 calling convention:
+;;; https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-160
+
+(define-asm-fragment winx64-call-reg x86_64
+  '(entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
+    entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
+    entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
+    entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
+    entry4:  (movq (imm64 :iarg3) %r9)
+    entry3:  (movq (imm64 :iarg2) %r8)
+    entry2:  (movq (imm64 :iarg1) %rdx)
+    entry1:  (movq (imm64 :iarg0) %rcx)
+    entry0:  (addq -40 %rsp)           ; %rcx-%r9 save area + 8byte align
+             (call (func:))
+             (addq 40 %rsp)
+             (ret)
+             (.section data)
+    func:    (.dataq :func)
+    farg0:   (.dataq :farg0)
+    farg1:   (.dataq :farg1)
+    farg2:   (.dataq :farg2)
+    farg3:   (.dataq :farg3)
+    end:))
+
+(define-asm-fragment winx64-call-spill x86_64
+  '(entry:
+    entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
+    entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
+    entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
+    entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
+    init:    (movq (imm32 :init-spill-size) %rax)
+             (leaq (spill: %rip) %rsi)
+             (subq (imm8 :align-pad) %rsp) ; ensure alignment
+    loop:    (movq (%rsi) %rdi)
+             (push %rdi)
+             (addq 8 %rsi)
+             (subq 8 %rax)
+             (jnz loop:)
+    entry4:  (movq (imm64 :iarg3) %r9)
+    entry3:  (movq (imm64 :iarg2) %r8)
+    entry2:  (movq (imm64 :iarg1) %rdx)
+    entry1:  (movq (imm64 :iarg0) %rcx)
+    entry0:  (addq -32 %rsp)         ; %rcx-%r9 save area
+             (call (func:))
+             (addq 32 %rsp)
+    epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
+             (ret)
+             (.section data)
+    func:    (.dataq :func)
+    farg0:   (.dataq :farg0)
+    farg1:   (.dataq :farg1)
+    farg2:   (.dataq :farg2)
+    farg3:   (.dataq :farg3)
+    spill:   (.dataq :spill)))
+
+;;;
+;;; Code generators
+;;;
+
 (define (gen-stub-amd64 port)
-  ;; When all args can be on registers.
-  (define reg-src
-    '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
-      entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
-      entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
-      entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
-      entry6f3:   ((movs_ :farg3-variant) (farg3:) %xmm3)
-      entry6f2:   ((movs_ :farg2-variant) (farg2:) %xmm2)
-      entry6f1:   ((movs_ :farg1-variant) (farg1:) %xmm1)
-      entry6f0:   ((movs_ :farg0-variant) (farg0:) %xmm0)
-      entry6:     (movq (imm64 :iarg5) %r9)
-      entry5:     (movq (imm64 :iarg4) %r8)
-      entry4:     (movq (imm64 :iarg3) %rcx)
-      entry3:     (movq (imm64 :iarg2) %rdx)
-      entry2:     (movq (imm64 :iarg1) %rsi)
-      entry1:     (movq (imm64 :iarg0) %rdi)
-      entry0:     (movb (imm8 :num-fargs) %al)
-                  (jmp (func:))
-                  (.section data)
-      func:       (.dataq :func)
-      farg0:      (.dataq :farg0)
-      farg1:      (.dataq :farg1)
-      farg2:      (.dataq :farg2)
-      farg3:      (.dataq :farg3)
-      farg4:      (.dataq :farg4)
-      farg5:      (.dataq :farg5)
-      farg6:      (.dataq :farg6)
-      farg7:      (.dataq :farg7)
-      end:))
-  (define reg-tmpl (x86_64-asm reg-src))
-
-  ;; Spill case.
-  (define spill-src
-    '(entry6f7:   ((movs_ :farg7-variant) (farg7:) %xmm7)
-      entry6f6:   ((movs_ :farg6-variant) (farg6:) %xmm6)
-      entry6f5:   ((movs_ :farg5-variant) (farg5:) %xmm5)
-      entry6f4:   ((movs_ :farg4-variant) (farg4:) %xmm4)
-      entry6f3:   ((movs_ :farg3-variant) (farg3:) %xmm3)
-      entry6f2:   ((movs_ :farg2-variant) (farg2:) %xmm2)
-      entry6f1:   ((movs_ :farg1-variant) (farg1:) %xmm1)
-      entry6f0:   ((movs_ :farg0-variant) (farg0:) %xmm0)
-      entry6:     (movq (imm64 :iarg5) %r9)
-      entry5:     (movq (imm64 :iarg4) %r8)
-      entry4:     (movq (imm64 :iarg3) %rcx)
-      entry3:     (movq (imm64 :iarg2) %rdx)
-      init:       (movq (imm32 :init-spill-size) %rax)
-                  (leaq (spill:) %rsi)
-                  (subq (imm8 :align-pad) %rsp)
-      loop:       (movq (%rsi) %rdi)
-                  (push %rdi)
-                  (addq 8 %rsi)
-                  (subq 8 %rax)
-                  (jnz loop:)
-      entry2:     (movq (imm64 :iarg1) %rsi)
-      entry1:     (movq (imm64 :iarg0) %rdi)
-      entry0:     (movb (imm8 :num-fargs) %al)
-                  (call (func:))
-                  ;; Epilog code follows
-                  (.section data)
-      func:       (.dataq :func)
-      farg0:      (.dataq :farg0)
-      farg1:      (.dataq :farg1)
-      farg2:      (.dataq :farg2)
-      farg3:      (.dataq :farg3)
-      farg4:      (.dataq :farg4)
-      farg5:      (.dataq :farg5)
-      farg6:      (.dataq :farg6)
-      farg7:      (.dataq :farg7)
-      spill:      (.dataq :spill)))
-  (define spill-tmpl (x86_64-asm spill-src))
-
-  (define epilog-src
-    '(            (.section epilog)
-      epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
-                  (ret)))
-  (define epilog-tmpl (x86_64-asm epilog-src))
-
+  (define (Ps . exprs)
+    (for-each (cut pprint <> :port port) exprs))
 
   (display ";; Register-only calling\n" port)
-  (display "#|\n" port)
-  (with-output-to-port port (cut x86_64-dump reg-src))
-  (display "|#\n" port)
-  (dump-obj-template reg-tmpl '*amd64-call-reg-tmpl* port)
+  (dump-asm-fragment amd64-call-reg port)
 
   (display ";; Spill-to-stack case\n" port)
-  (display "#|\n" port)
-  (with-output-to-port port
-    (^[]
-      (x86_64-dump spill-src)
-      (print)
-      (x86_64-dump epilog-src)))
-  (display "|#\n" port)
-  (dump-obj-template spill-tmpl '*amd64-call-spill-tmpl* port)
-  (dump-obj-template epilog-tmpl '*amd64-call-epilog-tmpl* port)
+  (dump-asm-fragment amd64-call-spill port)
+  (dump-asm-fragment amd64-call-epilog port)
 
-  (pprint
+  (Ps
    `(define (%iarg-type? t)
       (or (eq? t <top>)
           (subtype? t <integer>)
@@ -125,17 +172,9 @@
           (is-a? t <c-pointer>)
           (is-a? t <c-array>)
           (is-a? t <c-function>)))
-   :port port)
-
-  (pprint
    `(define (%farg-type? t)
       (or (eq? t <double>)
-          (eq? t <float>)))
-   :port port)
-
-  (pprint
-   '(define-constant movss-prefix #xf3)  ; movss opcode prefix (vs movsd's #xf2)
-   :port port)
+          (eq? t <float>))))
 
   ;; (call-amd64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
@@ -143,7 +182,7 @@
   ;; too error-prone.  You can wreck havoc just by passing a wrong type.
   ;; Instead, we'll require the user to parse the C function declaration
   ;; and we automatically extract the type info.
-  (pprint
+  (Ps
    `(define call-amd64
       (^[ptr args rettype]
         (let* ([num-iargs (count (^p (%iarg-type? (car p))) args)]
@@ -155,23 +194,19 @@
             (call-amd64-spill ptr args
                               (min num-iargs 6)
                               (min num-fargs 8)
-                              num-spills rettype)))))
-   :port port)
+                              num-spills rettype))))))
 
   ;; call-amd64-regs: uses link-templates to apply all named patches; passes
   ;; the fully-patched bytes to %%call-native with an empty patcher list.
-  (pprint
+  (Ps
    `(define call-amd64-regs
       (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [tmpl #f] [link-tmpl #f] [lbl-off #f])
+            [link-tmpl #f] [lbl-off #f])
         (define (init!)
-          (set! tmpl ((module-binding-ref 'lang.asm.linker
-                                          'deserialize-obj-template)
-                      *amd64-call-reg-tmpl*))
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
           (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-iargs num-fargs rettype]
-          (when (not tmpl) (init!))
+          (when (not link-tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
@@ -206,33 +241,26 @@
                                      (cons `(,fkey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
             (receive [bytes lbs]
-                (link-tmpl (list tmpl)
+                (link-tmpl (list (amd64-call-reg-tmpl))
                            `((:func ,<void*> ,ptr)
                              (:num-fargs ,<uint8> ,num-fargs)
                              ,@params))
               ((% '%%call-native) 0 0 bytes 0
                                   (lbl-off lbs 'end:)
                                   (lbl-off lbs entry-label)
-                                  rettype 0 0))))))
-   :port port)
+                                  rettype 0 0)))))))
 
   ;; call-amd64-spill: named patches handled by link-templates; only raw
   ;; spill-slot offsets remain in the %%call-native patcher list.
-  (pprint
+  (Ps
    `(define call-amd64-spill
       (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [tmpl1 #f] [tmpl2 #f] [link-tmpl #f] [lbl-off #f])
+            [link-tmpl #f] [lbl-off #f])
         (define (init!)
-          (set! tmpl1 ((module-binding-ref 'lang.asm.linker
-                                           'deserialize-obj-template)
-                       *amd64-call-spill-tmpl*))
-          (set! tmpl2 ((module-binding-ref 'lang.asm.linker
-                                           'deserialize-obj-template)
-                       *amd64-call-epilog-tmpl*))
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
           (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-iargs num-fargs num-spills rettype]
-          (when (not tmpl1) (init!))
+          (when (not link-tmpl) (init!))
           (let* ([effective-nargs (if (zero? num-fargs)
                                     num-iargs
                                     (+ 6 num-fargs))]
@@ -247,7 +275,7 @@
                 (let* ([align-pad (if (even? num-spills) 8 0)]
                        [spill-area-bytes (* 8 num-spills)])
                   (receive [bytes lbs]
-                      (link-tmpl (list tmpl1 tmpl2)
+                      (link-tmpl (list (amd64-call-spill-tmpl) (amd64-call-epilog-tmpl))
                                  `((:func ,<void*> ,ptr)
                                    (:num-fargs ,<uint8> ,num-fargs)
                                    (:init-spill-size
@@ -304,84 +332,22 @@
                                (cons `(:spill ,@(car args)
                                        ,(* (- num-spills scount 1) 8))
                                      spill-params)))]
-                      [else (error "bad arg entry:" (car args))])))))))
-   :port port)
+                      [else (error "bad arg entry:" (car args))]))))))))
   )
 
-;;; For Windows x86_64 calling convention:
-;;; https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-160
-
 (define (gen-stub-winx64 port)
-  (define reg-src
-    '(entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
-      entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
-      entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
-      entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
-      entry4:  (movq (imm64 :iarg3) %r9)
-      entry3:  (movq (imm64 :iarg2) %r8)
-      entry2:  (movq (imm64 :iarg1) %rdx)
-      entry1:  (movq (imm64 :iarg0) %rcx)
-      entry0:  (addq -40 %rsp)           ; %rcx-%r9 save area + 8byte align
-               (call (func:))
-               (addq 40 %rsp)
-               (ret)
-               (.section data)
-      func:    (.dataq :func)
-      farg0:   (.dataq :farg0)
-      farg1:   (.dataq :farg1)
-      farg2:   (.dataq :farg2)
-      farg3:   (.dataq :farg3)
-      end:))
-  (define reg-tmpl (x86_64-asm reg-src))
-
-  ;; Spill case.
-  (define spill-src
-    '(entry:
-      entry4f3:((movs_ :farg3-variant) (farg3:) %xmm3)
-      entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
-      entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
-      entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
-      init:    (movq (imm32 :init-spill-size) %rax)
-               (leaq (spill: %rip) %rsi)
-               (subq (imm8 :align-pad) %rsp) ; ensure alignment
-      loop:    (movq (%rsi) %rdi)
-               (push %rdi)
-               (addq 8 %rsi)
-               (subq 8 %rax)
-               (jnz loop:)
-      entry4:  (movq (imm64 :iarg3) %r9)
-      entry3:  (movq (imm64 :iarg2) %r8)
-      entry2:  (movq (imm64 :iarg1) %rdx)
-      entry1:  (movq (imm64 :iarg0) %rcx)
-      entry0:  (addq -32 %rsp)         ; %rcx-%r9 save area
-               (call (func:))
-               (addq 32 %rsp)
-      epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
-               (ret)
-               (.section data)
-      func:    (.dataq :func)
-      farg0:   (.dataq :farg0)
-      farg1:   (.dataq :farg1)
-      farg2:   (.dataq :farg2)
-      farg3:   (.dataq :farg3)
-      spill:   (.dataq :spill)))
-  (define spill-tmpl (x86_64-asm spill-src))
+  (define (Ps . exprs)
+    (for-each (cut pprint <> :port port) exprs))
 
   (display ";; Register-only calling\n" port)
-  (display "#|\n" port)
-  (with-output-to-port port (cut x86_64-dump reg-src))
-  (display "|#\n" port)
-  (dump-obj-template reg-tmpl '*winx64-call-reg-tmpl* port)
+  (dump-asm-fragment winx64-call-reg port)
 
   (display ";; Spill-to-stack case\n" port)
-  (display "#|\n" port)
-  (with-output-to-port port (cut x86_64-dump spill-src))
-  (display "|#\n" port)
-  (dump-obj-template spill-tmpl '*winx64-call-spill-tmpl* port)
+  (dump-asm-fragment winx64-call-spill port)
 
   ;; (call-winx64 <native-handle> args rettype)
   ;;  args : ((type value) ...)
-  (pprint
+  (Ps
    `(define call-winx64
       (^[ptr args rettype]
         ;; Windows x64 ABI uses shared argument count---even though
@@ -394,21 +360,17 @@
                [num-spills (max 0 (- num-args 4))])
           (if (zero? num-spills)
             (call-winx64-regs ptr args num-args num-fargs rettype)
-            (call-winx64-spill ptr args num-args num-fargs num-spills rettype)))))
-   :port port)
+            (call-winx64-spill ptr args num-args num-fargs num-spills rettype))))))
 
-  (pprint
+  (Ps
    `(define call-winx64-regs
       (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [tmpl #f] [link-tmpl #f] [lbl-off #f])
+            [link-tmpl #f] [lbl-off #f])
         (define (init!)
-          (set! tmpl ((module-binding-ref 'lang.asm.linker
-                                          'deserialize-obj-template)
-                      *winx64-call-reg-tmpl*))
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
           (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-args num-fargs rettype]
-          (when (not tmpl) (init!))
+          (when (not link-tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
                  ;; unused xmm regs for preceding integral args.
                  ;; e.g. if args are int, int, double, we need up to entry4f2
@@ -445,7 +407,7 @@
                                             `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
             (receive [bytes lbs]
-                (link-tmpl (list tmpl)
+                (link-tmpl (list (winx64-call-reg-tmpl))
                            (list* `(:func ,<void*> ,ptr)
                                   params))
               ;; win-frame-size=40: shadow space (32) + 8-byte alignment
@@ -455,27 +417,23 @@
                                   (lbl-off lbs entry-label)
                                   rettype
                                   (+ (lbl-off lbs 'entry0:) 4)
-                                  40))))))
-   :port port)
+                                  40)))))))
 
-  (pprint
+  (Ps
    `(define call-winx64-spill
       (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [tmpl #f] [link-tmpl #f] [lbl-off #f])
+            [link-tmpl #f] [lbl-off #f])
         (define (init!)
-          (set! tmpl ((module-binding-ref 'lang.asm.linker
-                                          'deserialize-obj-template)
-                      *winx64-call-spill-tmpl*))
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
           (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
         (^[ptr args num-args num-fargs num-spills rettype]
-          (when (not tmpl) (init!))
+          (when (not link-tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill-params '()])
             (if (null? args)
               (let* ([align-pad (if (even? num-spills) 8 0)]
                      [spill-area-bytes (* 8 num-spills)])
                 (receive [bytes lbs]
-                    (link-tmpl (list tmpl)
+                    (link-tmpl (list (winx64-call-spill-tmpl))
                                `((:func ,<void*> ,ptr)
                                  (:init-spill-size
                                   ,<int32>
@@ -532,8 +490,7 @@
                              (cons `(:spill ,@(car args)
                                      ,(* (- num-spills scount 1) 8))
                                    spill-params)))]
-                    [else (error "bad arg entry:" (car args))]))))))
-   :port port)
+                    [else (error "bad arg entry:" (car args))])))))))
   )
 
 ;;;
