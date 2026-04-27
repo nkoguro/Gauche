@@ -79,7 +79,12 @@
     entry0:     (movb (imm8 :num-fargs) %al)
                 (call (func:))
                 (.endsection text)
-                ;; Epilog code follows
+
+                (.section epilog)
+                (addq (imm32 :epilogue-spill-size) %rsp)
+                (ret)
+                (.endsection epilog)
+
                 (.section data)
     func:       (.dataq :func)
     farg0:      (.dataq :farg0)
@@ -91,11 +96,6 @@
     farg6:      (.dataq :farg6)
     farg7:      (.dataq :farg7)
     spill:      (.dataq :spill)))
-
-(define-asm-fragment amd64-call-epilog x86_64
-  '(            (.section epilog)
-    epilogue:   (addq (imm32 :epilogue-spill-size) %rsp)
-                (ret)))
 
 ;;; For Windows x86_64 calling convention:
 ;;; https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-160
@@ -169,7 +169,6 @@
 
   (display ";; Spill-to-stack case\n" port)
   (dump-asm-fragment amd64-call-spill port)
-  (dump-asm-fragment amd64-call-epilog port)
 
   (Ps
    `(define (%iarg-type? t)
@@ -282,7 +281,7 @@
                 (let* ([align-pad (if (even? num-spills) 8 0)]
                        [spill-area-bytes (* 8 num-spills)])
                   (receive [bytes lbs]
-                      (link-tmpl (list (amd64-call-spill-tmpl) (amd64-call-epilog-tmpl))
+                      (link-tmpl (list (amd64-call-spill-tmpl))
                                  `((:func ,<void*> ,ptr)
                                    (:num-fargs ,<uint8> ,num-fargs)
                                    (:init-spill-size

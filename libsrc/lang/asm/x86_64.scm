@@ -130,38 +130,41 @@
 ;;   First pass. create an abstract mapping [(p, xaddr)], where
 ;;     p :: Symbol          ; label: (sym . xaddr)
 ;;        | (section sym)   ; .section marker: ((section sym) . xaddr)
+;;        | (endsection sym)   ; .endsection marker: ((section sym) . xaddr)
 ;;        | (Int,[(Symbol,Int)]) -> [Byte] ; closure: (closure . xaddr)
 ;;   The accumulator is an xaddr (sec . addr).
 ;;   Labels are stored as (sym . xaddr) so pass2 can detect cross-section refs.
 (define (run-pass1 insns)
-  (values-ref
-   (map-accum
-    (match-lambda*
-      [((? symbol? label) (and xaddr (sec . addr)))
-       (values (cons label xaddr) xaddr)]
-      [(('.section sym) (and xaddr (sec . addr)))
-       (if (eq? sec sym)
-         (values addr xaddr)            ;nop
-         (values (cons (list 'section sym) addr) (make-xaddr sym addr)))]
-      [(('.endsection sym) (and xaddr (sec . addr)))
-       (unless (eq? sec sym)
-         (error ".endsection doesn't match the current section: ~s"
-                `(.endsection ,sym)))
-       (values (cons 'endsection xaddr) (make-xaddr #f addr))]
-      [(insn (sec . addr))
-       (let* ([p     (asm1 (parse-insn insn))]
-              [dummy (p addr #f)]
-              [n     (length dummy)]
-              [naddr (+ addr n)]
-              ;; pass2 calls closures with end-addr, which is
-              ;; already aligned for .align, yielding 0 bytes.
-              ;; Freeze the pass-1 count so pass2 is consistent.
-              [p2    (if (eq? (car insn) '.align)
+  (filter
+   values
+   (values-ref
+    (map-accum
+     (match-lambda*
+       [((? symbol? label) (and xaddr (sec . addr)))
+        (values (cons label xaddr) xaddr)]
+       [(('.section sym) (and xaddr (sec . addr)))
+        (if (eq? sec sym)
+          (values addr xaddr)            ;nop
+          (values (cons (list 'section sym) addr) (make-xaddr sym addr)))]
+       [(('.endsection sym) (and xaddr (sec . addr)))
+        (unless (eq? sec sym)
+          (error ".endsection doesn't match the current section: ~s"
+                 `(.endsection ,sym)))
+        (values (cons (list 'endsection sym) addr) (make-xaddr #f addr))]
+       [(insn (sec . addr))
+        (let* ([p     (asm1 (parse-insn insn))]
+               [dummy (p addr #f)]
+               [n     (length dummy)]
+               [naddr (+ addr n)]
+               ;; pass2 calls closures with end-addr, which is
+               ;; already aligned for .align, yielding 0 bytes.
+               ;; Freeze the pass-1 count so pass2 is consistent.
+               [p2    (if (eq? (car insn) '.align)
                         (^[a t] (make-list n 0))
                         p)])
-         (values (cons p2 naddr) (make-xaddr sec naddr)))])
-    (make-xaddr 'text 0) insns)
-   0))
+          (values (cons p2 naddr) (make-xaddr sec naddr)))])
+     (make-xaddr 'text 0) insns)
+    0)))
 
 ;; run-pass2 :: [(p, xaddr)] -> [[Byte]]
 ;;   Takes the result of first pass, calling the closure P to realize the
@@ -170,12 +173,11 @@
 (define (run-pass2 a-map)
   (reverse (fold (^[p+addr seed]
                    (match-let1 (p . addr) p+addr
-                     (cond
-                      [(symbol? p) seed]   ; label: ignore
-                      [(and (pair? p) (eq? (car p) 'section))
-                       (current-section-name (cadr p))
-                       seed]
-                      [else (cons (p addr a-map) seed)])))
+                     (match p
+                       [(? symbol?) seed]  ; label: ignore
+                       [('section s) (current-section-name s) seed]
+                       [('endsection _) seed]
+                       [_ (cons (p addr a-map) seed)])))
                  '() a-map)))
 
 ;; build-fragments :: a-map, u8vector, patches, declared-locals
