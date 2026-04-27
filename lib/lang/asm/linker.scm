@@ -44,7 +44,7 @@
           <obj-template> make-obj-template obj-template?
           <obj-template-labels> make-obj-template-labels obj-template-labels?
           obj-template-labels->alist
-          link-templates linked-label-offset
+          link-templates prelink-template linked-label-offset
           serialize-obj-template dump-obj-template deserialize-obj-template
           ))
 (select-module lang.asm.linker)
@@ -345,6 +345,38 @@
                                         (~ frag 'patches)))))
                   (floop (cdr fs) off
                          sec-blist sec-labels sec-patches))))))))))
+
+;; prelink-template :: <obj-template>, params -> <obj-template>
+;;   Applies patches that can be resolved from PARAMS alone, without
+;;   reordering or concatenating fragments.  Label-relative patches and
+;;   typed patches with no matching param entry are left in place for a
+;;   subsequent link-templates call.  Returns a fresh <obj-template> with
+;;   updated fragment bytes and a reduced patch list.
+(define (prelink-template tmpl params)
+  (assume-type tmpl <obj-template>)
+  (let ([endian (~ tmpl 'endian)]
+        [word   (~ tmpl 'stack-word-size)])
+    (define (applicable? p)
+      (match p
+        [(_ _ 'label-rel _) #f]
+        [(_ _ (? symbol? _)) #t]
+        [(kw _ (? integer? _)) (and (assq kw params) #t)]
+        [_ #f]))
+    (make-obj-template
+     (map (^[frag]
+            (let-values ([(bytes) (uvector-copy (~ frag 'bytes))]
+                         [(frag-labels) (merge-labels! (make-obj-template-labels)
+                                                       (~ frag 'labels))]
+                         [(apply-now defer) (partition applicable? (~ frag'patches))])
+              (apply-patches! bytes endian apply-now params frag-labels)
+              (make-obj-fragment bytes
+                                 (~ frag 'labels)
+                                 defer
+                                 (~ frag 'section)
+                                 (~ frag 'locals))))
+          (~ tmpl 'fragments))
+     endian
+     word)))
 
 ;; linked-label-offset :: label-info, label -> integer
 ;;   LABEL-INFO is the second value returned from link-templates

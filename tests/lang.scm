@@ -51,6 +51,102 @@
            (link-templates (list tmpl) '())))
   )
 
+(let ()
+  ;; prelink-template tests
+
+  (test* "prelink-template returns <obj-template>" #t
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '() 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)])
+           (obj-template? (prelink-template tmpl '()))))
+
+  (test* "prelink-template fills typed patch from params" #u8(42 0 0 0)
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '((:val 0 4)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [result (prelink-template tmpl `((:val ,<integer> 42)))])
+           (~ (car (~ result 'fragments)) 'bytes)))
+
+  (test* "prelink-template removes applied patch" '()
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '((:val 0 4)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [result (prelink-template tmpl `((:val ,<integer> 42)))])
+           (~ (car (~ result 'fragments)) 'patches)))
+
+  (test* "prelink-template defers typed patch with no matching param - bytes" #u8(0 0 0 0)
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '((:val 0 4)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [result (prelink-template tmpl '())])
+           (~ (car (~ result 'fragments)) 'bytes)))
+
+  (test* "prelink-template defers typed patch with no matching param - patches" '((:val 0 4))
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '((:val 0 4)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [result (prelink-template tmpl '())])
+           (~ (car (~ result 'fragments)) 'patches)))
+
+  (test* "prelink-template always defers label-rel patches" '((target 0 label-rel 4))
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0 0)
+                                         '((target . 4))
+                                         '((target 0 label-rel 4))
+                                         'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                ;; Even with a spurious param, label-rel is never applied by prelink
+                [result (prelink-template tmpl `((:val ,<integer> 99)))])
+           (~ (car (~ result 'fragments)) 'patches)))
+
+  (test* "prelink-template applies handler patch" #xf3  ; #xf3 = movss prefix byte
+         (let* ([frag (make-obj-fragment #u8(0) '() '((:pfx 0 x86_64-movs_)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [result (prelink-template tmpl '((:pfx #f movss)))])
+           (u8vector-ref (~ (car (~ result 'fragments)) 'bytes) 0)))
+
+  (test* "prelink-template preserves fragment count" 2
+         (let* ([f1 (make-obj-fragment #u8(0 0) '() '() 'text)]
+                [f2 (make-obj-fragment #u8(0 0) '() '() 'data)]
+                [tmpl (make-obj-template (list f1 f2) 'little-endian 8)]
+                [result (prelink-template tmpl '())])
+           (length (~ result 'fragments))))
+
+  (test* "prelink-template does not mutate original template" #u8(0 0 0 0)
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0) '() '((:val 0 4)) 'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)])
+           (prelink-template tmpl `((:val ,<integer> 42)))
+           (~ (car (~ tmpl 'fragments)) 'bytes)))
+
+  ;; Composability: prelink fills :val1, link-templates fills :val2 in the same fragment.
+  (test* "prelink fills one param, link-templates fills another"
+         #u8(11 0 0 0  22 0 0 0)
+         (let* ([frag (make-obj-fragment #u8(0 0 0 0  0 0 0 0)
+                                         '()
+                                         '((:val1 0 4) (:val2 4 4))
+                                         'text)]
+                [tmpl (make-obj-template (list frag) 'little-endian 8)]
+                [prelinked (prelink-template tmpl `((:val1 ,<integer> 11)))])
+           (receive (bytes _)
+               (link-templates (list prelinked) `((:val2 ,<integer> 22)))
+             bytes)))
+
+  ;; Composability: prelink fills :val early; link-templates later resolves label-rel.
+  ;; text frag (8 bytes): :val at [0..3], label-rel to 'target with end-off=8 at [4..7]
+  ;; data frag (4 bytes): label 'target at offset 0
+  ;; Section order: text (0..7) then data (8..11), so 'target absolute = 8
+  ;; label-rel disp = 8 - 8 = 0, written as s32 at bytes[4]
+  (test* "prelink-template then link-templates"
+         #u8(42 0 0 0  0 0 0 0  #xde #xad #xbe #xef)
+         (let* ([tf (make-obj-fragment #u8(0 0 0 0  0 0 0 0)
+                                       '()
+                                       '((:val 0 4) (target 4 label-rel 8))
+                                       'text)]
+                [df (make-obj-fragment #u8(#xde #xad #xbe #xef)
+                                       '((target . 0))
+                                       '()
+                                       'data)]
+                [tmpl (make-obj-template (list tf df) 'little-endian 8)]
+                [prelinked (prelink-template tmpl `((:val ,<integer> 42)))])
+           (receive (bytes _)
+               (link-templates (list prelinked) '())
+             bytes)))
+  )
+
 ;; lang.asm.x86_64 is tested in ext/lang
 
 ;;----------------------------------------------------------------------
