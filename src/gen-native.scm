@@ -39,6 +39,8 @@
     entry1:     (movq (imm64 :iarg0) %rdi)
     entry0:     (movb (imm8 :num-fargs) %al)
                 (jmp (func:))
+                (.endsection text)
+
                 (.section data)
     func:       (.dataq :func)
     farg0:      (.dataq :farg0)
@@ -76,6 +78,7 @@
     entry1:     (movq (imm64 :iarg0) %rdi)
     entry0:     (movb (imm8 :num-fargs) %al)
                 (call (func:))
+                (.endsection text)
                 ;; Epilog code follows
                 (.section data)
     func:       (.dataq :func)
@@ -110,6 +113,8 @@
              (call (func:))
              (addq 40 %rsp)
              (ret)
+             (.endsection text)
+
              (.section data)
     func:    (.dataq :func)
     farg0:   (.dataq :farg0)
@@ -141,6 +146,8 @@
              (addq 32 %rsp)
     epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
              (ret)
+             (.endsection text)
+
              (.section data)
     func:    (.dataq :func)
     farg0:   (.dataq :farg0)

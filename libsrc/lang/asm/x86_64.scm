@@ -78,6 +78,16 @@
 ;; TODO: (mov LABEL %reg) may also use %rip-relative.  Since we don't
 ;; have linkers, the absolute address of LABEL will never be known.
 ;; (Or, we could add an on-memory linker...)
+;;
+;; Pseudo instructions
+;;    (.section name)    begins named section.  By default code is
+;;                       in 'text' section.  In the link phase,
+;;                       sections with the same name are gathered.
+;;    (.endsection name) ends the section.  This is for documenentation
+;;                       purpose, so that section ending is clear
+;;                       in the dumped assembly list.  An error is signaled
+;;                       when name doesn't match the current section.
+;;
 
 ;; Accumulates patch annotations during pass 2.  #f outside x86_64-asm;
 ;; bound to the growing patch list via parameterize inside x86_64-asm.
@@ -129,8 +139,15 @@
     (match-lambda*
       [((? symbol? label) (and xaddr (sec . addr)))
        (values (cons label xaddr) xaddr)]
-      [(('.section sym) (_ . addr))
-       (values (cons (list 'section sym) addr) (make-xaddr sym addr))]
+      [(('.section sym) (and xaddr (sec . addr)))
+       (if (eq? sec sym)
+         (values addr xaddr)            ;nop
+         (values (cons (list 'section sym) addr) (make-xaddr sym addr)))]
+      [(('.endsection sym) (and xaddr (sec . addr)))
+       (unless (eq? sec sym)
+         (error ".endsection doesn't match the current section: ~s"
+                `(.endsection ,sym)))
+       (values (cons 'endsection xaddr) (make-xaddr #f addr))]
       [(insn (sec . addr))
        (let* ([p     (asm1 (parse-insn insn))]
               [dummy (p addr #f)]
@@ -239,6 +256,9 @@
            [(and (pair? (car insns)) (eq? (caar insns) '.section))
             (format #t "     .section ~a\n" (cadar insns))
             (loop (cdr insns) (cdr a-map) bss)]  ; no bss entry for .section
+           [(and (pair? (car insns)) (eq? (caar insns) '.endsection))
+            (format #t "     .endsection ~a\n" (cadar insns))
+            (loop (cdr insns) (cdr a-map) bss)]  ; no bss entry for .endsection
            [else
             (let1 byte-slices (slices (car bss) 4)
               (define (bytedump bytes)
