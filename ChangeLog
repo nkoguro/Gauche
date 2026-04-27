@@ -1,6 +1,7 @@
 2026-04-26  Shiro Kawai  <shiro@acm.org>
 
 	* ext/ffi/btype.scm (null-pointer-handle?): Added.
+	  Also added equality and comparison procedures on native handles.
 
 2026-04-25  Shiro Kawai  <shiro@acm.org>
 

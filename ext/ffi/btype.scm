@@ -48,14 +48,30 @@
           null-pointer-handle
           null-pointer-handle?
 
-          ;; TRANSIENT: We want better (more concise, but distinct) names
-          ;; for these.  At the moment, we just reexport them from
-          ;; gauche.typeutil
           make-c-pointer-type
           make-c-function-type
           make-c-array-type
           make-c-struct-type
           make-c-union-type
+
+          c-aggregate-type?
+          c-pointer-like-type?
+
+          c-pointer-handle?
+          c-function-handle?
+          c-array-handle?
+          c-struct-handle?
+          c-union-handle?
+          c-aggregate-handle?
+          c-pointer-like-handle?
+
+          c-pointer-compare
+          c-pointer=?
+          c-pointer<?
+          c-pointer<=?
+          c-pointer>?
+          c-pointer>=?
+          c-memwise-compare
 
           native-type
           native-type->signature
@@ -68,10 +84,17 @@
  (declare-stub-type <native-handle> ScmNativeHandle*)
  )
 
-(define (aggregate-type? type)
+;; C types that has some structure
+(define (c-aggregate-type? type)
   (or (is-a? type <c-array>)
       (is-a? type <c-struct>)
       (is-a? type <c-union>)))
+
+;; C types that can be 'casted' to a poinetr
+(define (c-pointer-like-type? type)
+  (or (is-a? type <c-pointer>)
+      (is-a? type <c-array>)
+      (is-a? type <c-function>)))
 
 ;;;
 ;;; Native handles
@@ -103,7 +126,7 @@
 (define (uvector->native-handle uv type :optional (offset 0))
   (assume-type uv <uvector>)
   (assume (or (is-a? type <c-pointer>)
-              (aggregate-type? type))
+              (c-aggregate-type? type))
     "Type must be native pointer or aggregate type, but got:" type)
   (%uvector->native-handle uv type offset))
 
@@ -130,7 +153,8 @@
   (let* ([t::ScmNativeType*
           (?: type type (SCM_NATIVE_TYPE (Scm_NativeVoidPointerType)))])
     (unless (or (SCM_C_POINTER_P t)
-                (SCM_C_ARRAY_P t))
+                (SCM_C_ARRAY_P t)
+                (SCM_C_FUNCTION_P t))
       (Scm_Error "Invalid type for a null pointer: %S" t))
     (return
      (Scm__MakeNativeHandle NULL
@@ -146,6 +170,97 @@
   (return (and (or (SCM_C_POINTER_P (-> h type))
                    (SCM_C_ARRAY_P (-> h type)))
                (== (-> h ptr) NULL))))
+
+(define (c-pointer-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (is-a? (~ obj'type) <c-pointer>)))
+
+(define (c-array-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (is-a? (~ obj'type) <c-array>)))
+
+(define (c-function-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (is-a? (~ obj'type) <c-function>)))
+
+(define (c-struct-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (is-a? (~ obj'type) <c-struct>)))
+
+(define (c-union-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (is-a? (~ obj'type) <c-union>)))
+
+(define (c-pointer-like-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (c-pointer-like-type? (~ obj'type))))
+
+(define (c-aggregate-handle? obj)
+  (and (is-a? obj <native-handle>)
+       (c-aggregate-type? (~ obj'type))))
+
+;;
+;; Comparison
+;;
+
+(define-cproc c-pointer-compare (a::<native-handle> b::<native-handle>)
+  ::<fixnum>
+  (unless (or (SCM_C_POINTER_P (-> a type))
+              (SCM_C_ARRAY_P (-> a type))
+              (SCM_C_FUNCTION_P (-> a type)))
+    (Scm_Error "c-pointer, c-array, or c-function handle expeced, but got: %S"
+               a))
+  (unless (or (SCM_C_POINTER_P (-> b type))
+              (SCM_C_ARRAY_P (-> b type))
+              (SCM_C_FUNCTION_P (-> b type)))
+    (Scm_Error "c-pointer, c-array, or c-function handle expeced, but got: %S"
+               b))
+  (cond [(== (-> a ptr) (-> b ptr)) (return 0)]
+        [(<  (-> a ptr) (-> b ptr)) (return -1)]
+        [else                       (return 1)]))
+
+(define (c-pointer=? a b)  (zero? (c-pointer-compare a b)))
+(define (c-pointer<? a b)  (< (c-pointer-compare a b) 0))
+(define (c-pointer<=? a b) (<= (c-pointer-compare a b) 0))
+(define (c-pointer>? a b)  (> (c-pointer-compare a b) 0))
+(define (c-pointer>=? a b) (>= (c-pointer-compare a b) 0))
+
+;; This perform memcmp on aggregate types like u8vector-compare.  That is,
+;;   - First the sizes are compared. If they differ, that's the result.
+;;   - If the sizes are the same, contents are compared bytewise.
+;; Two types may differ.
+(define-cproc c-memwise-compare (a::<native-handle> b::<native-handle>)
+  ::<fixnum>
+  (unless (or (SCM_C_ARRAY_P (-> a type))
+              (SCM_C_STRUCT_P (-> a type))
+              (SCM_C_UNION_P (-> a type)))
+    (Scm_Error "c-array, c-struct, or c-union handle expected, but got: %S" a))
+  (unless (or (SCM_C_ARRAY_P (-> b type))
+              (SCM_C_STRUCT_P (-> b type))
+              (SCM_C_UNION_P (-> b type)))
+    (Scm_Error "c-array, c-struct, or c-union handle expected, but got: %S" b))
+  (let* ([a-size::ptrdiff_t (- (-> a region-max) (-> a region-min))]
+         [b-size::ptrdiff_t (- (-> b region-max) (-> b region-min))])
+    (cond [(< a-size b-size) (return -1)]
+          [(> a-size b-size) (return 1)]
+          [else (let* ([r::int (memcmp (-> a ptr) (-> b ptr) a-size)])
+                  (cond [(< r 0) (return -1)]
+                        [(> r 0) (return 1)]
+                        [else (return 0)]))])))
+
+(define-method object-equal? ((a <native-handle>) (b <native-handle>))
+  (cond
+   [(c-pointer-handle? a)
+    (and (c-pointer-handle? b) (zero? (c-pointer-compare a b)))]
+   [(c-function-handle? a)
+    (and (c-function-handle? b) (zero? (c-pointer-compare a b)))]
+   [(c-array-handle? a)
+    (and (c-array-handle? b) (zero? (c-memwise-compare a b)))]
+   [(c-struct-handle? a)
+    (and (c-struct-handle? b) (zero? (c-memwise-compare a b)))]
+   [(c-union-handle? a)
+    (and (c-union-handle? b) (zero? (c-memwise-compare a b)))]
+   [else #f]))
 
 ;;;
 ;;; Low-level accessor/modifier
@@ -193,12 +308,12 @@
     (c-set element-type p val)))
 
 (define (%handle-ref type handle offset)
-  (if (aggregate-type? type)
+  (if (c-aggregate-type? type)
     (make-internal-handle handle offset type)
     (%pref type handle offset)))
 
 (define (%handle-set! type handle offset val)
-  (when (aggregate-type? type)
+  (when (c-aggregate-type? type)
     ;; For now, we reject it.  Technically we can copy aggregate type
     ;; content into the target aggregate.
     (errorf "Can't set a value of type ~s into ~s" type handle))

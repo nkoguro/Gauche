@@ -1145,7 +1145,8 @@
     (type :type <native-type>))
    (printer (Scm_Printf port "#<native-handle %A@%p>"
                         (-> (SCM_NATIVE_HANDLE obj) name)
-                        (-> (SCM_NATIVE_HANDLE obj) ptr))))
+                        (-> (SCM_NATIVE_HANDLE obj) ptr)))
+   (comparer (c "Scm_ObjectCompare")))
 
  (define-cfn Scm__MakeNativeHandle (ptr::void*
                                     type::ScmNativeType*

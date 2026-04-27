@@ -638,6 +638,207 @@
                                (native-type '(.array char (16)))))))
 
 ;;;
+;;; Handle type predicates and equal?
+;;;
+(let* ([data  (u8vector-copy *fobject-storage*)]
+       [int*  (make-c-pointer-type <int>)]
+       [int8a (make-c-array-type <int8> '(4))]
+       [s1    (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint32>)))]
+       [u1    (make-c-union-type  'u1 `((a ,<int8>) (b ,<uint32>)))]
+       [fn1   (make-c-function-type <int> `(,<int>))]
+       [ph    (uvector->native-handle data int*)]
+       [ah    (uvector->native-handle data int8a)]
+       [sh    (uvector->native-handle data s1)]
+       [uh    (uvector->native-handle data u1)]
+       [fh    (null-pointer-handle fn1)])
+
+  ;; c-pointer-handle?
+  (test* "c-pointer-handle? on pointer"    #t (c-pointer-handle? ph))
+  (test* "c-pointer-handle? on array"      #f (c-pointer-handle? ah))
+  (test* "c-pointer-handle? on struct"     #f (c-pointer-handle? sh))
+  (test* "c-pointer-handle? on non-handle" #f (c-pointer-handle? 42))
+
+  ;; c-array-handle?
+  (test* "c-array-handle? on array"        #t (c-array-handle? ah))
+  (test* "c-array-handle? on pointer"      #f (c-array-handle? ph))
+  (test* "c-array-handle? on struct"       #f (c-array-handle? sh))
+
+  ;; c-struct-handle?
+  (test* "c-struct-handle? on struct"      #t (c-struct-handle? sh))
+  (test* "c-struct-handle? on pointer"     #f (c-struct-handle? ph))
+  (test* "c-struct-handle? on union"       #f (c-struct-handle? uh))
+
+  ;; c-union-handle?
+  (test* "c-union-handle? on union"        #t (c-union-handle? uh))
+  (test* "c-union-handle? on struct"       #f (c-union-handle? sh))
+  (test* "c-union-handle? on pointer"      #f (c-union-handle? ph))
+
+  ;; c-function-handle?
+  (test* "c-function-handle? on function"  #t (c-function-handle? fh))
+  (test* "c-function-handle? on pointer"   #f (c-function-handle? ph))
+  (test* "c-function-handle? on array"     #f (c-function-handle? ah))
+  (test* "c-function-handle? on non-handle" #f (c-function-handle? "foo"))
+
+  ;; c-aggregate-handle?
+  (test* "c-aggregate-handle? on array"    #t (c-aggregate-handle? ah))
+  (test* "c-aggregate-handle? on struct"   #t (c-aggregate-handle? sh))
+  (test* "c-aggregate-handle? on union"    #t (c-aggregate-handle? uh))
+  (test* "c-aggregate-handle? on pointer"  #f (c-aggregate-handle? ph))
+  (test* "c-aggregate-handle? on function" #f (c-aggregate-handle? fh))
+
+  ;; c-pointer-like-handle?
+  (test* "c-pointer-like-handle? on pointer"  #t (c-pointer-like-handle? ph))
+  (test* "c-pointer-like-handle? on array"    #t (c-pointer-like-handle? ah))
+  (test* "c-pointer-like-handle? on function" #t (c-pointer-like-handle? fh))
+  (test* "c-pointer-like-handle? on struct"   #f (c-pointer-like-handle? sh))
+  (test* "c-pointer-like-handle? on union"    #f (c-pointer-like-handle? uh))
+
+  ;; equal? on pointer handles: same underlying address => equal
+  (test* "equal? pointer same address" #t
+         (equal? ph (uvector->native-handle data int*)))
+  ;; equal? on pointer handles: different storage => not equal
+  (test* "equal? pointer different address" #f
+         (equal? ph (uvector->native-handle (u8vector-copy data) int*)))
+  ;; equal? across handle kinds => always #f
+  (test* "equal? pointer vs array"    #f (equal? ph ah))
+  (test* "equal? pointer vs struct"   #f (equal? ph sh))
+  (test* "equal? pointer vs function" #f (equal? ph fh))
+
+  ;; equal? on function handles: both null => same address => equal
+  (test* "equal? function same address" #t
+         (equal? fh (null-pointer-handle fn1)))
+
+  ;; equal? on array handles: same content => equal
+  (test* "equal? array same content" #t
+         (equal? ah (uvector->native-handle (u8vector-copy data) int8a)))
+  ;; equal? on array handles: different content => not equal
+  (test* "equal? array different content" #f
+         (equal? ah (uvector->native-handle
+                     (make-u8vector (u8vector-length data) 0) int8a)))
+
+  ;; equal? on struct handles: same content => equal
+  (test* "equal? struct same content" #t
+         (equal? sh (uvector->native-handle (u8vector-copy data) s1)))
+  ;; equal? on struct handles: different content => not equal
+  (test* "equal? struct different content" #f
+         (equal? sh (uvector->native-handle
+                     (make-u8vector (u8vector-length data) 0) s1)))
+  ;; equal? on union handles: same content => equal
+  (test* "equal? union same content" #t
+         (equal? uh (uvector->native-handle (u8vector-copy data) u1)))
+  ;; equal? struct vs union => #f
+  (test* "equal? struct vs union" #f (equal? sh uh))
+  )
+
+;; equal? on null pointer handles
+(test* "equal? two null pointer handles" #t
+       (equal? (null-pointer-handle) (null-pointer-handle)))
+(test* "equal? null vs non-null pointer" #f
+       (equal? (null-pointer-handle)
+               (uvector->native-handle (make-u8vector 8) <void*>)))
+
+;;;
+;;; Type predicates: c-aggregate-type? and c-pointer-like-type?
+;;;
+(let* ([int*  (make-c-pointer-type <int>)]
+       [int8a (make-c-array-type <int8> '(4))]
+       [s1    (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint32>)))]
+       [u1    (make-c-union-type  'u1 `((a ,<int8>) (b ,<uint32>)))]
+       [fn1   (make-c-function-type <int> `(,<int>))])
+
+  (test* "c-aggregate-type? array"    #t (c-aggregate-type? int8a))
+  (test* "c-aggregate-type? struct"   #t (c-aggregate-type? s1))
+  (test* "c-aggregate-type? union"    #t (c-aggregate-type? u1))
+  (test* "c-aggregate-type? pointer"  #f (c-aggregate-type? int*))
+  (test* "c-aggregate-type? function" #f (c-aggregate-type? fn1))
+  (test* "c-aggregate-type? <int>"    #f (c-aggregate-type? <int>))
+
+  (test* "c-pointer-like-type? pointer"  #t (c-pointer-like-type? int*))
+  (test* "c-pointer-like-type? array"    #t (c-pointer-like-type? int8a))
+  (test* "c-pointer-like-type? function" #t (c-pointer-like-type? fn1))
+  (test* "c-pointer-like-type? struct"   #f (c-pointer-like-type? s1))
+  (test* "c-pointer-like-type? union"    #f (c-pointer-like-type? u1))
+  (test* "c-pointer-like-type? <int>"    #f (c-pointer-like-type? <int>)))
+
+;;;
+;;; c-pointer-compare and c-pointer=? etc.
+;;;
+(define (sign x) (cond [(< x 0) -1] [(> x 0) 1] [else 0]))
+
+(let* ([data  (make-u8vector 32 0)]
+       [int*  (make-c-pointer-type <int>)]
+       [int8a (make-c-array-type <int8> '(4))]
+       [fn1   (make-c-function-type <int> `(,<int>))]
+       [p0    (uvector->native-handle data int* 0)]   ; offset 0
+       [p0b   (uvector->native-handle data int* 0)]   ; same address as p0
+       [p8    (uvector->native-handle data int* 8)]   ; offset 8, known to be > p0
+       [a0    (uvector->native-handle data int8a 0)]
+       [a8    (uvector->native-handle data int8a 8)]
+       [fnull (null-pointer-handle fn1)])
+
+  ;; c-pointer-compare
+  (test* "c-pointer-compare same address"   0  (c-pointer-compare p0 p0b))
+  (test* "c-pointer-compare lower < higher" -1 (c-pointer-compare p0 p8))
+  (test* "c-pointer-compare higher > lower"  1 (c-pointer-compare p8 p0))
+  ;; array handles are also valid
+  (test* "c-pointer-compare array same address" 0  (c-pointer-compare a0 (uvector->native-handle data int8a 0)))
+  (test* "c-pointer-compare array lower < higher" -1 (c-pointer-compare a0 a8))
+  ;; null function pointer
+  (test* "c-pointer-compare null function handles" 0
+         (c-pointer-compare fnull (null-pointer-handle fn1)))
+  ;; error on non-pointer-like handle
+  (let ([sh (uvector->native-handle data (make-c-struct-type 'ps `((x ,<int>))))])
+    (test* "c-pointer-compare error on struct" (test-error)
+           (c-pointer-compare sh sh)))
+
+  ;; c-pointer=?
+  (test* "c-pointer=? same address"      #t (c-pointer=? p0 p0b))
+  (test* "c-pointer=? different address" #f (c-pointer=? p0 p8))
+
+  ;; c-pointer<? / c-pointer<=? / c-pointer>? / c-pointer>=?
+  (test* "c-pointer<? lower < higher"   #t (c-pointer<? p0 p8))
+  (test* "c-pointer<? higher < lower"   #f (c-pointer<? p8 p0))
+  (test* "c-pointer<? same"             #f (c-pointer<? p0 p0b))
+  (test* "c-pointer<=? lower <= higher" #t (c-pointer<=? p0 p8))
+  (test* "c-pointer<=? same"            #t (c-pointer<=? p0 p0b))
+  (test* "c-pointer<=? higher <= lower" #f (c-pointer<=? p8 p0))
+  (test* "c-pointer>? higher > lower"   #t (c-pointer>? p8 p0))
+  (test* "c-pointer>? lower > higher"   #f (c-pointer>? p0 p8))
+  (test* "c-pointer>? same"             #f (c-pointer>? p0 p0b))
+  (test* "c-pointer>=? higher >= lower" #t (c-pointer>=? p8 p0))
+  (test* "c-pointer>=? same"            #t (c-pointer>=? p0 p0b))
+  (test* "c-pointer>=? lower >= higher" #f (c-pointer>=? p0 p8)))
+
+;;;
+;;; c-memwise-compare
+;;;
+(let* ([s1   (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint32>)))]
+       [u1   (make-c-union-type  'u1 `((a ,<int8>) (b ,<uint32>)))]
+       [int8a (make-c-array-type <int8> '(5))]
+       [same  (make-u8vector 8 42)]
+       [other (make-u8vector 8  0)]
+       [sa  (uvector->native-handle same  s1)]
+       [sa2 (uvector->native-handle (u8vector-copy same) s1)]
+       [sb  (uvector->native-handle other s1)]
+       [ua  (uvector->native-handle same  u1)]
+       [aa  (uvector->native-handle (make-u8vector 5 7) int8a)]
+       [aa2 (uvector->native-handle (make-u8vector 5 7) int8a)]
+       [ab  (uvector->native-handle (make-u8vector 5 0) int8a)])
+
+  (test* "c-memwise-compare struct same content"      0  (c-memwise-compare sa sa2))
+  (test* "c-memwise-compare struct different content" -1 (sign (c-memwise-compare sb sa)))
+  (test* "c-memwise-compare struct antisymmetric"
+         (- (sign (c-memwise-compare sa sb)))
+         (sign (c-memwise-compare sb sa)))
+  (test* "c-memwise-compare union same content"  0 (c-memwise-compare ua (uvector->native-handle (u8vector-copy same) u1)))
+  (test* "c-memwise-compare array same content"  0 (c-memwise-compare aa aa2))
+  (test* "c-memwise-compare array different content" -1 (sign (c-memwise-compare ab aa)))
+  ;; error on pointer handle
+  (let ([ph (uvector->native-handle same (make-c-pointer-type <int>))])
+    (test* "c-memwise-compare error on pointer" (test-error)
+           (c-memwise-compare ph ph))))
+
+;;;
 ;;; native-type: type signature parser
 ;;;
 (test-section "type signature parser")
