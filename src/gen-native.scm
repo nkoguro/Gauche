@@ -221,14 +221,56 @@
     entry3:  (movq (imm64 :iarg2) %r8)
     entry2:  (movq (imm64 :iarg1) %rdx)
     entry1:  (movq (imm64 :iarg0) %rcx)
-    entry0:  (addq -40 %rsp)           ; %rcx-%r9 save area + 8byte align
+    entry0:  (push %rbx)               ; save rbx; aligns rsp to 16
+             (addq -32 %rsp)           ; shadow space (shared with helper calls)
              (call (func:))
-             (addq 40 %rsp)
+             ;; %rax or %xmm0 may have the return value at this point.
+             ;; retkind encoding matches amd64-call-reg.
+             (movb (imm8 :retkind) %bl)
+             (decb %bl)
+             (jsl epilog:)             ; retkind=0: return %rax as-is
+             (jz fixnum:)              ; retkind=1
+             (decb %bl)
+             (jz integer:)             ; retkind=2
+             (decb %bl)
+             (jz double:)              ; retkind=3
+             (decb %bl)
+             (jz float:)               ; retkind=4
+             (decb %bl)
+             (jz void:)                ; retkind=5
+             (decb %bl)
+             (jz cstring:)             ; retkind=6
+    pointer: (movq %rax %rcx)          ; rcx=ptr
+             (movq (imm64 :rettype) %rdx) ; rdx=type
+             (call (fn-handle:))
+             (jmp epilog:)
+    fixnum:  (shl 2 %rax)
+             (incq %rax)
+             (jmp epilog:)
+    integer: (movq %rax %rcx)          ; rcx=intptr_t
+             (call (fn-int:))
+             (jmp epilog:)
+    float:   (cvtss2sd %xmm0 %xmm0)
+    double:  (call (fn-flonum:))
+             (jmp epilog:)
+    void:    (movq (imm64 :SCM_UNDEFINED) %rax)
+             (jmp epilog:)
+    cstring: (movq %rax %rcx)          ; rcx=cstr
+             (movq -1 %rdx)            ; rdx=size
+             (movq -1 %r8)             ; r8=len
+             (movq (imm32 :SCM_STRING_COPYING) %r9) ; r9=flags
+             (call (fn-string:))
+    epilog:  (addq 32 %rsp)
+             (pop %rbx)
              (ret)
              (.endsection text)
 
              (.section data)
-    func:    (.dataq :func)
+    func:       (.dataq :func)
+    fn-flonum:  (.dataq :Scm_MakeFlonum)
+    fn-string:  (.dataq :Scm_MakeString)
+    fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
+    fn-int:     (.dataq :Scm_IntptrToInteger)
     farg0:   (.dataq :farg0)
     farg1:   (.dataq :farg1)
     farg2:   (.dataq :farg2)
@@ -253,15 +295,56 @@
     entry3:  (movq (imm64 :iarg2) %r8)
     entry2:  (movq (imm64 :iarg1) %rdx)
     entry1:  (movq (imm64 :iarg0) %rcx)
-    entry0:  (addq -32 %rsp)         ; %rcx-%r9 save area
+    entry0:  (push %rbx)               ; save rbx
+             (addq -32 %rsp)           ; shadow space (shared with helper calls)
              (call (func:))
-             (addq 32 %rsp)
+             ;; boxing dispatch (Windows x64 calling convention for helpers)
+             (movb (imm8 :retkind) %bl)
+             (decb %bl)
+             (jsl epilog:)
+             (jz fixnum:)
+             (decb %bl)
+             (jz integer:)
+             (decb %bl)
+             (jz double:)
+             (decb %bl)
+             (jz float:)
+             (decb %bl)
+             (jz void:)
+             (decb %bl)
+             (jz cstring:)
+    pointer: (movq %rax %rcx)
+             (movq (imm64 :rettype) %rdx)
+             (call (fn-handle:))
+             (jmp epilog:)
+    fixnum:  (shl 2 %rax)
+             (incq %rax)
+             (jmp epilog:)
+    integer: (movq %rax %rcx)
+             (call (fn-int:))
+             (jmp epilog:)
+    float:   (cvtss2sd %xmm0 %xmm0)
+    double:  (call (fn-flonum:))
+             (jmp epilog:)
+    void:    (movq (imm64 :SCM_UNDEFINED) %rax)
+             (jmp epilog:)
+    cstring: (movq %rax %rcx)
+             (movq -1 %rdx)
+             (movq -1 %r8)
+             (movq (imm32 :SCM_STRING_COPYING) %r9)
+             (call (fn-string:))
+    epilog:  (addq 32 %rsp)
+             (pop %rbx)
     epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
              (ret)
              (.endsection text)
 
              (.section data)
-    func:    (.dataq :func)
+    func:       (.dataq :func)
+    fn-flonum:  (.dataq :Scm_MakeFlonum)
+    fn-string:  (.dataq :Scm_MakeString)
+    fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
+    fn-int:     (.dataq :Scm_IntptrToInteger)
     farg0:   (.dataq :farg0)
     farg1:   (.dataq :farg1)
     farg2:   (.dataq :farg2)
@@ -541,11 +624,28 @@
 
   (Ps
    `(define call-winx64-regs
-      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [link-tmpl #f] [lbl-off #f])
+      (let ([% (%%make-bootstrap-function-table '(%%call-native
+                                                  %%get-entry-address))]
+            [link-tmpl #f] [lbl-off #f] [prelinked-tmpl #f])
         (define (init!)
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
-          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
+          (set! lbl-off   (module-binding-ref 'lang.asm.linker 'linked-label-offset))
+          (let ([prelink (module-binding-ref 'lang.asm.linker 'prelink-template)]
+                [gea     (% '%%get-entry-address)])
+            (set! prelinked-tmpl
+                  (prelink (winx64-call-reg-tmpl)
+                           `((:Scm_MakeFlonum             ,<intptr_t>
+                              ,(gea "_Scm_MakeFlonum"))
+                             (:Scm_MakeString             ,<intptr_t>
+                              ,(gea "_Scm_MakeString"))
+                             (:Scm_MakeNativeHandleSimple ,<intptr_t>
+                              ,(gea "_Scm_MakeNativeHandleSimple"))
+                             (:Scm_IntptrToInteger        ,<intptr_t>
+                              ,(gea "_Scm_IntptrToInteger"))
+                             (:SCM_STRING_COPYING         ,<int32>
+                              ,SCM_STRING_COPYING)
+                             (:SCM_UNDEFINED              ,<top>
+                              ,(undefined)))))))
         (^[ptr args num-args num-fargs rettype]
           (when (not link-tmpl) (init!))
           (let* (;; for effective-nargs calculation, we need to consider
@@ -558,6 +658,7 @@
                  [entry-label (~ '#(entry0: entry1: entry2: entry3: entry4:
                                     entry4f0: entry4f1: entry4f2: entry4f3:)
                                  effective-nargs)]
+                 [retkind (%asm-retkind rettype)]
                  [params
                   (let loop ([args args] [count 0] [r '()])
                     (cond [(null? args) r]
@@ -584,33 +685,56 @@
                                             `(,ikey ,@(car args)) r))))]
                           [else (error "bad arg entry:" (car args))]))])
             (receive [bytes lbs]
-                (link-tmpl (list (winx64-call-reg-tmpl))
+                (link-tmpl (list prelinked-tmpl)
                            (list* `(:func ,<void*> ,ptr)
+                                  `(:retkind ,<integer> ,retkind)
+                                  `(:rettype ,<top> ,rettype)
                                   params))
-              ;; win-frame-size=40: shadow space (32) + 8-byte alignment
-              ;; Prolog ends after the 4-byte "addq -40 %rsp" at entry0:
+              ;; win-frame-size=40: push %rbx (8) + shadow space (32)
+              ;; Prolog ends after "push %rbx" (1 byte) + "addq -32 %rsp" (4 bytes)
               ((% '%%call-native) 0 0 bytes 0
                                   (lbl-off lbs 'end:)
                                   (lbl-off lbs entry-label)
                                   rettype
-                                  (+ (lbl-off lbs 'entry0:) 4)
-                                  40 0)))))))
+                                  (+ (lbl-off lbs 'entry0:) 5)
+                                  40 1)))))))
 
   (Ps
    `(define call-winx64-spill
-      (let ([% (%%make-bootstrap-function-table '(%%call-native))]
-            [link-tmpl #f] [lbl-off #f])
+      (let ([% (%%make-bootstrap-function-table '(%%call-native
+                                                  %%get-entry-address))]
+            [link-tmpl #f] [lbl-off #f] [prelinked-tmpl #f])
         (define (init!)
           (set! link-tmpl (module-binding-ref 'lang.asm.linker 'link-templates))
-          (set! lbl-off (module-binding-ref 'lang.asm.linker 'linked-label-offset)))
+          (set! lbl-off   (module-binding-ref 'lang.asm.linker 'linked-label-offset))
+          (let ([prelink (module-binding-ref 'lang.asm.linker 'prelink-template)]
+                [gea     (% '%%get-entry-address)])
+            (set! prelinked-tmpl
+                  (prelink (winx64-call-spill-tmpl)
+                           `((:Scm_MakeFlonum             ,<intptr_t>
+                              ,(gea "_Scm_MakeFlonum"))
+                             (:Scm_MakeString             ,<intptr_t>
+                              ,(gea "_Scm_MakeString"))
+                             (:Scm_MakeNativeHandleSimple ,<intptr_t>
+                              ,(gea "_Scm_MakeNativeHandleSimple"))
+                             (:Scm_IntptrToInteger        ,<intptr_t>
+                              ,(gea "_Scm_IntptrToInteger"))
+                             (:SCM_STRING_COPYING         ,<int32>
+                              ,SCM_STRING_COPYING)
+                             (:SCM_UNDEFINED              ,<top>
+                              ,(undefined)))))))
         (^[ptr args num-args num-fargs num-spills rettype]
           (when (not link-tmpl) (init!))
           (let loop ([args args] [count 0] [scount 0] [named '()] [spill-params '()])
             (if (null? args)
-              (let* ([align-pad (if (even? num-spills) 8 0)]
-                     [spill-area-bytes (* 8 num-spills)])
+              ;; With push %rbx at entry0, alignment parity is flipped.
+              ;; We need rsp%16==0 before "call func:", which requires
+              ;; align-pad=(if (even? num-spills) 0 8).
+              (let* ([align-pad (if (even? num-spills) 0 8)]
+                     [spill-area-bytes (* 8 num-spills)]
+                     [retkind (%asm-retkind rettype)])
                 (receive [bytes lbs]
-                    (link-tmpl (list (winx64-call-spill-tmpl))
+                    (link-tmpl (list prelinked-tmpl)
                                `((:func ,<void*> ,ptr)
                                  (:init-spill-size
                                   ,<int32>
@@ -619,11 +743,13 @@
                                   ,<int32>
                                   ,(+ spill-area-bytes align-pad))
                                  (:align-pad ,<int8> ,align-pad)
+                                 (:retkind ,<integer> ,retkind)
+                                 (:rettype ,<top> ,rettype)
                                  ,@named
                                  ,@spill-params)
                                :postamble spill-area-bytes)
-                  ;; win-frame-size = shadow space (32) + spill args (8*N)
-                  ;; Prolog ends after the 4-byte "addq -32 %rsp" at entry0:
+                  ;; win-frame-size = push %rbx (8) + shadow (32) + spill+pad
+                  ;; Prolog ends after "push %rbx" (1) + "addq -32 %rsp" (4)
                   ((% '%%call-native) 0      ;tstart
                                       0      ;tend (no zero fill needed)
                                       bytes  ;code
@@ -632,9 +758,9 @@
                                          spill-area-bytes)  ;end
                                       (lbl-off lbs 'entry:) ;entry
                                       rettype
-                                      (+ (lbl-off lbs 'entry0:) 4)
-                                      (+ spill-area-bytes align-pad 32)
-                                      0)))
+                                      (+ (lbl-off lbs 'entry0:) 5)
+                                      (+ spill-area-bytes align-pad 40)
+                                      1)))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount
