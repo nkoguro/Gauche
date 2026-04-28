@@ -283,20 +283,20 @@
     entry4f2:((movs_ :farg2-variant) (farg2:) %xmm2)
     entry4f1:((movs_ :farg1-variant) (farg1:) %xmm1)
     entry4f0:((movs_ :farg0-variant) (farg0:) %xmm0)
-    init:    (movq (imm32 :init-spill-size) %rax)
-             (leaq (spill: %rip) %rsi)
+    init:    (push %rbx)               ; save rbx before spill pushes
+             (movq (imm32 :init-spill-size) %rax)
+             (leaq (spill: %rip) %r10) ; %r10/%r11: volatile in Win64 ABI
              (subq (imm8 :align-pad) %rsp) ; ensure alignment
-    loop:    (movq (%rsi) %rdi)
-             (push %rdi)
-             (addq 8 %rsi)
+    loop:    (movq (%r10) %r11)
+             (push %r11)
+             (addq 8 %r10)
              (subq 8 %rax)
              (jnz loop:)
     entry4:  (movq (imm64 :iarg3) %r9)
     entry3:  (movq (imm64 :iarg2) %r8)
     entry2:  (movq (imm64 :iarg1) %rdx)
     entry1:  (movq (imm64 :iarg0) %rcx)
-    entry0:  (push %rbx)               ; save rbx
-             (addq -32 %rsp)           ; shadow space (shared with helper calls)
+    entry0:  (addq -32 %rsp)           ; shadow space (shared with helper calls)
              (call (func:))
              ;; boxing dispatch (Windows x64 calling convention for helpers)
              (movb (imm8 :retkind) %bl)
@@ -334,8 +334,8 @@
              (movq (imm32 :SCM_STRING_COPYING) %r9)
              (call (fn-string:))
     epilog:  (addq 32 %rsp)
+    epilogue:(addq (imm32 :epilogue-spill-size) %rsp) ; undo spills+pad before rbx
              (pop %rbx)
-    epilogue:(addq (imm32 :epilogue-spill-size) %rsp)
              (ret)
              (.endsection text)
 
@@ -749,7 +749,8 @@
                                  ,@spill-params)
                                :postamble spill-area-bytes)
                   ;; win-frame-size = push %rbx (8) + shadow (32) + spill+pad
-                  ;; Prolog ends after "push %rbx" (1) + "addq -32 %rsp" (4)
+                  ;; Prolog ends after "addq -32 %rsp" (4) at entry0:
+                  ;; (push %rbx is now in init:, before the spill loop)
                   ((% '%%call-native) 0      ;tstart
                                       0      ;tend (no zero fill needed)
                                       bytes  ;code
@@ -758,7 +759,7 @@
                                          spill-area-bytes)  ;end
                                       (lbl-off lbs 'entry:) ;entry
                                       rettype
-                                      (+ (lbl-off lbs 'entry0:) 5)
+                                      (+ (lbl-off lbs 'entry0:) 4)
                                       (+ spill-area-bytes align-pad 40)
                                       1)))
               (cond [(%iarg-type? (caar args))
