@@ -98,13 +98,10 @@
                               start::<fixnum>
                               end::<fixnum>
                               entry::<fixnum>
-                              rettype
                               win-prolog-end::<fixnum>
-                              win-frame-size::<fixnum>
-                              use-asm-ret::<fixnum>)
+                              win-frame-size::<fixnum>)
    (return (Scm__VMCallNative (Scm_VM) tstart tend code start end entry
-                              rettype win-prolog-end win-frame-size
-                              use-asm-ret)))
+                              win-prolog-end win-frame-size)))
 
  (define-cproc %%get-entry-address (name::<string>)
    (return (Scm__InternalGetEntryAddress name)))

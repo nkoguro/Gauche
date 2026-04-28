@@ -484,7 +484,7 @@
               ((% '%%call-native) 0 0 bytes 0
                                   (lbl-off lbs 'end:)
                                   (lbl-off lbs entry-label)
-                                  rettype 0 0 1)))))))
+                                  0 0)))))))
 
   ;; call-amd64-spill: named patches handled by link-templates; only raw
   ;; spill-slot offsets remain in the %%call-native patcher list.
@@ -554,9 +554,7 @@
                                         (+ (lbl-off lbs 'spill:)
                                            spill-area-bytes) ;end
                                         (lbl-off lbs entry-label) ;entry
-                                        rettype
-                                        0 0       ;win-prolog-end win-frame-size
-                                        1)))
+                                        0 0)))  ;win-prolog-end win-frame-size
                 (cond [(%iarg-type? (caar args))
                        (if (< icount 6)
                          (loop (cdr args) (+ icount 1) fcount scount
@@ -695,9 +693,7 @@
               ((% '%%call-native) 0 0 bytes 0
                                   (lbl-off lbs 'end:)
                                   (lbl-off lbs entry-label)
-                                  rettype
-                                  (+ (lbl-off lbs 'entry0:) 5)
-                                  40 1)))))))
+                                  (+ (lbl-off lbs 'entry0:) 5) 40)))))))
 
   (Ps
    `(define call-winx64-spill
@@ -758,10 +754,8 @@
                                       (+ (lbl-off lbs 'spill:)
                                          spill-area-bytes)  ;end
                                       (lbl-off lbs 'entry:) ;entry
-                                      rettype
                                       (+ (lbl-off lbs 'entry0:) 4)
-                                      (+ spill-area-bytes align-pad 40)
-                                      1)))
+                                      (+ spill-area-bytes align-pad 40))))
               (cond [(%iarg-type? (caar args))
                      (if (< count 4)
                        (loop (cdr args) (+ count 1) scount

@@ -210,8 +210,6 @@ static void setup_codepad_pdata(ScmCodeCache *cc,
  * code.
  *
  * Finally, the code is called from the entry offset ENTRY.
- *
- * RETTYPE is  a <native-type> or <top>.
  */
 
 ScmObj Scm__VMCallNative(ScmVM *vm,
@@ -221,14 +219,10 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                          ScmSmallInt start,
                          ScmSmallInt end,
                          ScmSmallInt entry,
-                         ScmObj rettype,
                          /* The following two args are used on Windows.
                             On Linux, just pass 0. */
                          ScmSmallInt win_prolog_end SCM_UNUSED,
-                         ScmSmallInt win_frame_size SCM_UNUSED,
-                         /* When non-zero, the asm stub already performed
-                            return-type conversion; treat %rax as ScmObj. */
-                         int use_asm_ret)
+                         ScmSmallInt win_frame_size SCM_UNUSED)
 {
     init_code_cache(vm);
 
@@ -292,36 +286,7 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
          * Call the code
          */
         void *entryPtr = get_entry_address(vm->codeCache, codepad + entry);
-        if (use_asm_ret) {
-            /* The asm stub already converted the return value; %rax holds
-               the resulting ScmObj directly. */
-            result = ((ScmObj (*)())entryPtr)();
-        } else if (SCM_EQ(rettype, Scm_NativeDoubleType())) {
-            double r = ((double (*)())entryPtr)();
-            result = Scm_VMReturnFlonum(r);
-        } else if (SCM_EQ(rettype, Scm_NativeFloatType())) {
-            float r = ((float (*)())entryPtr)();
-            result = Scm_VMReturnFlonum((double)r);
-        } else if (SCM_EQ(rettype, Scm_NativeCStringType())) {
-            intptr_t r = ((intptr_t (*)())entryPtr)();
-            result = SCM_MAKE_STR_COPYING((const char*)r);
-        } else if (SCM_EQ(rettype, Scm_NativeIntptrtType())) {
-            intptr_t r = ((intptr_t (*)())entryPtr)();
-            result = Scm_IntptrToInteger(r);
-        } else if (SCM_EQ(rettype, Scm_NativeUint8Type())) {
-            uint8_t r = ((uint8_t (*)())entryPtr)();
-            result = SCM_MAKE_INT(r);
-        } else if (SCM_C_POINTER_P(rettype) || SCM_C_ARRAY_P(rettype)) {
-            void *r = ((void *(*)())entryPtr)();
-            result = Scm_MakeNativeHandleSimple(r, rettype);
-        } else if (SCM_EQ(rettype, SCM_OBJ(SCM_CLASS_TOP))) {
-            intptr_t r = ((intptr_t (*)())entryPtr)();
-            result = SCM_OBJ(r);      /* trust the caller */
-        } else if (SCM_EQ(rettype, Scm_NativeVoidType())) {
-            ((void (*)())entryPtr)();
-        } else {
-            Scm_Error("unknown return type: %S", rettype);
-        }
+        result = ((ScmObj (*)())entryPtr)();
     } SCM_WHEN_ERROR {
 #if defined(GAUCHE_WINDOWS) && defined(__MINGW64__)
         if (xpad_pdata) {
