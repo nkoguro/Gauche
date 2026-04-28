@@ -78,12 +78,13 @@
 ;;;
 
 ;; Convert a <native-type> instance to the call-amd64 canonical type:
-;;   <void>     - void (return only)
-;;   <double>   - double (xmm register, 64-bit float)
-;;   <float>    - float  (xmm register, 32-bit float)
-;;   <c-string> - C string (Scheme string passed as const char*)
-;;   <void*>    - raw pointer (native-handle or foreign-pointer)
-;;   <intptr_t> - integer (all other integral types)
+;;   <void>      - void (return only)
+;;   <double>    - double (xmm register, 64-bit float)
+;;   <float>     - float  (xmm register, 32-bit float)
+;;   <c-string>  - C string (Scheme string passed as const char*)
+;;   <void*>     - raw pointer (native-handle or foreign-pointer)
+;;   <uintptr_t> - unsigned integer (unsigned integral types)
+;;   <intptr_t>  - signed integer (all other integral types)
 (define (native-type->call-canon type)
   (cond
     [(or (is-a? type <c-pointer>)
@@ -98,6 +99,7 @@
       [(eq? type <double>)           <double>]
       [(eq? type <float>)            <float>]
       [(eq? type <c-string>)         <c-string>]
+      [(~ type 'unsigned?)           <uintptr_t>]
       [else                          <intptr_t>])]
     [(eq? type <top>)                <top>]
     [else (error "Invalid type for native call:" type)]))

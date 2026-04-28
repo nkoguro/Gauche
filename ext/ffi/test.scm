@@ -1296,6 +1296,7 @@
                      ;; Primitive interface
                      (define-c-function F-c () 'char)
                      (define-c-function F-i () 'int)
+                     (define-c-function F-ul () 'u_long)
                      (define-c-function F-f () 'float)
                      (define-c-function F-d () 'double)
                      (define-c-function F-v () 'void)
@@ -1346,6 +1347,7 @@
 
          (t #\x09 (F-c))
          (t 42 (F-i))
+         (t (- (expt 2 (* 8 (~ <ulong>'size))) 1) (F-ul))
          (t 1.25 (F-f))
          (t 3.14 (F-d))
          (t (undefined) (F-v))

@@ -45,18 +45,21 @@
                 ;; retkind encoding
                 ;;   0 - <top>: No conversion needed
                 ;;   1 - <fixnum>
-                ;;   2 = integer that may not fit <fixnum>
-                ;;   3 - <double>
-                ;;   4 - <float>
-                ;;   5 - <void>
-                ;;   6 - <c-string>
-                ;;   7 - general pointer
+                ;;   2 - integer that may not fit <fixnum>
+                ;;   3 - unsigned integer that may not fit <fixnum>
+                ;;   4 - <double>
+                ;;   5 - <float>
+                ;;   6 - <void>
+                ;;   7 - <c-string>
+                ;;   8 - general pointer
                 (movb (imm8 :retkind) %bl)
                 (decb %bl)
                 (jsl epilog:)
                 (jz fixnum:)
                 (decb %bl)
                 (jz integer:)
+                (decb %bl)
+                (jz uinteger:)
                 (decb %bl)
                 (jz double:)
                 (decb %bl)
@@ -76,6 +79,10 @@
     integer:    (movq %rax %rdi)
                 (xorq %rax %rax)
                 (call (fn-int:))
+                (jmp epilog:)
+    uinteger:   (movq %rax %rdi)
+                (xorq %rax %rax)
+                (call (fn-uint:))
                 (jmp epilog:)
     double:     (movb 1 %al)
                 (call (fn-flonum:))
@@ -102,6 +109,7 @@
     fn-string:  (.dataq :Scm_MakeString)
     fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
     fn-int:     (.dataq :Scm_IntptrToInteger)
+    fn-uint:    (.dataq :Scm_UintptrToInteger)
     farg0:      (.dataq :farg0)
     farg1:      (.dataq :farg1)
     farg2:      (.dataq :farg2)
@@ -142,18 +150,21 @@
                 ;; retkind encoding
                 ;;   0 - <top>: No conversion needed
                 ;;   1 - <fixnum>
-                ;;   2 = integer that may not fit <fixnum>
-                ;;   3 - <double>
-                ;;   4 - <float>
-                ;;   5 - <void>
-                ;;   6 - <c-string>
-                ;;   7 - general pointer
+                ;;   2 - integer that may not fit <fixnum>
+                ;;   3 - unsigned integer that may not fit <fixnum>
+                ;;   4 - <double>
+                ;;   5 - <float>
+                ;;   6 - <void>
+                ;;   7 - <c-string>
+                ;;   8 - general pointer
                 (movb (imm8 :retkind) %bl)
                 (decb %bl)
                 (jsl epilog:)
                 (jz fixnum:)
                 (decb %bl)
                 (jz integer:)
+                (decb %bl)
+                (jz uinteger:)
                 (decb %bl)
                 (jz double:)
                 (decb %bl)
@@ -173,6 +184,10 @@
     integer:    (movq %rax %rdi)
                 (xorq %rax %rax)
                 (call (fn-int:))
+                (jmp epilog:)
+    uinteger:   (movq %rax %rdi)
+                (xorq %rax %rax)
+                (call (fn-uint:))
                 (jmp epilog:)
     double:     (movb 1 %al)
                 (call (fn-flonum:))
@@ -199,6 +214,7 @@
     fn-string:  (.dataq :Scm_MakeString)
     fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
     fn-int:     (.dataq :Scm_IntptrToInteger)
+    fn-uint:    (.dataq :Scm_UintptrToInteger)
     farg0:      (.dataq :farg0)
     farg1:      (.dataq :farg1)
     farg2:      (.dataq :farg2)
@@ -233,13 +249,15 @@
              (decb %bl)
              (jz integer:)             ; retkind=2
              (decb %bl)
-             (jz double:)              ; retkind=3
+             (jz uinteger:)            ; retkind=3
              (decb %bl)
-             (jz float:)               ; retkind=4
+             (jz double:)              ; retkind=4
              (decb %bl)
-             (jz void:)                ; retkind=5
+             (jz float:)               ; retkind=5
              (decb %bl)
-             (jz cstring:)             ; retkind=6
+             (jz void:)                ; retkind=6
+             (decb %bl)
+             (jz cstring:)             ; retkind=7
     pointer: (movq %rax %rcx)          ; rcx=ptr
              (movq (imm64 :rettype) %rdx) ; rdx=type
              (call (fn-handle:))
@@ -249,6 +267,9 @@
              (jmp epilog:)
     integer: (movq %rax %rcx)          ; rcx=intptr_t
              (call (fn-int:))
+             (jmp epilog:)
+    uinteger:(movq %rax %rcx)          ; rcx=uintptr_t
+             (call (fn-uint:))
              (jmp epilog:)
     float:   (cvtss2sd %xmm0 %xmm0)
     double:  (call (fn-flonum:))
@@ -271,6 +292,7 @@
     fn-string:  (.dataq :Scm_MakeString)
     fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
     fn-int:     (.dataq :Scm_IntptrToInteger)
+    fn-uint:    (.dataq :Scm_UintptrToInteger)
     farg0:   (.dataq :farg0)
     farg1:   (.dataq :farg1)
     farg2:   (.dataq :farg2)
@@ -306,6 +328,8 @@
              (decb %bl)
              (jz integer:)
              (decb %bl)
+             (jz uinteger:)
+             (decb %bl)
              (jz double:)
              (decb %bl)
              (jz float:)
@@ -322,6 +346,9 @@
              (jmp epilog:)
     integer: (movq %rax %rcx)
              (call (fn-int:))
+             (jmp epilog:)
+    uinteger:(movq %rax %rcx)
+             (call (fn-uint:))
              (jmp epilog:)
     float:   (cvtss2sd %xmm0 %xmm0)
     double:  (call (fn-flonum:))
@@ -345,6 +372,7 @@
     fn-string:  (.dataq :Scm_MakeString)
     fn-handle:  (.dataq :Scm_MakeNativeHandleSimple)
     fn-int:     (.dataq :Scm_IntptrToInteger)
+    fn-uint:    (.dataq :Scm_UintptrToInteger)
     farg0:   (.dataq :farg0)
     farg1:   (.dataq :farg1)
     farg2:   (.dataq :farg2)
@@ -383,11 +411,12 @@
       (cond [(eq? rettype <top>)                                  0]
             [(eq? rettype <uint8>)                                1]
             [(eq? rettype <intptr_t>)                             2]
-            [(eq? rettype <double>)                               3]
-            [(eq? rettype <float>)                                4]
-            [(eq? rettype <void>)                                 5]
-            [(eq? rettype <c-string>)                             6]
-            [(or (is-a? rettype <c-pointer>) (is-a? rettype <c-array>)) 7]
+            [(eq? rettype <uintptr_t>)                            3]
+            [(eq? rettype <double>)                               4]
+            [(eq? rettype <float>)                                5]
+            [(eq? rettype <void>)                                 6]
+            [(eq? rettype <c-string>)                             7]
+            [(or (is-a? rettype <c-pointer>) (is-a? rettype <c-array>)) 8]
             [else (error "unknown FFI return type for asm path:" rettype)]))
    `(define-enum SCM_STRING_COPYING)
    )
@@ -434,6 +463,8 @@
                               ,(gea "_Scm_MakeNativeHandleSimple"))
                              (:Scm_IntptrToInteger        ,<intptr_t>
                               ,(gea "_Scm_IntptrToInteger"))
+                             (:Scm_UintptrToInteger       ,<intptr_t>
+                              ,(gea "_Scm_UintptrToInteger"))
                              (:SCM_STRING_COPYING         ,<int32>
                               ,SCM_STRING_COPYING)
                              (:SCM_UNDEFINED              ,<top>
@@ -511,6 +542,8 @@
                               ,(gea "_Scm_MakeNativeHandleSimple"))
                              (:Scm_IntptrToInteger        ,<intptr_t>
                               ,(gea "_Scm_IntptrToInteger"))
+                             (:Scm_UintptrToInteger       ,<intptr_t>
+                              ,(gea "_Scm_UintptrToInteger"))
                              (:SCM_STRING_COPYING         ,<int32>
                               ,SCM_STRING_COPYING)
                              (:SCM_UNDEFINED              ,<top>
@@ -640,6 +673,8 @@
                               ,(gea "_Scm_MakeNativeHandleSimple"))
                              (:Scm_IntptrToInteger        ,<intptr_t>
                               ,(gea "_Scm_IntptrToInteger"))
+                             (:Scm_UintptrToInteger       ,<intptr_t>
+                              ,(gea "_Scm_UintptrToInteger"))
                              (:SCM_STRING_COPYING         ,<int32>
                               ,SCM_STRING_COPYING)
                              (:SCM_UNDEFINED              ,<top>
@@ -715,6 +750,8 @@
                               ,(gea "_Scm_MakeNativeHandleSimple"))
                              (:Scm_IntptrToInteger        ,<intptr_t>
                               ,(gea "_Scm_IntptrToInteger"))
+                             (:Scm_UintptrToInteger       ,<intptr_t>
+                              ,(gea "_Scm_UintptrToInteger"))
                              (:SCM_STRING_COPYING         ,<int32>
                               ,SCM_STRING_COPYING)
                              (:SCM_UNDEFINED              ,<top>

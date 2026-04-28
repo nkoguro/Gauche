@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <string.h>
 #include "f.h"
@@ -12,6 +13,11 @@ char F_c(void)
 int F_i(void)
 {
     return 42;
+}
+
+unsigned long F_ul(void)
+{
+    return ULONG_MAX;
 }
 
 float F_f(void)

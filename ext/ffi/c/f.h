@@ -11,6 +11,7 @@ struct foo {
 
 extern char F_c(void);
 extern int F_i(void);
+extern unsigned long F_ul(void);
 extern float F_f(void);
 extern double F_d(void);
 extern void F_v(void);
