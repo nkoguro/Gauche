@@ -390,14 +390,38 @@
      (op-movs_ kw (! (opc '(#xf2 #x0f #x11)) (reg src) (mem x)))]
 
     ;; calculations
-    [('addq _ _)                   (op-add pinsn 0)]
-    [('orq _ _)                    (op-add pinsn 1)]
-    [('adcq _ _)                   (op-add pinsn 2)]
-    [('sbbq _ _)                   (op-add pinsn 3)]
-    [('andq _ _)                   (op-add pinsn 4)]
-    [('subq _ _)                   (op-add pinsn 5)]
-    [('xorq _ _)                   (op-add pinsn 6)]
-    [('cmpq _ _)                   (op-add pinsn 7)]
+    [('addq _ _)                   (op-addq pinsn 0)]
+    [('orq _ _)                    (op-addq pinsn 1)]
+    [('adcq _ _)                   (op-addq pinsn 2)]
+    [('sbbq _ _)                   (op-addq pinsn 3)]
+    [('andq _ _)                   (op-addq pinsn 4)]
+    [('subq _ _)                   (op-addq pinsn 5)]
+    [('xorq _ _)                   (op-addq pinsn 6)]
+    [('cmpq _ _)                   (op-addq pinsn 7)]
+    [('addl _ _)                   (op-addl pinsn 0)]
+    [('orl _ _)                    (op-addl pinsn 1)]
+    [('adcl _ _)                   (op-addl pinsn 2)]
+    [('sbbl _ _)                   (op-addl pinsn 3)]
+    [('andl _ _)                   (op-addl pinsn 4)]
+    [('subl _ _)                   (op-addl pinsn 5)]
+    [('xorl _ _)                   (op-addl pinsn 6)]
+    [('cmpl _ _)                   (op-addl pinsn 7)]
+    [('addw _ _)                   (op-addw pinsn 0)]
+    [('orw _ _)                    (op-addw pinsn 1)]
+    [('adcw _ _)                   (op-addw pinsn 2)]
+    [('sbbw _ _)                   (op-addw pinsn 3)]
+    [('andw _ _)                   (op-addw pinsn 4)]
+    [('subw _ _)                   (op-addw pinsn 5)]
+    [('xorw _ _)                   (op-addw pinsn 6)]
+    [('cmpw _ _)                   (op-addw pinsn 7)]
+    [('addb _ _)                   (op-addb pinsn 0)]
+    [('orb _ _)                    (op-addb pinsn 1)]
+    [('adcb _ _)                   (op-addb pinsn 2)]
+    [('sbbb _ _)                   (op-addb pinsn 3)]
+    [('andb _ _)                   (op-addb pinsn 4)]
+    [('subb _ _)                   (op-addb pinsn 5)]
+    [('xorb _ _)                   (op-addb pinsn 6)]
+    [('cmpb _ _)                   (op-addb pinsn 7)]
 
     ;; shifts and rotation
     [('rol  _ _)                   (op-shift pinsn 0)]
@@ -409,8 +433,14 @@
     [('sar  _ _)                   (op-shift pinsn 7)]
 
     ;; inc and dec
-    [('incq _)                     (op-inc pinsn 0)]
-    [('decq _)                     (op-inc pinsn 1)]
+    [('incq _)                     (op-incq pinsn 0)]
+    [('decq _)                     (op-incq pinsn 1)]
+    [('incl _)                     (op-incl pinsn 0)]
+    [('decl _)                     (op-incl pinsn 1)]
+    [('incw _)                     (op-incw pinsn 0)]
+    [('decw _)                     (op-incw pinsn 1)]
+    [('incb _)                     (op-incb pinsn 0)]
+    [('decb _)                     (op-incb pinsn 1)]
 
     ;; FP conversion
     [`(cvtss2sd (sse ,src) (sse ,dst)) (! (opc '(#xf3 #x0f #x5a)) (reg dst) (r/m-reg src))]
@@ -487,7 +517,7 @@
 
 ;; addq family
 ;;  opcode variations are derived from a single number, regc.
-(define (op-add pinsn regc)
+(define (op-addq pinsn regc)
   (define ! expand-spec)
   (define w rex.w)
   (define basc (+ (ash regc 3) 1))
@@ -504,6 +534,53 @@
     [`(,_ (mem . ,x) (reg ,dst)) (! w (opc (+ basc 2)) (reg dst) (mem x))]
     ))
 
+(define (op-addl pinsn regc)
+  (define ! expand-spec)
+  (define basc (+ (ash regc 3) 1))
+  (define raxc (+ (ash regc 3) 5))
+  (match pinsn
+    [`(,_ (imm8 ,i)   (reg32 ,dst)) (! (opc #x83) (reg regc) (r/m-reg dst) (imm8 i))]
+    [`(,_ (imm8 ,i)   (mem . ,x))   (! (opc #x83) (reg regc) (mem x) (imm8 i))]
+    [`(,_ (imm32 ,i)  (reg32 ,dst)) (if (= dst 0) ; %eax
+                                      (! (opc raxc) (imm32 i))
+                                      (! (opc #x81) (reg regc) (r/m-reg dst) (imm32 i)))]
+    [`(,_ (imm32 ,i)  (mem . ,x))   (! (opc #x81) (reg regc) (mem x) (imm32 i))]
+    [`(,_ (reg32 ,src) (reg32 ,dst)) (! (opc basc) (reg src) (r/m-reg dst))]
+    [`(,_ (reg32 ,src) (mem . ,x))   (! (opc basc) (reg src) (mem x))]
+    [`(,_ (mem . ,x)  (reg32 ,dst))  (! (opc (+ basc 2)) (reg dst) (mem x))]
+    ))
+
+(define (op-addw pinsn regc)
+  (define ! expand-spec)
+  (define basc (+ (ash regc 3) 1))
+  (define raxc (+ (ash regc 3) 5))
+  (match pinsn
+    [`(,_ (imm8 ,i)   (reg16 ,dst)) (! (opc '(#x66 #x83)) (reg regc) (r/m-reg dst) (imm8 i))]
+    [`(,_ (imm8 ,i)   (mem . ,x))   (! (opc '(#x66 #x83)) (reg regc) (mem x) (imm8 i))]
+    [`(,_ (imm32 ,i)  (reg16 ,dst)) (if (= dst 0) ; %ax
+                                      (! (opc (list #x66 raxc)) (imm16 i))
+                                      (! (opc '(#x66 #x81)) (reg regc) (r/m-reg dst) (imm16 i)))]
+    [`(,_ (imm32 ,i)  (mem . ,x))   (! (opc '(#x66 #x81)) (reg regc) (mem x) (imm16 i))]
+    [`(,_ (reg16 ,src) (reg16 ,dst)) (! (opc (list #x66 basc)) (reg src) (r/m-reg dst))]
+    [`(,_ (reg16 ,src) (mem . ,x))   (! (opc (list #x66 basc)) (reg src) (mem x))]
+    [`(,_ (mem . ,x)  (reg16 ,dst))  (! (opc (list #x66 (+ basc 2))) (reg dst) (mem x))]
+    ))
+
+(define (op-addb pinsn regc)
+  (define ! expand-spec)
+  (define b0c (ash regc 3))
+  (define b2c (+ (ash regc 3) 2))
+  (define b4c (+ (ash regc 3) 4))
+  (match pinsn
+    [`(,_ (imm8 ,i)  (reg8 ,dst))   (if (= dst 0) ; %al
+                                      (! (opc b4c) (imm8 i))
+                                      (! (opc #x80) (reg regc) (r/m-reg dst) (imm8 i)))]
+    [`(,_ (imm8 ,i)  (mem . ,x))    (! (opc #x80) (reg regc) (mem x) (imm8 i))]
+    [`(,_ (reg8 ,src) (reg8 ,dst))   (! (opc b0c) (reg src) (r/m-reg dst))]
+    [`(,_ (reg8 ,src) (mem . ,x))    (! (opc b0c) (reg src) (mem x))]
+    [`(,_ (mem . ,x) (reg8 ,dst))    (! (opc b2c) (reg dst) (mem x))]
+    ))
+
 ;; shift family
 (define (op-shift pinsn regc)
   (define ! expand-spec)
@@ -518,12 +595,33 @@
     ))
 
 ;; inc and dec
-(define (op-inc pinsn regc)
+(define (op-incq pinsn regc)
   (define ! expand-spec)
   (define w rex.w)
   (match pinsn
     [`(,_ (reg ,r))             (! w (opc #xff) (reg regc) (r/m-reg r))]
     [`(,_ (mem . ,x))           (! w (opc #xff) (reg regc) (mem x))]
+    ))
+
+(define (op-incl pinsn regc)
+  (define ! expand-spec)
+  (match pinsn
+    [`(,_ (reg32 ,r))           (! (opc #xff) (reg regc) (r/m-reg r))]
+    [`(,_ (mem . ,x))           (! (opc #xff) (reg regc) (mem x))]
+    ))
+
+(define (op-incw pinsn regc)
+  (define ! expand-spec)
+  (match pinsn
+    [`(,_ (reg16 ,r))           (! (opc '(#x66 #xff)) (reg regc) (r/m-reg r))]
+    [`(,_ (mem . ,x))           (! (opc '(#x66 #xff)) (reg regc) (mem x))]
+    ))
+
+(define (op-incb pinsn regc)
+  (define ! expand-spec)
+  (match pinsn
+    [`(,_ (reg8 ,r))            (! (opc #xfe) (reg regc) (r/m-reg r))]
+    [`(,_ (mem . ,x))           (! (opc #xfe) (reg regc) (mem x))]
     ))
 
 ;; data-hole :: keyword, int -> closure
@@ -553,6 +651,8 @@
     [(? reg64?)                     `(reg ,(regnum opr))]
     [(? regsse?)                    `(sse ,(ssenum opr))]
     [(? reg8?)                      `(reg8 ,(regnum8 opr))]
+    [(? reg16?)                     `(reg16 ,(regnum16 opr))]
+    [(? reg32?)                     `(reg32 ,(regnum32 opr))]
     [(? keyword? kw)                `(hole ,kw)]
     [(? symbol?)                    `(label ,opr)]
     [(? string?)                    `(str ,opr)] ; C string literal
@@ -560,6 +660,7 @@
     [(? imm32?)                     `(imm32 ,opr)]
     [(? imm64?)                     `(imm64 ,opr)]
     [('imm8 val)                    `(imm8 ,val)]
+    [('imm16 val)                   `(imm16 ,val)]
     [('imm32 val)                   `(imm32 ,val)]
     [('imm64 val)                   `(imm64 ,val)]
     [((? integer? a))               `(mem addr ,a)]
@@ -753,7 +854,7 @@
       ,@(if (zero? disp) '() `(:displacement ,(int8/32 disp)))
       ,@s)))
 
-;; imm8, imm32, imm64 -- immediate-value modifiers.
+;; imm8, imm16, imm32, imm64 -- immediate-value modifiers.
 ;;   When I is a keyword (:name), it is a placeholder: emit zeros of the
 ;;   appropriate width and record a patch annotation in patch-collector.
 ;;   The patch is recorded only in pass 2 (T is non-#f there).
@@ -762,6 +863,12 @@
     (when (and (keyword? i) t (patch-collector))
       (push! (patch-collector) (list i (- a 1) 1)))
     `(:immediate ,(if (keyword? i) '(0) (int8 i)) ,@s)))
+
+(define (imm16 i)
+  (^[s a t]
+    (when (and (keyword? i) t (patch-collector))
+      (push! (patch-collector) (list i (- a 2) 2)))
+    `(:immediate ,(if (keyword? i) '(0 0) (int16 i)) ,@s)))
 
 (define (imm32 i)
   (^[s a t]
@@ -785,6 +892,14 @@
 ;; reg8 - legacy general 8bit registers
 (define (reg8? opr) (memq opr *regs8*))
 (define (regnum8 reg) (find-index (cut eq? reg <>) *regs8*))
+
+;; reg16 - legacy general 16bit registers
+(define (reg16? opr) (memq opr *regs16*))
+(define (regnum16 reg) (find-index (cut eq? reg <>) *regs16*))
+
+;; reg32 - general 32bit registers
+(define (reg32? opr) (memq opr *regs32*))
+(define (regnum32 reg) (find-index (cut eq? reg <>) *regs32*))
 
 ;; reg64 - general 64bit registers.  Can be source/dest registers.
 ;; reg64b - registers that can be used as the 'base' register of modrm.
@@ -810,11 +925,16 @@
 
 (define (imm64? opr) (and (integer? opr) (<= (- (expt 2 63)) opr (- (expt 2 63) 1))))
 (define (imm32? opr) (and (integer? opr) (<= (- (expt 2 31)) opr (- (expt 2 31) 1))))
+(define (imm16? opr) (and (integer? opr) (<= -32768 opr 32767)))
 (define (imm8? opr)  (and (integer? opr) (<= -128 opr 127)))
 
 
 (define (int8 n)
   `(,(logand n #xff)))
+
+(define (int16 n)
+  (list (logand n #xff)
+        (logand (ash n -8) #xff)))
 
 (define (int32 n)
   (list (logand n #xff)

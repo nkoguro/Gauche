@@ -1,5 +1,8 @@
 2026-04-27  Shiro Kawai  <shiro@acm.org>
 
+	* libsrc/lang/asm/x86_64.scm (asm1): Support different operand
+	  widths for computation instructions (e.g. addb etc.)
+
 	* lib/lang/asm/linker.scm (prelink-template): Added.
 
 2026-04-26  Shiro Kawai  <shiro@acm.org>

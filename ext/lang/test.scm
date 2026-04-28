@@ -168,6 +168,59 @@
 ;; cmpq reg→reg: REX.W 39 /r
 (t-asm "cmpq %rbx,%rcx"  '((cmpq %rbx %rcx))  '(#x48 #x39 #xd9) '())
 
+;; --- ALU instructions l/w/b variants ---
+
+;; addl reg→reg: 01 /r  ModRM(11 src dst)
+(t-asm "addl %ecx,%eax"  '((addl %ecx %eax))  '(#x01 #xc8) '())
+;; addl imm8→reg: 83 /0 ib
+(t-asm "addl $100,%ebx"  '((addl 100 %ebx))   '(#x83 #xc3 #x64) '())
+;; addl imm32→%eax short form: 05 id
+(t-asm "addl $1000,%eax" '((addl 1000 %eax))  '(#x05 #xe8 #x03 #x00 #x00) '())
+;; addl imm32→non-eax: 81 /0 id
+(t-asm "addl $1000,%ebx" '((addl 1000 %ebx))  '(#x81 #xc3 #xe8 #x03 #x00 #x00) '())
+;; subl reg→reg: 29 /r
+(t-asm "subl %ecx,%eax"  '((subl %ecx %eax))  '(#x29 #xc8) '())
+;; xorl reg→reg: 31 /r
+(t-asm "xorl %eax,%eax"  '((xorl %eax %eax))  '(#x31 #xc0) '())
+;; cmpl imm8→reg: 83 /7 ib
+(t-asm "cmpl $0,%eax"    '((cmpl 0 %eax))     '(#x83 #xf8 #x00) '())
+;; cmpl imm32→%eax short form: 3D id
+(t-asm "cmpl $256,%eax"  '((cmpl 256 %eax))   '(#x3d #x00 #x01 #x00 #x00) '())
+;; cmpl reg→reg: 39 /r
+(t-asm "cmpl %ebx,%ecx"  '((cmpl %ebx %ecx))  '(#x39 #xd9) '())
+
+;; addw reg→reg: 66 01 /r
+(t-asm "addw %cx,%ax"    '((addw %cx %ax))    '(#x66 #x01 #xc8) '())
+;; addw imm8→reg: 66 83 /0 ib
+(t-asm "addw $100,%bx"   '((addw 100 %bx))    '(#x66 #x83 #xc3 #x64) '())
+;; addw imm16→%ax short form: 66 05 iw
+(t-asm "addw $1000,%ax"  '((addw 1000 %ax))   '(#x66 #x05 #xe8 #x03) '())
+;; addw imm16→non-ax: 66 81 /0 iw
+(t-asm "addw $1000,%bx"  '((addw 1000 %bx))   '(#x66 #x81 #xc3 #xe8 #x03) '())
+;; subw reg→reg: 66 29 /r
+(t-asm "subw %cx,%ax"    '((subw %cx %ax))    '(#x66 #x29 #xc8) '())
+;; cmpw imm8→reg: 66 83 /7 ib
+(t-asm "cmpw $0,%ax"     '((cmpw 0 %ax))      '(#x66 #x83 #xf8 #x00) '())
+;; cmpw imm16→%ax short form: 66 3D iw
+(t-asm "cmpw $256,%ax"   '((cmpw 256 %ax))    '(#x66 #x3d #x00 #x01) '())
+;; cmpw reg→reg: 66 39 /r
+(t-asm "cmpw %bx,%cx"    '((cmpw %bx %cx))    '(#x66 #x39 #xd9) '())
+
+;; addb reg→reg: 00 /r  ModRM(11 src dst)
+(t-asm "addb %cl,%al"    '((addb %cl %al))    '(#x00 #xc8) '())
+;; addb imm8→%al short form: 04 ib
+(t-asm "addb $1,%al"     '((addb 1 %al))      '(#x04 #x01) '())
+;; addb imm8→non-al: 80 /0 ib
+(t-asm "addb $100,%bl"   '((addb 100 %bl))    '(#x80 #xc3 #x64) '())
+;; subb reg→reg: 28 /r
+(t-asm "subb %cl,%al"    '((subb %cl %al))    '(#x28 #xc8) '())
+;; cmpb imm8→%al short form: 3C ib
+(t-asm "cmpb $0,%al"     '((cmpb 0 %al))      '(#x3c #x00) '())
+;; cmpb imm8→non-al: 80 /7 ib
+(t-asm "cmpb $1,%bl"     '((cmpb 1 %bl))      '(#x80 #xfb #x01) '())
+;; cmpb reg→reg: 38 /r
+(t-asm "cmpb %bl,%cl"    '((cmpb %bl %cl))    '(#x38 #xd9) '())
+
 ;; --- Shift / rotate ---
 
 ;; shl by-1 form: REX.W D1 /4
@@ -193,6 +246,42 @@
 (t-asm "decq %rcx"   '((decq %rcx))   '(#x48 #xff #xc9) '())
 ;; incq mem: REX.W FF /0 with memory operand
 (t-asm "incq (%rdi)" '((incq (%rdi))) '(#x48 #xff #x07) '())
+
+;; --- incl / decl ---
+
+;; incl: FF /0  ModRM(11 000 reg)
+(t-asm "incl %eax"   '((incl %eax))   '(#xff #xc0) '())
+(t-asm "incl %edx"   '((incl %edx))   '(#xff #xc2) '())
+;; decl: FF /1  ModRM(11 001 reg)
+(t-asm "decl %eax"   '((decl %eax))   '(#xff #xc8) '())
+(t-asm "decl %ecx"   '((decl %ecx))   '(#xff #xc9) '())
+;; incl/decl mem: FF /0 or /1 with memory operand
+(t-asm "incl (%rdi)" '((incl (%rdi))) '(#xff #x07) '())
+(t-asm "decl (%rdi)" '((decl (%rdi))) '(#xff #x0f) '())
+
+;; --- incw / decw ---
+
+;; incw: 66 FF /0  ModRM(11 000 reg)
+(t-asm "incw %ax"    '((incw %ax))    '(#x66 #xff #xc0) '())
+(t-asm "incw %dx"    '((incw %dx))    '(#x66 #xff #xc2) '())
+;; decw: 66 FF /1  ModRM(11 001 reg)
+(t-asm "decw %ax"    '((decw %ax))    '(#x66 #xff #xc8) '())
+(t-asm "decw %cx"    '((decw %cx))    '(#x66 #xff #xc9) '())
+;; incw/decw mem: 66 FF /0 or /1 with memory operand
+(t-asm "incw (%rdi)" '((incw (%rdi))) '(#x66 #xff #x07) '())
+(t-asm "decw (%rdi)" '((decw (%rdi))) '(#x66 #xff #x0f) '())
+
+;; --- incb / decb ---
+
+;; incb: FE /0  ModRM(11 000 reg)
+(t-asm "incb %al"    '((incb %al))    '(#xfe #xc0) '())
+(t-asm "incb %dl"    '((incb %dl))    '(#xfe #xc2) '())
+;; decb: FE /1  ModRM(11 001 reg)
+(t-asm "decb %al"    '((decb %al))    '(#xfe #xc8) '())
+(t-asm "decb %cl"    '((decb %cl))    '(#xfe #xc9) '())
+;; incb/decb mem: FE /0 or /1 with memory operand
+(t-asm "incb (%rdi)" '((incb (%rdi))) '(#xfe #x07) '())
+(t-asm "decb (%rdi)" '((decb (%rdi))) '(#xfe #x0f) '())
 
 ;; --- FP conversion ---
 
