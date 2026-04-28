@@ -83,7 +83,7 @@ struct ScmCodeCacheRec {
     void *free;
 };
 
-#define CODE_PAD_SIZE 4096
+#define CODE_PAD_SIZE 65536
 
 static void init_code_cache(ScmVM *vm) {
     if (vm->codeCache != NULL) return;
@@ -225,7 +225,10 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
                          /* The following two args are used on Windows.
                             On Linux, just pass 0. */
                          ScmSmallInt win_prolog_end SCM_UNUSED,
-                         ScmSmallInt win_frame_size SCM_UNUSED)
+                         ScmSmallInt win_frame_size SCM_UNUSED,
+                         /* When non-zero, the asm stub already performed
+                            return-type conversion; treat %rax as ScmObj. */
+                         int use_asm_ret)
 {
     init_code_cache(vm);
 
@@ -289,7 +292,11 @@ ScmObj Scm__VMCallNative(ScmVM *vm,
          * Call the code
          */
         void *entryPtr = get_entry_address(vm->codeCache, codepad + entry);
-        if (SCM_EQ(rettype, Scm_NativeDoubleType())) {
+        if (use_asm_ret) {
+            /* The asm stub already converted the return value; %rax holds
+               the resulting ScmObj directly. */
+            result = ((ScmObj (*)())entryPtr)();
+        } else if (SCM_EQ(rettype, Scm_NativeDoubleType())) {
             double r = ((double (*)())entryPtr)();
             result = Scm_VMReturnFlonum(r);
         } else if (SCM_EQ(rettype, Scm_NativeFloatType())) {
