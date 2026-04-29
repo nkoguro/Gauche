@@ -49,7 +49,7 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-specs forms)
+       [(_ dlo-var dlo-expr options cfn-specs forms)
         (let1 cfn-list-expr
             (quasirename r
               `(list ,@(map cdr cfn-specs)))
@@ -58,8 +58,9 @@
                ,@forms
                ;; We insert dummy binding so that expansion contanis
                ;; only definitions.
+               (define ,dlo-var ,dlo-expr)
                (define _dummy
-                 (compile-and-link-ffi-stub ,dlo-expr
+                 (compile-and-link-ffi-stub ,dlo-var
                                             ,cfn-list-expr
                                             (current-module)))
                )))]))))
@@ -81,7 +82,8 @@
                                   (cons (~ cfn'arg-types) (~ cfn'return-type))))
                      cfn-instances)])
     (cgen-dynamic-load unit (sys-tmpdir))
-    ((module-binding-ref mod 'ffisetup) dlobj pointer-ret-types variadic-type-infos)))
+    ((module-binding-ref mod 'ffisetup) dlobj pointer-ret-types variadic-type-infos
+     mod)))
 
 ;; Maximum number of variadic arguments supported by the switch-case kludge.
 ;; There is no portable way to convert a list of arguments to va_list, so
@@ -515,9 +517,16 @@
 
 ;; Return a string with the setup code for one FFI function.
 ;; This is emitted inside ffisetup which takes a ScmDLObj*.
+;; Also emits the Scm_Define + Scm_MakeSubrWithTags call that creates the
+;; tagged subr and binds it in the target module.  The tags value is consumed
+;; from ffisetup's local variable tags_ (a list, one entry per function in
+;; order), and target_mod_ is the module passed as argv[4].
 (define (setup-code-for-fn cfn)
   (let* ([scm-name  (~ cfn'scheme-name)]
-         [c-name    (~ cfn'c-name)])
+         [c-name    (~ cfn'c-name)]
+         [nfixed    (length (~ cfn'arg-types))]
+         [tags      (cgen-literal (~ cfn'tag-info))]
+         [optional  (if (~ cfn'variadic?) 1 0)])
     (string-append
      (format "    fptr = Scm_DLOGetEntryAddress(dlo, SCM_STRING(SCM_MAKE_STR(~a)), SCM_FALSE);"
              (cgen-safe-string #"_~c-name"))
@@ -527,24 +536,17 @@
              c-name)
      "\n"
      (format "    *(void**)&ffi_fn_~a = Scm_NativeHandlePtr(SCM_NATIVE_HANDLE(fptr));"
-             c-name))))
-
-;; Return a string with the init code to bind one SUBR as a Scheme procedure.
-;; This is emitted inside Scm_Init_UNIT.
-;; For variadic functions, optional=1 so the VM collects extra arguments
-;; into a rest list and passes it as args[nfixed].
-(define (init-code-for-fn cfn)
-  (let* ([scm-name (~ cfn'scheme-name)]
-         [c-name   (~ cfn'c-name)]
-         [nfixed   (length (~ cfn'arg-types))]
-         [optional (if (~ cfn'variadic?) 1 0)])
-    (format "    Scm_Define(SCM_CURRENT_MODULE(), SCM_SYMBOL(SCM_INTERN(~a)),\
-           \n    Scm_MakeSubr(ffi_subr_~a, NULL, ~a, ~a, SCM_INTERN(~a)));"
-            (cgen-safe-string (symbol->string scm-name))
-            c-name
-            nfixed
-            optional
-            (cgen-safe-string (symbol->string scm-name)))))
+             c-name)
+     "\n"
+     ;; Pop the per-function tags alist from tags_ and define the tagged subr.
+     (format "      Scm_Define(target_mod_, SCM_SYMBOL(SCM_INTERN(~a)),\
+             \n      Scm_MakeSubrWithTags(ffi_subr_~a, NULL, ~a, ~a, SCM_INTERN(~a), ~a));"
+             (cgen-safe-string (symbol->string scm-name))
+             c-name
+             nfixed
+             optional
+             (cgen-safe-string (symbol->string scm-name))
+             (cgen-cexpr tags)))))
 
 ;;;
 ;;; Generate C code from a list of <foreign-c-function> instances.
@@ -596,14 +598,16 @@
     ;;   argv[0] = DLObj
     ;;   argv[1] = list of return-type ScmObjs for pointer-returning functions
     ;;   argv[2] = list of (fixed-arg-types . ret-type) for variadic functions
+    ;;   argv[3] = target module (where to Scm_Define each function)
     (cgen-body ""
                "static ScmObj ffisetup(ScmObj *argv, int argc, void *data)"
                "{"
-               "    SCM_ASSERT(argc == 3);"
+               "    SCM_ASSERT(argc == 4);"
                "    ScmObj dlobj = argv[0];"
                "    SCM_ASSERT(SCM_FALSEP(dlobj) || SCM_DLOBJP(dlobj));"
                "    ScmDLObj *dlo = SCM_FALSEP(dlobj)? NULL : SCM_DLOBJ(dlobj);"
-               "    ScmObj fptr;")
+               "    ScmObj fptr;"
+               "    ScmModule *target_mod_ = SCM_MODULE(argv[3]);")
     (when (pair? pointer-return-cfns)
       (cgen-body "    ScmObj types = argv[1];"))
     (when (pair? variadic-cfns)
@@ -625,14 +629,9 @@
     (cgen-body "    return SCM_UNDEFINED;"
                "}")
 
-    ;; Scheme procedure bindings (init section, inside Scm_Init_UNIT)
-    (dolist [cfn cfn-instances]
-      (cgen-init (init-code-for-fn cfn)))
-
-    ;; ffisetup now takes 3 required args: DLObj, pointer-ret-types, variadic-type-infos.
     (cgen-init "    Scm_Define(SCM_CURRENT_MODULE(),"
                "               SCM_SYMBOL(SCM_INTERN(\"ffisetup\")),"
-               "               Scm_MakeSubr(ffisetup, NULL, 3, 0, SCM_FALSE));")
+               "               Scm_MakeSubr(ffisetup, NULL, 4, 0, SCM_FALSE));")
     )
   ;; Return unit
   unit)

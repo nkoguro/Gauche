@@ -39,9 +39,16 @@
           default-ffi-subsystem
           ffi-subsystem-available?
           define-c-function
-          <foreign-c-function>)
+          <foreign-c-function>
+          foreign-function-info)
   )
 (select-module gauche.ffi)
+
+;; API
+(define (foreign-function-info proc)
+  (and (procedure? proc)
+       (assq-ref ((with-module gauche.internal %procedure-tags-alist) proc)
+                 'foreign-function-tag)))
 
 ;; FFI syntax
 ;;
@@ -96,6 +103,7 @@
    (return-type  :init-keyword :return-type)  ; type
    (variadic?    :init-keyword :variadic?     ; #t when arg-types ends with '...
                  :init-value #f)
+   (tag-info     :init-keyword :tag-info)     ; info to be tagged
    ))
 
 ;; Resolve a typespec to a <native-type> instance or <top> at runtime.
@@ -116,6 +124,15 @@
   (if (and (pair? specs) (eq? (last specs) '...))
     (values (drop-right specs 1) #t)
     (values specs #f)))
+
+;; This is to convert FFI type info to S-expr for documentation purpose
+;; (attached to foreign-function-info).  We convert <top> to ScmObj
+;; for the time being.  It is kludge, as it can't be converted back
+;; to <native-type>.
+(define (%signature-type type)
+  (if (eq? type <top>)
+    'ScmObj
+    (native-type->signature type)))
 
 ;;;
 ;;; Susbsystem selection
@@ -153,6 +170,9 @@
    (^[f r c]
      (match f
        [(_ dlo-expr options . body)
+        ;; Variable dlo-var is bound to the result of dlo-expr
+        ;; in the expaneded with-*-ffi macros.
+        (define dlo-var (gensym "dlo-"))
         (define cfns '())
         (define subsystem
           (get-keyword :subsystem (unwrap-syntax options)
@@ -179,12 +199,20 @@
              (quasirename r
                `(receive (arg-types* variadic?*)
                     (%parse-ffi-arg-types ,arg-types-expr)
-                  (make <foreign-c-function>
-                    :scheme-name ',name
-                    :c-name ,(cgen-safe-name-friendly (x->string name))
-                    :arg-types (map %resolve-typespec arg-types*)
-                    :return-type (%resolve-typespec ,rettype-expr)
-                    :variadic? variadic?*)))]))
+                  (let ([atypes (map %resolve-typespec arg-types*)]
+                        [rtype (%resolve-typespec ,rettype-expr)])
+                    (make <foreign-c-function>
+                      :scheme-name ',name
+                      :c-name ,(cgen-safe-name-friendly (x->string name))
+                      :arg-types atypes
+                      :return-type rtype
+                      :variadic? variadic?*
+                      :tag-info `((foreign-function-tag
+                                   :dlobj ,(~ ,dlo-var'path)
+                                   :subsystem ,',subsystem
+                                   :argtypes ,(map %signature-type atypes)
+                                   :rettype ,(%signature-type rtype)))))))]))
+
         ;; cfn-specs is ((name . cfn-expr) ...), where name is a symbol
         ;; name of cfn, and cfn-expr is (make <foreivn-c-function> ...)
         ;; constructed above.  The subsystem macro should rearrange
@@ -199,10 +227,10 @@
           ;; from the following expressions.  Be careful not to wrap
           ;; the expansion with let etc.
           (ecase subsystem
-            [(:stubgen)
-             (quasirename r
-               `(with-stubgen-ffi ,dlo-expr ,options ,cfn-specs ,forms))]
             [(:native)
              (quasirename r
-               `(with-native-ffi ,dlo-expr ,options ,cfn-specs ,forms))]
+               `(with-native-ffi ,dlo-var ,dlo-expr ,options ,cfn-specs ,forms))]
+            [(:stubgen)
+             (quasirename r
+               `(with-stubgen-ffi ,dlo-var ,dlo-expr ,options ,cfn-specs ,forms))]
             ))]))))

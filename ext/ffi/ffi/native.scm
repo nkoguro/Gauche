@@ -40,6 +40,8 @@
   (export with-native-ffi))
 (select-module gauche.ffi.native)
 
+(define %procedure-copy (with-module gauche.internal %procedure-copy))
+
 ;;;
 ;;; Main macro
 ;;;
@@ -57,7 +59,7 @@
   (er-macro-transformer
    (^[f r c]
      (match f
-       [(_ dlo-expr options cfn-specs forms)
+       [(_ dlo-var dlo-expr options cfn-specs forms)
         (quasirename r
           `(begin
              ,@(map (^[spec] (quasirename r
@@ -65,11 +67,11 @@
                     cfn-specs)
              ,@forms
              (define _dummy
-               (let ([dlo ,dlo-expr])
+               (let ([,dlo-var ,dlo-expr])
                  ,@(map (^[spec]
                           (quasirename r
                             `(set! ,(car spec)
-                                   (make-native-ffi-proc dlo ,(cdr spec)))))
+                                   (make-native-ffi-proc ,dlo-var ,(cdr spec)))))
                         cfn-specs)))
              ))]))))
 
@@ -133,6 +135,7 @@
          [ret-type   (~ cfn'return-type)]
          [arg-types  (~ cfn'arg-types)]
          [variadic?  (~ cfn'variadic?)]
+         [tag-info   (~ cfn'tag-info)]
          [nfixed     (length arg-types)]
          [ret-canon  (native-type->call-canon ret-type)]
          [arg-canons (map native-type->call-canon arg-types)]
@@ -141,35 +144,37 @@
     (unless ptr
       (error "FFI (native): cannot find function in library:"
              (~ cfn'scheme-name)))
-    (if variadic?
-      ;; For variadic functions, map fixed args with known types, then infer
-      ;; types for the remaining variadic args from their runtime values.
-      ;; NB: For now, we just distinguish flonum values form the rest in
-      ;; the varargs list.  Eventually we want to check if all the varargs
-      ;; can be convertable to C objects.
-      (^ args
-         (let* ([fixed-args (take args nfixed)]
-                [var-args   (drop args nfixed)]
-                [fixed-pairs (map (^[canon coerce val] (list canon (coerce val)))
-                                  arg-canons arg-coerce fixed-args)]
-                [var-pairs   (map (^[val]
-                                    `(,(if (flonum? val) <double> <intptr_t>)
-                                      ,val))
-                                  var-args)])
-           (parameterize
-               ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
-             (ret-coerce
-              (native-call
-               ptr
-               (append fixed-pairs var-pairs)
-               ret-canon)))))
-      ;; Non-variadic: map all args with their declared types.
-      (^ args
-        (parameterize
-            ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
-          (ret-coerce
-           (native-call
-            ptr
-            (map (^[canon coerce val] (list canon (coerce val)))
-                 arg-canons arg-coerce args)
-            ret-canon)))))))
+    (let1 raw-proc
+        (if variadic?
+          ;; For variadic functions, map fixed args with known types, then infer
+          ;; types for the remaining variadic args from their runtime values.
+          ;; NB: For now, we just distinguish flonum values form the rest in
+          ;; the varargs list.  Eventually we want to check if all the varargs
+          ;; can be convertable to C objects.
+          (^ args
+             (let* ([fixed-args (take args nfixed)]
+                    [var-args   (drop args nfixed)]
+                    [fixed-pairs (map (^[canon coerce val] (list canon (coerce val)))
+                                      arg-canons arg-coerce fixed-args)]
+                    [var-pairs   (map (^[val]
+                                        `(,(if (flonum? val) <double> <intptr_t>)
+                                          ,val))
+                                      var-args)])
+               (parameterize
+                   ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
+                 (ret-coerce
+                  (native-call
+                   ptr
+                   (append fixed-pairs var-pairs)
+                   ret-canon)))))
+          ;; Non-variadic: map all args with their declared types.
+          (^ args
+            (parameterize
+                ([(with-module gauche.typeutil native-ptr-fill-enabled?) #t])
+              (ret-coerce
+               (native-call
+                ptr
+                (map (^[canon coerce val] (list canon (coerce val)))
+                     arg-canons arg-coerce args)
+                ret-canon)))))
+      (%procedure-copy raw-proc tag-info))))

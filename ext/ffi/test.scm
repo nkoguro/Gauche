@@ -1488,4 +1488,45 @@
     (do-test-g (:subsystem :native)))
   )
 
+;;----------------------------------------------------------
+(test-section "foreign-function-info")
+
+(select-module ffi-test-sandbox)
+
+(define-module ffi-info-sandbox
+  (use gauche.test)
+  (use gauche.ffi)
+  (use gauche.btype)
+
+  (define (check-info proc dlobj-rx subsystem argtypes rettype)
+    (let1 info (foreign-function-info proc)
+      (test* #"foreign-function-info ~subsystem returns list" #t
+             (list? info))
+      (test* #"foreign-function-info ~subsystem :subsystem" subsystem
+             (get-keyword :subsystem info #f))
+      (test* #"foreign-function-info ~subsystem :dlobj" #t
+             (boolean (dlobj-rx (get-keyword :dlobj info #f))))
+      (test* #"foreign-function-info ~subsystem :argtypes" argtypes
+             (get-keyword :argtypes info #f))
+      (test* #"foreign-function-info ~subsystem :rettype" rettype
+             (get-keyword :rettype info #f))))
+
+  (parameterize ([default-ffi-subsystem :stubgen])
+    (eval
+     `(with-ffi (dynamic-load "./f" :init-function #f) ()
+        (define-c-function Fi-i '(int) 'int))
+     (current-module))
+    (check-info Fi-i #/^\.\/f/ :stubgen '(int) 'int))
+
+  (when (ffi-subsystem-available? :native)
+    (eval
+     `(with-ffi (dynamic-load "./f" :init-function #f) (:subsystem :native)
+        (define-c-function Fi-i '(int) 'int))
+     (current-module))
+    (check-info Fi-i #/^\.\/f/ :native '(int) 'int))
+
+  (test* "foreign-function-info on non-ffi proc returns #f" #f
+         (foreign-function-info car))
+  )
+
 (test-end)
