@@ -374,6 +374,10 @@ SCM_EXTERN ScmObj Scm_MakeSubr(ScmSubrProc *func,
                                void *data,
                                int required, int optional,
                                ScmObj info);
+SCM_EXTERN ScmObj Scm_MakeSubrWithTags(ScmSubrProc *func,
+                                       void *data,
+                                       int required, int optional,
+                                       ScmObj info, ScmObj tags);
 SCM_EXTERN ScmObj Scm_NullProc(void);
 
 SCM_EXTERN ScmObj Scm_SetterSet(ScmProcedure *proc, ScmProcedure *setter,
