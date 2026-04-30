@@ -77,11 +77,21 @@
 
           native-type
           native-type->signature
+
+          <int16-le> <int16-be>
+          <uint16-le> <uint16-be>
+          <int32-le> <int32-be>
+          <uint32-le> <uint32-be>
+          <int64-le> <int64-be>
+          <uint64-le> <uint64-be>
+          <float-le> <float-be>
+          <double-le> <double-be>
           ))
 (select-module gauche.native-type)
 
 (inline-stub
- (.include "gauche/priv/typeP.h")
+ (.include "gauche/priv/bytesP.h"
+           "gauche/priv/typeP.h")
 
  (declare-stub-type <native-handle> ScmNativeHandle*)
  )
@@ -97,6 +107,202 @@
   (or (is-a? type <c-pointer>)
       (is-a? type <c-array>)
       (is-a? type <c-function>)))
+
+;;;
+;;; Endian-specified types
+;;;
+
+;; These can be used to access binary data.
+
+(inline-stub
+ (define-cfn int16swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_s16_t])
+     (set! (ref v val) (* (cast (int16_t*) ptr)))
+     (SWAP_2 v)
+     (return (SCM_MAKE_INT (ref v val)))))
+
+ (define-cfn int16swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_s16_t])
+     (set! (ref v val) (cast int16_t (SCM_INT_VALUE obj)))
+     (SWAP_2 v)
+     (set! (* (cast (int16_t*) ptr)) (ref v val))))
+
+ (define-cfn uint16swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_u16_t])
+     (set! (ref v val) (* (cast (uint16_t*) ptr)))
+     (SWAP_2 v)
+     (return (SCM_MAKE_INT (ref v val)))))
+
+ (define-cfn uint16swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_u16_t])
+     (set! (ref v val) (cast uint16_t (SCM_INT_VALUE obj)))
+     (SWAP_2 v)
+     (set! (* (cast (uint16_t*) ptr)) (ref v val))))
+
+ (define-cfn int32swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_s32_t])
+     (set! (ref v val) (* (cast (int32_t*) ptr)))
+     (SWAP_4 v)
+     (return (Scm_MakeInteger (ref v val)))))
+
+ (define-cfn int32swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_s32_t])
+     (set! (ref v val) (cast int32_t (Scm_GetInteger32 obj)))
+     (SWAP_4 v)
+     (set! (* (cast (int32_t*) ptr)) (ref v val))))
+
+ (define-cfn uint32swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_u32_t])
+     (set! (ref v val) (* (cast (uint32_t*) ptr)))
+     (SWAP_4 v)
+     (return (Scm_MakeIntegerU (ref v val)))))
+
+ (define-cfn uint32swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_u32_t])
+     (set! (ref v val) (cast uint32_t (Scm_GetIntegerU32 obj)))
+     (SWAP_4 v)
+     (set! (* (cast (uint32_t*) ptr)) (ref v val))))
+
+ (define-cfn int64swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_s64_t])
+     (set! (ref v val) (* (cast (int64_t*) ptr)))
+     (SWAP_8 v)
+     (return (Scm_MakeInteger (ref v val)))))
+
+ (define-cfn int64swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_s64_t])
+     (set! (ref v val) (cast int64_t (Scm_GetInteger64 obj)))
+     (SWAP_8 v)
+     (set! (* (cast (int64_t*) ptr)) (ref v val))))
+
+ (define-cfn uint64swap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_u64_t])
+     (set! (ref v val) (* (cast (uint64_t*) ptr)))
+     (SWAP_8 v)
+     (return (Scm_MakeIntegerU (ref v val)))))
+
+ (define-cfn uint64swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_u64_t])
+     (set! (ref v val) (cast uint64_t (Scm_GetIntegerU64 obj)))
+     (SWAP_8 v)
+     (set! (* (cast (uint64_t*) ptr)) (ref v val))))
+
+ (define-cfn floatswap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_f32_t])
+     (set! (ref v val) (* (cast (float*) ptr)))
+     (SWAP_4 v)
+     (return (Scm_MakeFlonum (ref v val)))))
+
+ (define-cfn floatswap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_f32_t])
+     (set! (ref v val) (cast (float) (Scm_GetDouble obj)))
+     (SWAP_4 v)
+     (set! (* (cast (float*) ptr)) (ref v val))))
+
+  (define-cfn doubleswap_ref (_::ScmNativeType* ptr::void*) :static
+   (let* ([v::swap_f64_t])
+     (set! (ref v val) (* (cast (double*) ptr)))
+     (SWAP_8 v)
+     (return (Scm_MakeFlonum (ref v val)))))
+
+ (define-cfn doubleswap_set (_::ScmNativeType* ptr::void* obj) ::void :static
+   (let* ([v::swap_f64_t])
+     (set! (ref v val) (Scm_GetDouble obj))
+     (SWAP_8 v)
+     (set! (* (cast (double*) ptr)) (ref v val))))
+
+ (initcode
+  (.if "WORDS_BIGENDIAN"
+    ;; Big endian platform
+    (let* ([m::ScmModule* (SCM_CURRENT_MODULE)])
+      (SCM_DEFINE m "<int16-be>"  (Scm_NativeInt16Type))
+      (SCM_DEFINE m "<uint16-be>" (Scm_NativeUint16Type))
+      (SCM_DEFINE m "<int32-be>"  (Scm_NativeInt32Type))
+      (SCM_DEFINE m "<uint32-be>" (Scm_NativeUint32Type))
+      (SCM_DEFINE m "<int64-be>"  (Scm_NativeInt64Type))
+      (SCM_DEFINE m "<uint64-be>" (Scm_NativeUint64Type))
+      (SCM_DEFINE m "<float-be>"  (Scm_NativeFloatType))
+      (SCM_DEFINE m "<double-be>" (Scm_NativeDoubleType))
+
+      (SCM_DEFINE m "<int16-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt16Type))
+                   "<int16-le>" 0 int16swap_ref int16swap_set))
+      (SCM_DEFINE m "<uint16-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint16Type))
+                   "<uint16-le>" 0 uint16swap_ref uint16swap_set))
+      (SCM_DEFINE m "<int32-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt32Type))
+                   "<int32-le>" 0 int32swap_ref int32swap_set))
+      (SCM_DEFINE m "<uint32-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint32Type))
+                   "<uint32-le>" 0 uint32swap_ref uint32swap_set))
+      (SCM_DEFINE m "<int64-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt64Type))
+                   "<int64-le>" 0 int64swap_ref int64swap_set))
+      (SCM_DEFINE m "<uint64-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint64Type))
+                   "<uint64-le>" 0 uint64swap_ref uint64swap_set))
+      (SCM_DEFINE m "<float-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeFloatType))
+                   "<float-le>" 0 floatswap_ref floatswap_set))
+      (SCM_DEFINE m "<double-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeDoubleType))
+                   "<double-le>" 0 doubleswap_ref doubleswap_set))
+      )
+    ;; Little endian platform
+    (let* ([m::ScmModule* (SCM_CURRENT_MODULE)])
+      (SCM_DEFINE m "<int16-le>"  (Scm_NativeInt16Type))
+      (SCM_DEFINE m "<uint16-le>" (Scm_NativeUint16Type))
+      (SCM_DEFINE m "<int32-le>"  (Scm_NativeInt32Type))
+      (SCM_DEFINE m "<uint32-le>" (Scm_NativeUint32Type))
+      (SCM_DEFINE m "<int64-le>"  (Scm_NativeInt64Type))
+      (SCM_DEFINE m "<uint64-le>" (Scm_NativeUint64Type))
+      (SCM_DEFINE m "<float-le>"  (Scm_NativeFloatType))
+      (SCM_DEFINE m "<double-le>" (Scm_NativeDoubleType))
+
+      (SCM_DEFINE m "<int16-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt16Type))
+                   "<int16-be>" 0 int16swap_ref int16swap_set))
+      (SCM_DEFINE m "<uint16-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint16Type))
+                   "<uint16-be>" 0 uint16swap_ref uint16swap_set))
+      (SCM_DEFINE m "<int32-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt32Type))
+                   "<int32-be>" 0 int32swap_ref int32swap_set))
+      (SCM_DEFINE m "<uint32-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint32Type))
+                   "<uint32-be>" 0 uint32swap_ref uint32swap_set))
+      (SCM_DEFINE m "<int64-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt64Type))
+                   "<int64-be>" 0 int64swap_ref int64swap_set))
+      (SCM_DEFINE m "<uint64-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint64Type))
+                   "<uint64-be>" 0 uint64swap_ref uint64swap_set))
+      (SCM_DEFINE m "<float-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeFloatType))
+                   "<float-be>" 0 floatswap_ref floatswap_set))
+      (SCM_DEFINE m "<double-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeDoubleType))
+                   "<double-be>" 0 doubleswap_ref doubleswap_set))
+      )
+    )))
+
 
 ;;;
 ;;; Native handles

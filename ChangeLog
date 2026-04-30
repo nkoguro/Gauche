@@ -1,3 +1,8 @@
+2026-04-30  Shiro Kawai  <shiro@acm.org>
+
+	* ext/ffi/native-type.scm (<int16-be> etc.): Added endian-specific
+	  native types.
+
 2026-04-29  Shiro Kawai  <shiro@acm.org>
 
 	* ext/ffi/native-type.scm (cast-handle): Added.

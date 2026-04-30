@@ -920,6 +920,170 @@
            (c-memwise-compare ph ph))))
 
 ;;;
+;;; Endian-specified types: <int16be>, <int16le>, <uint16be>, <uint16le>, etc.
+;;;
+(test-section "endian-specified types")
+
+;; Type binding: all exported endian variants must be bound and be native types.
+(for-each (^[t]
+            (test* #"~|t| is a native-type" #t (is-a? t <native-type>)))
+          (list <int16-le> <int16-be> <uint16-le> <uint16-be>
+                <int32-le> <int32-be> <uint32-le> <uint32-be>
+                <int64-le> <int64-be> <uint64-le> <uint64-be>
+                <float-le> <float-be> <double-le> <double-be>))
+
+;; Read tests.
+;; *fobject-storage* has a predictable byte sequence; we compute the expected
+;; BE/LE value from that byte sequence directly, so results are platform-independent.
+;;
+;;   offset  8: #x08 #x09 #x0a #x0b ...
+;;   offset 16: #x10 #x11 #x12 #x13 ...
+;;   offset 32: #x20 #x21 #x22 #x23 #x24 #x25 #x26 #x27 ...
+;;   offset 64: #xf0 #xf1 #xf2 #xf3 #xf4 #xf5 #xf6 #xf7
+;;   offset 72: #xf8 #xf9 ...
+(let ([data      (u8vector-copy *fobject-storage*)]
+      [int16be*  (make-c-pointer-type <int16-be>)]
+      [int16le*  (make-c-pointer-type <int16-le>)]
+      [uint16be* (make-c-pointer-type <uint16-be>)]
+      [uint16le* (make-c-pointer-type <uint16-le>)]
+      [int32be*  (make-c-pointer-type <int32-be>)]
+      [int32le*  (make-c-pointer-type <int32-le>)]
+      [uint32be* (make-c-pointer-type <uint32-be>)]
+      [uint32le* (make-c-pointer-type <uint32-le>)]
+      [int64be*  (make-c-pointer-type <int64-be>)]
+      [int64le*  (make-c-pointer-type <int64-le>)]
+      [uint64be* (make-c-pointer-type <uint64-be>)]
+      [uint64le* (make-c-pointer-type <uint64-le>)])
+  (define (bc pos type) (uvector->native-handle data type pos))
+
+  ;; 16-bit dereference at offset 8 (bytes #x08 #x09)
+  (test* "int16be deref"  #x0809 (native* (bc 8 int16be*)))
+  (test* "int16le deref"  #x0908 (native* (bc 8 int16le*)))
+  (test* "uint16be deref" #x0809 (native* (bc 8 uint16be*)))
+  (test* "uint16le deref" #x0908 (native* (bc 8 uint16le*)))
+
+  ;; 16-bit at offset 72 (bytes #xf8 #xf9) — signed variants go negative
+  ;; int16be: -(0x10000 - 0xf8f9) = -0x0707
+  ;; int16le: -(0x10000 - 0xf9f8) = -0x0608
+  (test* "int16be deref negative"  #x-0707 (native* (bc 72 int16be*)))
+  (test* "int16le deref negative"  #x-0608 (native* (bc 72 int16le*)))
+  (test* "uint16be deref unsigned" #xf8f9  (native* (bc 72 uint16be*)))
+  (test* "uint16le deref unsigned" #xf9f8  (native* (bc 72 uint16le*)))
+
+  ;; 16-bit array-ref: element 1 from offset 8 lands on bytes #x0a #x0b (offset 10)
+  (test* "int16be aref[1]"  #x0a0b (native-aref (bc 8 int16be*) 1))
+  (test* "int16le aref[1]"  #x0b0a (native-aref (bc 8 int16le*) 1))
+  (test* "uint16be aref[1]" #x0a0b (native-aref (bc 8 uint16be*) 1))
+  (test* "uint16le aref[1]" #x0b0a (native-aref (bc 8 uint16le*) 1))
+
+  ;; 32-bit at offset 16 (bytes #x10 #x11 #x12 #x13) — positive
+  (test* "int32be deref"  #x10111213 (native* (bc 16 int32be*)))
+  (test* "int32le deref"  #x13121110 (native* (bc 16 int32le*)))
+  (test* "uint32be deref" #x10111213 (native* (bc 16 uint32be*)))
+  (test* "uint32le deref" #x13121110 (native* (bc 16 uint32le*)))
+
+  ;; 32-bit at offset 64 (bytes #xf0 #xf1 #xf2 #xf3) — signed variants go negative
+  ;; int32be: -(0x100000000 - 0xf0f1f2f3) = -0x0f0e0d0d
+  ;; int32le: -(0x100000000 - 0xf3f2f1f0) = -0x0c0d0e10
+  (test* "int32be deref negative"  #x-0f0e0d0d (native* (bc 64 int32be*)))
+  (test* "int32le deref negative"  #x-0c0d0e10 (native* (bc 64 int32le*)))
+  (test* "uint32be deref unsigned" #xf0f1f2f3  (native* (bc 64 uint32be*)))
+  (test* "uint32le deref unsigned" #xf3f2f1f0  (native* (bc 64 uint32le*)))
+
+  ;; 32-bit array-ref: element 1 from offset 16 lands on bytes #x14..#x17 (offset 20)
+  (test* "int32be aref[1]" #x14151617 (native-aref (bc 16 int32be*) 1))
+  (test* "int32le aref[1]" #x17161514 (native-aref (bc 16 int32le*) 1))
+
+  ;; 64-bit at offset 32 (bytes #x20..#x27) — positive
+  (test* "uint64be deref" #x2021222324252627 (native* (bc 32 uint64be*)))
+  (test* "uint64le deref" #x2726252423222120 (native* (bc 32 uint64le*)))
+
+  ;; 64-bit at offset 64 (bytes #xf0..#xf7) — signed variants go negative
+  ;; int64be: -(0x10000000000000000 - 0xf0f1f2f3f4f5f6f7) = -0x0f0e0d0c0b0a0909
+  ;; int64le: -(0x10000000000000000 - 0xf7f6f5f4f3f2f1f0) = -0x08090a0b0c0d0e10
+  (test* "int64be deref negative"  #x-0f0e0d0c0b0a0909 (native* (bc 64 int64be*)))
+  (test* "int64le deref negative"  #x-08090a0b0c0d0e10 (native* (bc 64 int64le*)))
+  (test* "uint64be deref unsigned" #xf0f1f2f3f4f5f6f7 (native* (bc 64 uint64be*)))
+  (test* "uint64le deref unsigned" #xf7f6f5f4f3f2f1f0 (native* (bc 64 uint64le*)))
+
+  ;; 64-bit array-ref: element 1 from offset 32 lands on bytes #x28..#x2f (offset 40)
+  (test* "uint64be aref[1]" #x28292a2b2c2d2e2f (native-aref (bc 32 uint64be*) 1))
+  (test* "uint64le aref[1]" #x2f2e2d2c2b2a2928 (native-aref (bc 32 uint64le*) 1)))
+
+;; Write tests: write through one endian pointer and read back through the opposite.
+;; The byte-swapped read-back value confirms the bytes were stored in the right order.
+(let ([data      (make-u8vector 16 0)]
+      [int16be*  (make-c-pointer-type <int16-be>)]
+      [int16le*  (make-c-pointer-type <int16-le>)]
+      [uint16be* (make-c-pointer-type <uint16-be>)]
+      [uint16le* (make-c-pointer-type <uint16-le>)]
+      [int32be*  (make-c-pointer-type <int32-be>)]
+      [int32le*  (make-c-pointer-type <int32-le>)]
+      [int64be*  (make-c-pointer-type <int64-be>)]
+      [int64le*  (make-c-pointer-type <int64-le>)])
+  (define (bc pos type) (uvector->native-handle data type pos))
+
+  ;; 16-bit BE round-trip, then cross-endian read
+  (test* "int16be write/read round-trip" #x1234
+         (begin (set! (native* (bc 0 int16be*)) #x1234)
+                (native* (bc 0 int16be*))))
+  (test* "int16be write, int16le read byte-swapped" #x3412
+         (native* (bc 0 int16le*)))
+
+  ;; 16-bit LE round-trip, then cross-endian read
+  (test* "uint16le write/read round-trip" #xcd12
+         (begin (set! (native* (bc 0 uint16le*)) #xcd12)
+                (native* (bc 0 uint16le*))))
+  (test* "uint16le write, uint16be read byte-swapped" #x12cd
+         (native* (bc 0 uint16be*)))
+
+  ;; 32-bit BE round-trip, then cross-endian read
+  (test* "int32be write/read round-trip" #x12345678
+         (begin (set! (native* (bc 0 int32be*)) #x12345678)
+                (native* (bc 0 int32be*))))
+  (test* "int32be write, int32le read byte-swapped" #x78563412
+         (native* (bc 0 int32le*)))
+
+  ;; 64-bit BE round-trip, then cross-endian read
+  (test* "int64be write/read round-trip" #x0102030405060708
+         (begin (set! (native* (bc 0 int64be*)) #x0102030405060708)
+                (native* (bc 0 int64be*))))
+  (test* "int64be write, int64le read byte-swapped" #x0807060504030201
+         (native* (bc 0 int64le*))))
+
+;; Float/double round-trip tests.
+;; Use values exactly representable in the target type so round-trip is exact.
+(let ([data      (make-u8vector 16 0)]
+      [floatbe*  (make-c-pointer-type <float-be>)]
+      [floatle*  (make-c-pointer-type <float-le>)]
+      [doublebe* (make-c-pointer-type <double-be>)]
+      [doublele* (make-c-pointer-type <double-le>)])
+  (define (bc pos type) (uvector->native-handle data type pos))
+
+  (test* "floatbe write/read round-trip" 1.5
+         (begin (set! (native* (bc 0 floatbe*)) 1.5)
+                (native* (bc 0 floatbe*))))
+  (test* "floatle write/read round-trip" -2.5
+         (begin (set! (native* (bc 0 floatle*)) -2.5)
+                (native* (bc 0 floatle*))))
+  ;; Writing as BE stores different bytes than reading as LE interprets
+  (test* "floatbe and floatle interpret bytes differently" #f
+         (begin (set! (native* (bc 0 floatbe*)) 1.5)
+                (= (native* (bc 0 floatbe*))
+                   (native* (bc 0 floatle*)))))
+
+  (test* "doublebe write/read round-trip" 1.5
+         (begin (set! (native* (bc 0 doublebe*)) 1.5)
+                (native* (bc 0 doublebe*))))
+  (test* "doublele write/read round-trip" -2.5
+         (begin (set! (native* (bc 0 doublele*)) -2.5)
+                (native* (bc 0 doublele*))))
+  (test* "doublebe and doublele interpret bytes differently" #f
+         (begin (set! (native* (bc 0 doublebe*)) 1.5)
+                (= (native* (bc 0 doublebe*))
+                   (native* (bc 0 doublele*))))))
+
+;;;
 ;;; native-type: type signature parser
 ;;;
 (test-section "type signature parser")
@@ -1572,42 +1736,43 @@
 ;;----------------------------------------------------------
 (test-section "foreign-function-info")
 
-(select-module ffi-test-sandbox)
+(with-module ffi-test-sandbox
 
-(define-module ffi-info-sandbox
-  (use gauche.test)
-  (use gauche.ffi)
-  (use gauche.native-type)
+  (define-module ffi-info-sandbox
+    (use gauche.test)
+    (use gauche.ffi)
+    (use gauche.native-type)
 
-  (define (check-info proc dlobj-rx subsystem argtypes rettype)
-    (let1 info (foreign-function-info proc)
-      (test* #"foreign-function-info ~subsystem returns list" #t
-             (list? info))
-      (test* #"foreign-function-info ~subsystem :subsystem" subsystem
-             (get-keyword :subsystem info #f))
-      (test* #"foreign-function-info ~subsystem :dlobj" #t
-             (boolean (dlobj-rx (get-keyword :dlobj info #f))))
-      (test* #"foreign-function-info ~subsystem :argtypes" argtypes
-             (get-keyword :argtypes info #f))
-      (test* #"foreign-function-info ~subsystem :rettype" rettype
-             (get-keyword :rettype info #f))))
+    (define (check-info proc dlobj-rx subsystem argtypes rettype)
+      (let1 info (foreign-function-info proc)
+        (test* #"foreign-function-info ~subsystem returns list" #t
+               (list? info))
+        (test* #"foreign-function-info ~subsystem :subsystem" subsystem
+               (get-keyword :subsystem info #f))
+        (test* #"foreign-function-info ~subsystem :dlobj" #t
+               (boolean (dlobj-rx (get-keyword :dlobj info #f))))
+        (test* #"foreign-function-info ~subsystem :argtypes" argtypes
+               (get-keyword :argtypes info #f))
+        (test* #"foreign-function-info ~subsystem :rettype" rettype
+               (get-keyword :rettype info #f))))
 
-  (parameterize ([default-ffi-subsystem :stubgen])
-    (eval
-     `(with-ffi (dynamic-load "./f" :init-function #f) ()
-        (define-c-function Fi-i '(int) 'int))
-     (current-module))
-    (check-info Fi-i #/^\.\/f/ :stubgen '(int) 'int))
+    (parameterize ([default-ffi-subsystem :stubgen])
+      (eval
+       `(with-ffi (dynamic-load "./f" :init-function #f) ()
+                  (define-c-function Fi-i '(int) 'int))
+       (current-module))
+      (check-info Fi-i #/^\.\/f/ :stubgen '(int) 'int))
 
-  (when (ffi-subsystem-available? :native)
-    (eval
-     `(with-ffi (dynamic-load "./f" :init-function #f) (:subsystem :native)
-        (define-c-function Fi-i '(int) 'int))
-     (current-module))
-    (check-info Fi-i #/^\.\/f/ :native '(int) 'int))
+    (when (ffi-subsystem-available? :native)
+      (eval
+       `(with-ffi (dynamic-load "./f" :init-function #f) (:subsystem :native)
+                  (define-c-function Fi-i '(int) 'int))
+       (current-module))
+      (check-info Fi-i #/^\.\/f/ :native '(int) 'int))
 
-  (test* "foreign-function-info on non-ffi proc returns #f" #f
-         (foreign-function-info car))
+    (test* "foreign-function-info on non-ffi proc returns #f" #f
+           (foreign-function-info car))
+    )
   )
 
 (test-end)
