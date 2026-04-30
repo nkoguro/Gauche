@@ -167,7 +167,7 @@
    (let* ([v::swap_s64_t])
      (set! (ref v val) (* (cast (int64_t*) ptr)))
      (SWAP_8 v)
-     (return (Scm_MakeInteger (ref v val)))))
+     (return (Scm_MakeInteger64 (ref v val)))))
 
  (define-cfn int64swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
    (let* ([v::swap_s64_t])
@@ -179,7 +179,7 @@
    (let* ([v::swap_u64_t])
      (set! (ref v val) (* (cast (uint64_t*) ptr)))
      (SWAP_8 v)
-     (return (Scm_MakeIntegerU (ref v val)))))
+     (return (Scm_MakeIntegerU64 (ref v val)))))
 
  (define-cfn uint64swap_set (_::ScmNativeType* ptr::void* obj) ::void :static
    (let* ([v::swap_u64_t])
@@ -302,7 +302,6 @@
                    "<double-be>" 0 doubleswap_ref doubleswap_set))
       )
     )))
-
 
 ;;;
 ;;; Native handles
