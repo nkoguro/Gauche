@@ -1,5 +1,5 @@
 ;;
-;; testing gauche.btype
+;; testing gauche.native-type
 ;;
 
 (use gauche.test)
@@ -8,10 +8,10 @@
 (test-start "ffi")
 
 ;;----------------------------------------------------------
-(test-section "gauche.btype")
+(test-section "gauche.native-type")
 
-(use gauche.btype)
-(test-module 'gauche.btype)
+(use gauche.native-type)
+(test-module 'gauche.native-type)
 
 ;; Type equivalences
 (let* ([int* (make-c-pointer-type <int>)]
@@ -433,7 +433,7 @@
     (test* #"~|type| size&alignment" expect
            (list (~ type'size) (~ type'alignment))))
   (define native-type-offset*
-    (with-module gauche.btype native-type-offset))
+    (with-module gauche.native-type native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -489,7 +489,7 @@
                                       (b ,<uint8>)))])
   (define (bc pos type) (uvector->native-handle data type pos))
   (define native-type-offset*
-    (with-module gauche.btype native-type-offset))
+    (with-module gauche.native-type native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -531,7 +531,7 @@
     (test* #"~|type| size&alignment" expect
            (list (~ type'size) (~ type'alignment))))
   (define native-type-offset*
-    (with-module gauche.btype native-type-offset))
+    (with-module gauche.native-type native-type-offset))
   (define (offsets type fields)
     (map (cut native-type-offset* type <>) fields))
 
@@ -1020,7 +1020,7 @@
 ;; All union field offsets should be 0
 (let1 u (native-type '(.union uu (a::int b::double c::int8_t)))
   (define native-type-offset*
-    (with-module gauche.btype native-type-offset))
+    (with-module gauche.native-type native-type-offset))
   (test* "native-type union offsets all zero" '(0 0 0)
          (map (cut native-type-offset* u <>) '(a b c))))
 
@@ -1274,7 +1274,7 @@
 (define-module ffi-test-sandbox
   (use gauche.test)
   (use gauche.ffi)
-  (use gauche.btype)
+  (use gauche.native-type)
 
   (define foo (native-type
                '(.struct foo (c::char i::int s::short
@@ -1496,7 +1496,7 @@
 (define-module ffi-info-sandbox
   (use gauche.test)
   (use gauche.ffi)
-  (use gauche.btype)
+  (use gauche.native-type)
 
   (define (check-info proc dlobj-rx subsystem argtypes rettype)
     (let1 info (foreign-function-info proc)

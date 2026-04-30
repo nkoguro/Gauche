@@ -24,7 +24,7 @@
 (use gauche.cgen.cbe)
 (use gauche.config)
 (use gauche.configure)
-(use gauche.btype)
+(use gauche.native-type)
 (use gauche.lazy)
 (use gauche.logger)
 (use gauche.mop.bound-slot)

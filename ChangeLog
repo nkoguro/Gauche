@@ -1,3 +1,9 @@
+2026-04-29  Shiro Kawai  <shiro@acm.org>
+
+	* Rename gauche.btype -> gauche.native-type.  Changed my mind again.
+	  both ctype and btype are cryptic, and doesn't feel to represent
+	  what it covers.
+
 2026-04-27  Shiro Kawai  <shiro@acm.org>
 
 	* libsrc/lang/asm/x86_64.scm (asm1): Support different operand

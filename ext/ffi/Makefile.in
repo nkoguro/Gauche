@@ -6,27 +6,27 @@ include ../Makefile.ext
 
 SCM_CATEGORY = gauche
 
-LIBFILES = gauche--btype.$(SOEXT) gauche--ffi--ffiaux.$(SOEXT)
-SCMFILES = btype.sci ffi.scm ffi/ffiaux.sci ffi/stubgen.scm ffi/native.scm
+LIBFILES = gauche--native-type.$(SOEXT) gauche--ffi--ffiaux.$(SOEXT)
+SCMFILES = native-type.sci ffi.scm ffi/ffiaux.sci ffi/stubgen.scm ffi/native.scm
 
-OBJECTS = $(gauche_btype_OBJECTS) $(gauche_ffi_aux_OBJECTS)
+OBJECTS = $(gauche_native_type_OBJECTS) $(gauche_ffi_aux_OBJECTS)
 
 CONFIG_GENERATED = Makefile
 PREGENERATED =
-XCLEANFILES = gauche--btype.c btype.sci \
+XCLEANFILES = gauche--native-type.c native-type.sci \
 	      gauche--ffi--ffiaux.c ffi/ffiaux.sci \
 	      f.$(OBJEXT) f.$(SOEXT) \
 	      g.$(OBJEXT) g.$(SOEXT)
 
 all : $(LIBFILES) f.$(SOEXT) g.$(SOEXT)
 
-gauche_btype_OBJECTS = gauche--btype.$(OBJEXT)
+gauche_native_type_OBJECTS = gauche--native-type.$(OBJEXT)
 
-gauche--btype.$(SOEXT) : $(gauche_btype_OBJECTS)
-	$(MODLINK) gauche--btype.$(SOEXT) $(gauche_btype_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
+gauche--native-type.$(SOEXT) : $(gauche_native_type_OBJECTS)
+	$(MODLINK) gauche--native-type.$(SOEXT) $(gauche_native_type_OBJECTS) $(EXT_LIBGAUCHE) $(LIBS)
 
-gauche--btype.c btype.sci : btype.scm
-	$(PRECOMP) -e -P -o gauche--btype $(srcdir)/btype.scm
+gauche--native-type.c native-type.sci : native-type.scm
+	$(PRECOMP) -e -P -o gauche--native-type $(srcdir)/native-type.scm
 
 gauche_ffi_aux_OBJECTS = gauche--ffi--ffiaux.$(OBJEXT)
 

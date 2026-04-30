@@ -31,8 +31,8 @@
 ;;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 
-;; This is a part of gauche.cgen.type, but also used from gauche.btype.
-;; This part is splitted to avoid dependency issues---gauche.btype needs
+;; This is a part of gauche.cgen.type, but also used from gauche.native-type.
+;; This part is splitted to avoid dependency issues---gauche.native-type needs
 ;; to be built without depending too much other infrastructure.
 ;;
 ;; This moudle is not supposed to be directly 'use'd by users.  Using
