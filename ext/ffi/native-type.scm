@@ -65,6 +65,8 @@
           c-aggregate-handle?
           c-pointer-like-handle?
 
+          cast-handle
+
           c-pointer-compare
           c-pointer=?
           c-pointer<?
@@ -198,6 +200,28 @@
 (define (c-aggregate-handle? obj)
   (and (is-a? obj <native-handle>)
        (c-aggregate-type? (~ obj'type))))
+
+;;
+;; Casting
+;;
+
+;; We can 'cast' pointer-like handle to different pointer-like type.
+;; Offset is a bypte offset in relative to the original pointer---only to
+;; be used by those who know what they're doing.
+
+(define-cproc cast-handle (type::<native-type>
+                           handle::<native-handle>
+                           :optional (offset::<fixnum> 0))
+  (unless (or (SCM_C_POINTER_P type)
+              (SCM_C_ARRAY_P type)
+              (SCM_C_FUNCTION_P type))
+    (Scm_Error "You can only cast to pointer-like type, but got: %S" type))
+  (unless (or (SCM_C_POINTER_P (-> handle type))
+              (SCM_C_ARRAY_P (-> handle type))
+              (SCM_C_FUNCTION_P (-> handle type)))
+    (Scm_Error "You can only cast pointer-like handle, but got: %S" handle))
+  (return (Scm_MakeNativeHandleSimple (+ (-> handle ptr) offset)
+                                      (SCM_OBJ type))))
 
 ;;
 ;; Comparison

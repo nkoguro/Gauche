@@ -738,6 +738,87 @@
                (uvector->native-handle (make-u8vector 8) <void*>)))
 
 ;;;
+;;; cast-handle
+;;;
+(let* ([data   (u8vector-copy *fobject-storage*)]
+       [int*   (make-c-pointer-type <int>)]
+       [uint8* (make-c-pointer-type <uint8>)]
+       [int8*  (make-c-pointer-type <int8>)]
+       [int8a  (make-c-array-type <int8> '(4))]
+       [s1     (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint32>)))]
+       [s1*    (make-c-pointer-type
+                (make-c-struct-type 's1 `((a ,<int8>) (b ,<uint32>))))]
+       [ph     (uvector->native-handle data int*)])
+
+  ;; Basic cast: reinterpret int* as uint8*, same underlying address
+  (test* "cast-handle int* to uint8* yields pointer handle" #t
+         (c-pointer-handle? (cast-handle uint8* ph)))
+  (test* "cast-handle int* to uint8* reads first byte" #x80
+         (native* (cast-handle uint8* ph)))
+
+  ;; Cast to int8* reads signed
+  (test* "cast-handle int* to int8* reads signed first byte" #x-80
+         (native* (cast-handle int8* ph)))
+
+  ;; Cast preserves address (pointer compare)
+  (test* "cast-handle preserves address" #t
+         (c-pointer=? (cast-handle uint8* ph)
+                      (cast-handle uint8* ph)))
+
+  ;; Cast with byte offset: offset 1 reads second byte of data
+  (test* "cast-handle with offset 1" #x01
+         (native* (cast-handle uint8* ph 1)))
+
+  ;; Cast with offset 8
+  (test* "cast-handle with offset 8" #x08
+         (native* (cast-handle uint8* ph 8)))
+
+  ;; Cast pointer handle to array type
+  (test* "cast-handle pointer to array type yields array handle" #t
+         (c-array-handle? (cast-handle int8a ph)))
+
+  ;; Cast array handle to pointer type
+  (test* "cast-handle array to pointer type yields pointer handle" #t
+         (let1 ah (uvector->native-handle data int8a)
+           (c-pointer-handle? (cast-handle int8* ah))))
+
+  ;; Cast array handle with offset then dereference
+  (test* "cast-handle array to uint8* with offset 4" #x04
+         (let1 ah (uvector->native-handle data int8a)
+           (native* (cast-handle uint8* ah 4))))
+
+  ;; Cast null pointer handle to different pointer type
+  (test* "cast-handle null pointer to int8*" #t
+         (null-pointer-handle? (cast-handle int8* (null-pointer-handle int*))))
+
+  ;; Error: target type is not pointer-like (struct)
+  (test* "cast-handle to struct type errors" (test-error <error> #/pointer-like/)
+         (cast-handle s1 ph))
+
+  ;; Error: source handle is not pointer-like (struct handle)
+  (test* "cast-handle from struct handle errors" (test-error <error> #/pointer-like/)
+         (let1 sh (uvector->native-handle data s1)
+           (cast-handle uint8* sh)))
+
+  ;; Cast int* to pointer-to-struct, then dereference fields via native->
+  (let1 psh (cast-handle s1* ph)
+    (test* "cast-handle int* to s1* yields pointer handle" #t
+           (c-pointer-handle? psh))
+    (test* "cast-handle int* to s1*, deref field a" #x-80
+           (native-> psh 'a))
+    (test* "cast-handle int* to s1*, deref field b"
+           (case (native-endian)
+             [(big-endian) #x04050607]
+             [else         #x07060504])
+           (native-> psh 'b))
+    ;; Modify through the cast pointer and read back via the original data
+    (test* "cast-handle int* to s1*, set! field a"
+           #x42
+           (begin
+             (set! (native-> psh 'a) #x42)
+             (native* (cast-handle uint8* ph))))))
+
+;;;
 ;;; Type predicates: c-aggregate-type? and c-pointer-like-type?
 ;;;
 (let* ([int*  (make-c-pointer-type <int>)]

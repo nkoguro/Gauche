@@ -1,5 +1,7 @@
 2026-04-29  Shiro Kawai  <shiro@acm.org>
 
+	* ext/ffi/native-type.scm (cast-handle): Added.
+
 	* Rename gauche.btype -> gauche.native-type.  Changed my mind again.
 	  both ctype and btype are cryptic, and doesn't feel to represent
 	  what it covers.
