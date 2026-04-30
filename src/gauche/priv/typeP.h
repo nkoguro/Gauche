@@ -77,6 +77,12 @@ SCM_EXTERN int Scm_NativeTypeEqualP(ScmNativeType *a, ScmNativeType *b);
 SCM_EXTERN int Scm_NativeTypeIntegralP(ScmNativeType *np);
 SCM_EXTERN int Scm_NativeTypeUnsignedP(ScmNativeType *np);
 
+SCM_EXTERN ScmObj Scm__MakeNativeTypeVariant(const ScmNativeType *orig,
+                                             const char *name,
+                                             size_t alignment,
+                                             ScmObj (*c_ref)(ScmNativeType*, void*),
+                                             void (*c_set)(ScmNativeType*, void*, ScmObj));
+
 /* Primitive native type singletons, accessed via functions (DLL-safe) */
 SCM_EXTERN ScmObj Scm_NativeFixnumType(void);
 SCM_EXTERN ScmObj Scm_NativeUfixnumType(void);

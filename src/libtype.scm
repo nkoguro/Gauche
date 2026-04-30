@@ -878,17 +878,17 @@
 (inline-stub
  (define-cfn make_native_type
    (name::(const char*)
-          super
-          c-type-name::(const char*)
-          size::size_t
-          alignment::size_t
-          c-of-type::(.function (type::ScmNativeType* obj) ::int *)
-          c-ref::(.function (type::ScmNativeType* ptr::void*)::ScmObj *)
-          c-set::(.function (type::ScmNativeType* ptr::void* obj)::void *)
-          c-typecheck-name::(const char *)
-          c-boxer-name::(const char*)
-          c-unboxer-name::(const char*)
-          unsigned-p::int)
+    super
+    c-type-name::(const char*)
+    size::size_t
+    alignment::size_t
+    c-of-type::(.function (type::ScmNativeType* obj) ::int *)
+    c-ref::(.function (type::ScmNativeType* ptr::void*)::ScmObj *)
+    c-set::(.function (type::ScmNativeType* ptr::void* obj)::void *)
+    c-typecheck-name::(const char *)
+    c-boxer-name::(const char*)
+    c-unboxer-name::(const char*)
+    unsigned-p::int)
    :static
    (let* ([z::ScmNativeType*
            (SCM_NEW_INSTANCE ScmNativeType (& Scm_NativeTypeClass))])
@@ -904,6 +904,27 @@
      (set! (-> z c-boxer-name) c-boxer-name)
      (set! (-> z c-unboxer-name) c-unboxer-name)
      (set! (-> z unsigned-p) unsigned-p)
+     (return (SCM_OBJ z))))
+
+ ;; Internal API for gauche.native-type to create a 'variant' of
+ ;; existing native type (e.g. <int16be>)
+ ;; The variants can't be used FFI argtype/rettype.  Only meaningful for
+ ;; binary data access via native handles.
+ (define-cfn Scm__MakeNativeTypeVariant
+   (orig::(const ScmNativeType*)
+    name::(const char*)
+    alignment::size_t                   ; 0 to keep orig's
+    c-ref::(.function (type::ScmNativeType* ptr::void*)::ScmObj *)
+    c-set::(.function (type::ScmNativeType* ptr::void* obj)::void *))
+   ::ScmObj
+   (let* ([z::ScmNativeType*
+           (SCM_NEW_INSTANCE ScmNativeType (& Scm_NativeTypeClass))])
+     (set! (* z) (* orig))
+     (set! (-> z name) (SCM_INTERN name))
+     (when (> alignment 0)
+       (set! (-> z alignment) alignment))
+     (set! (-> z c-ref) c-ref)
+     (set! (-> z c-set) c-set)
      (return (SCM_OBJ z))))
 
  ;; Primitive native type name -> native type instance
