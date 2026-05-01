@@ -108,6 +108,10 @@
       (is-a? type <c-array>)
       (is-a? type <c-function>)))
 
+;; Map type signature name -> native-type instance
+(define (%builtin-native-type-lookup name)
+  (hash-table-get (%builtin-native-type-table) name #f))
+
 ;;;
 ;;; Endian-specified types
 ;;;
@@ -215,14 +219,38 @@
   (.if "WORDS_BIGENDIAN"
     ;; Big endian platform
     (let* ([m::ScmModule* (SCM_CURRENT_MODULE)])
-      (SCM_DEFINE m "<int16-be>"  (Scm_NativeInt16Type))
-      (SCM_DEFINE m "<uint16-be>" (Scm_NativeUint16Type))
-      (SCM_DEFINE m "<int32-be>"  (Scm_NativeInt32Type))
-      (SCM_DEFINE m "<uint32-be>" (Scm_NativeUint32Type))
-      (SCM_DEFINE m "<int64-be>"  (Scm_NativeInt64Type))
-      (SCM_DEFINE m "<uint64-be>" (Scm_NativeUint64Type))
-      (SCM_DEFINE m "<float-be>"  (Scm_NativeFloatType))
-      (SCM_DEFINE m "<double-be>" (Scm_NativeDoubleType))
+      (SCM_DEFINE m "<int16-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt16Type))
+                   "<int16-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint16-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint16Type))
+                   "<uint16-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<int32-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt32Type))
+                   "<int32-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint32-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint32Type))
+                   "<uint32-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<int64-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt64Type))
+                   "<int64-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint64-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint64Type))
+                   "<uint64-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<float-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeFloatType))
+                   "<float-be>" 0 NULL NULL))
+      (SCM_DEFINE m "<double-be>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeDoubleType))
+                   "<double-be>" 0 NULL NULL))
 
       (SCM_DEFINE m "<int16-le>"
                   (Scm__MakeNativeTypeVariant
@@ -259,14 +287,38 @@
       )
     ;; Little endian platform
     (let* ([m::ScmModule* (SCM_CURRENT_MODULE)])
-      (SCM_DEFINE m "<int16-le>"  (Scm_NativeInt16Type))
-      (SCM_DEFINE m "<uint16-le>" (Scm_NativeUint16Type))
-      (SCM_DEFINE m "<int32-le>"  (Scm_NativeInt32Type))
-      (SCM_DEFINE m "<uint32-le>" (Scm_NativeUint32Type))
-      (SCM_DEFINE m "<int64-le>"  (Scm_NativeInt64Type))
-      (SCM_DEFINE m "<uint64-le>" (Scm_NativeUint64Type))
-      (SCM_DEFINE m "<float-le>"  (Scm_NativeFloatType))
-      (SCM_DEFINE m "<double-le>" (Scm_NativeDoubleType))
+      (SCM_DEFINE m "<int16-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt16Type))
+                   "<int16-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint16-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint16Type))
+                   "<uint16-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<int32-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt32Type))
+                   "<int32-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint32-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint32Type))
+                   "<uint32-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<int64-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeInt64Type))
+                   "<int64-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<uint64-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeUint64Type))
+                   "<uint64-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<float-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeFloatType))
+                   "<float-le>" 0 NULL NULL))
+      (SCM_DEFINE m "<double-le>"
+                  (Scm__MakeNativeTypeVariant
+                   (SCM_NATIVE_TYPE (Scm_NativeDoubleType))
+                   "<double-le>" 0 NULL NULL))
 
       (SCM_DEFINE m "<int16-be>"
                   (Scm__MakeNativeTypeVariant
@@ -302,6 +354,24 @@
                    "<double-be>" 0 doubleswap_ref doubleswap_set))
       )
     )))
+
+(define *extended-native-type-table*
+  (rlet1 tab (make-hash-table 'eq?)
+    (define (tname tsym)
+      (string->symbol
+       (regexp-replace-all* (symbol->string tsym)
+                            #/[<>]/ ""
+                            #/-/ "_")))
+    (let-syntax ([! (syntax-rules ()
+                      [(_ t ...)
+                       (begin (hash-table-put! tab (tname 't) t) ...)])])
+      (! <int16-le> <int16-be> <uint16-le> <uint16-be>
+         <int32-le> <int32-be> <uint32-le> <uint32-be>
+         <int64-le> <int64-be> <uint64-le> <uint64-be>
+         <float-le> <float-be> <double-le> <double-be>))))
+
+(define (%extended-native-type-lookup sym)
+  (hash-table-get *extended-native-type-table* sym #f))
 
 ;;;
 ;;; Native handles
@@ -824,8 +894,9 @@
     ;; Simple symbol types
     [(? symbol?)
      (or
-      ;; Direct table lookup
+      ;; Primitive types
       (%builtin-native-type-lookup signature)
+      (%extended-native-type-lookup signature)
       ;; Pointer type (trailing *)
       (and-let* ([decomp (%pointer-type-decompose signature)])
         (%wrap-pointer-type (native-type (car decomp)) (cdr decomp)))
@@ -840,18 +911,19 @@
 
 ;; Reverse table: native-type instance -> C type name symbol
 (define %native-type->cname
-  (rlet1 ht (make-hash-table 'eq?)
-    (for-each (^[cname]
-                (and-let1 t (%builtin-native-type-lookup cname)
-                  (hash-table-put! ht t cname)))
-              '(short u_short int u_int long u_long
-                int8_t uint8_t int16_t uint16_t
-                int32_t uint32_t int64_t uint64_t
-                char size_t ssize_t ptrdiff_t
-                off_t intptr_t uintptr_t
-                float double void))
+  (let1 tab (make-hash-table 'eq?)
+    (hash-table-for-each
+     (%builtin-native-type-table)
+     (^[k v]
+       (unless (memq v (list <c-string>))
+         (hash-table-put! tab v k))))
     ;; c-string is registered with a string key, not a symbol
-    (hash-table-put! ht <c-string> 'c-string)))
+    (hash-table-put! tab <c-string> 'c-string)
+    (hash-table-for-each
+     *extended-native-type-table*
+     (^[k v]
+       (hash-table-put! tab v k)))
+    (^[type] (hash-table-get tab type #f))))
 
 ;; Reverse field specs: list of (name type offset) -> typed-var-list
 (define (%unparse-field-specs fields)
@@ -877,7 +949,7 @@
   (assume-type type <native-type>)
   (cond
     ;; Primitive types (including void and c-string)
-    [(hash-table-get %native-type->cname type #f)]
+    [(%native-type->cname type)]
     ;; Pointer: collect depth, build name*...*
     [(is-a? type <c-pointer>)
      (let loop ([t type] [depth 0])

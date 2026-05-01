@@ -1421,6 +1421,24 @@
 (test* "signature ptrdiff_t" 'ptrdiff_t (native-type->signature <ptrdiff_t>))
 (test* "signature c-string" 'c-string (native-type->signature <c-string>))
 
+;; Endian-specific types
+(test* "signature int16_be" 'int16_be (native-type->signature <int16-be>))
+(test* "signature int16_le" 'int16_le (native-type->signature <int16-le>))
+(test* "signature uint16_be" 'uint16_be (native-type->signature <uint16-be>))
+(test* "signature uint16_le" 'uint16_le (native-type->signature <uint16-le>))
+(test* "signature int32_be" 'int32_be (native-type->signature <int32-be>))
+(test* "signature int32_le" 'int32_le (native-type->signature <int32-le>))
+(test* "signature uint32_be" 'uint32_be (native-type->signature <uint32-be>))
+(test* "signature uint32_le" 'uint32_le (native-type->signature <uint32-le>))
+(test* "signature int64_be" 'int64_be (native-type->signature <int64-be>))
+(test* "signature int64_le" 'int64_le (native-type->signature <int64-le>))
+(test* "signature uint64_be" 'uint64_be (native-type->signature <uint64-be>))
+(test* "signature uint64_le" 'uint64_le (native-type->signature <uint64-le>))
+(test* "signature float_be" 'float_be (native-type->signature <float-be>))
+(test* "signature float_le" 'float_le (native-type->signature <float-le>))
+(test* "signature double_be" 'double_be (native-type->signature <double-be>))
+(test* "signature double_le" 'double_le (native-type->signature <double-le>))
+
 ;; Pointer types
 (test* "signature int*" 'int*
        (native-type->signature (make-c-pointer-type <int>)))
@@ -1509,6 +1527,24 @@
        (round-trip '(.struct outer
                       (pos::(.struct point (x::int y::int))
                        val::double))))
+(test* "round-trip int16_be" #t (round-trip 'int16_be))
+(test* "round-trip uint32_le" #t (round-trip 'uint32_le))
+(test* "round-trip int64_be" #t (round-trip 'int64_be))
+(test* "round-trip float_le" #t (round-trip 'float_le))
+(test* "round-trip double_be" #t (round-trip 'double_be))
+
+;; Endian types in aggregate types
+(test* "signature struct with endian fields"
+       '(.struct pkt (len::uint16_be data::uint32_be))
+       (native-type->signature
+        (make-c-struct-type 'pkt `((len ,<uint16-be>) (data ,<uint32-be>)))))
+(test* "signature array of int32_le"
+       '(.array int32_le (4))
+       (native-type->signature (make-c-array-type <int32-le> '(4))))
+(test* "round-trip struct with endian fields" #t
+       (round-trip '(.struct pkt (len::uint16_be data::uint32_be))))
+(test* "round-trip array of int32_le" #t
+       (round-trip '(.array int32_le (4))))
 
 ;;----------------------------------------------------------
 (test-section "gauche.ffi")

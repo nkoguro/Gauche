@@ -910,10 +910,11 @@
  ;; existing native type (e.g. <int16be>)
  ;; The variants can't be used FFI argtype/rettype.  Only meaningful for
  ;; binary data access via native handles.
+ ;; alignment, c-ref, c-set : if its 0 or NULL, inherit original value.
  (define-cfn Scm__MakeNativeTypeVariant
    (orig::(const ScmNativeType*)
     name::(const char*)
-    alignment::size_t                   ; 0 to keep orig's
+    alignment::size_t
     c-ref::(.function (type::ScmNativeType* ptr::void*)::ScmObj *)
     c-set::(.function (type::ScmNativeType* ptr::void* obj)::void *))
    ::ScmObj
@@ -921,22 +922,21 @@
            (SCM_NEW_INSTANCE ScmNativeType (& Scm_NativeTypeClass))])
      (set! (* z) (* orig))
      (set! (-> z name) (SCM_INTERN name))
-     (when (> alignment 0)
-       (set! (-> z alignment) alignment))
-     (set! (-> z c-ref) c-ref)
-     (set! (-> z c-set) c-set)
+     (when (> alignment 0) (set! (-> z alignment) alignment))
+     (when c-ref (set! (-> z c-ref) c-ref))
+     (when c-set (set! (-> z c-set) c-set))
      (return (SCM_OBJ z))))
 
  ;; Primitive native type name -> native type instance
+ ;; Used by gauche.native-type.  Can be used for other purposes, but
+ ;; it's not official and the structure/interface may change.
  (define-cvar builtin-native-types :static)
 
  (initcode
   (set! builtin-native-types (Scm_MakeHashTableSimple SCM_HASH_EQ 16)))
 
- (define-cproc %builtin-native-type-lookup (name::<symbol>)
-    (return (Scm_HashTableRef (SCM_HASH_TABLE builtin-native-types)
-                              (SCM_OBJ name)
-                              SCM_FALSE)))
+ (define-cproc %builtin-native-type-table ()
+   (return builtin-native-types))
 
  ;; define-native-type NAME CVAR SUPER CTYPE PRED BOX UNBOX
  ;;   NAME - Symbol for Scheme name
